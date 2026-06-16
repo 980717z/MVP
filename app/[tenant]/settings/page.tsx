@@ -11,7 +11,7 @@ import {
   type Role,
   type Tenant,
 } from "@/lib/store";
-import { CATEGORIES, MODULE_BY_ID, MODULES } from "@/lib/catalog";
+import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategories } from "@/lib/catalog";
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: "老板（全部权限）",
@@ -144,11 +144,11 @@ export default function Settings() {
           随时增减功能 —— 勾选即生成对应录入与报表，无需重建系统。需要清单外的功能？我们可以为你定制适配。
         </p>
         <div className="space-y-5">
-          {CATEGORIES.map((c) => (
+          {readyCategories().map((c) => (
             <div key={c.id}>
               <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
               <div className="grid gap-2 sm:grid-cols-2">
-                {MODULES.filter((m) => m.category === c.id).map((m) => {
+                {readyByCategory(c.id).map((m) => {
                   const on = tenant.enabled.includes(m.id);
                   return (
                     <label

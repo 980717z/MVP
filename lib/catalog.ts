@@ -35,6 +35,18 @@ export interface ModuleDef {
   category: string;
   icon: string;
   label: Bi;
+  /**
+   * Only `ready: true` modules are shown to merchants (onboarding checklist,
+   * settings, catalog overview).  Flip a module to `true` once it's polished
+   * and we want to release it — we ship one feature at a time.
+   */
+  ready?: boolean;
+  /**
+   * When true this module renders its own custom page (a "portal") instead of
+   * the generic form+table.  Wire the component up in the module page's
+   * portal registry.
+   */
+  portal?: boolean;
   /** the pain point, lifted from the checklist's right column */
   pain: Bi;
   /** what the merchant types in */
@@ -74,6 +86,7 @@ export const MODULES: ModuleDef[] = [
     id: "prep-signature",
     category: "kitchen",
     icon: "🍲",
+    ready: true,
     label: { zh: "招牌备货（气锅鸡等）", en: "Signature Prep" },
     pain: {
       zh: "每天备多少合适？卖断可惜、备多浪费",
@@ -95,6 +108,23 @@ export const MODULES: ModuleDef[] = [
     amountKey: "leftover",
     amountLabel: { zh: "今日报废", en: "Waste today" },
     amountKind: "count",
+  },
+  {
+    id: "menu-generator",
+    category: "kitchen",
+    icon: "🍽️",
+    ready: true,
+    portal: true,
+    label: { zh: "菜单设置", en: "Menu Settings" },
+    pain: {
+      zh: "想做一份漂亮的中英文菜单，但排版、翻译、改价都很费时间",
+      en: "Want a nice bilingual menu, but layout, translation and pricing eat hours.",
+    },
+    fields: [],
+    outputs: [
+      { zh: "录入菜品，一键生成中英文菜单", en: "Enter dishes, generate a bilingual menu" },
+      { zh: "多种模板与风格，可导出打印 / 外卖平台", en: "Templates & styles, export for print or delivery apps" },
+    ],
   },
   {
     id: "prep-list",
@@ -491,6 +521,23 @@ export const MODULES: ModuleDef[] = [
 export const MODULE_BY_ID: Record<string, ModuleDef> = Object.fromEntries(
   MODULES.map((m) => [m.id, m])
 );
+
+/** Modules released to merchants (the rest stay hidden until polished). */
+export const READY_MODULES: ModuleDef[] = MODULES.filter((m) => m.ready);
+
+export function isReady(id: string): boolean {
+  return !!MODULE_BY_ID[id]?.ready;
+}
+
+/** Ready modules in a category. */
+export function readyByCategory(catId: string): ModuleDef[] {
+  return READY_MODULES.filter((m) => m.category === catId);
+}
+
+/** Categories that currently have at least one ready module. */
+export function readyCategories(): CategoryDef[] {
+  return CATEGORIES.filter((c) => READY_MODULES.some((m) => m.category === c.id));
+}
 
 export function modulesByCategory(catId: string): ModuleDef[] {
   return MODULES.filter((m) => m.category === catId);

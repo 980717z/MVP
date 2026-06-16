@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadTenants, type Tenant } from "@/lib/store";
-import { CATEGORIES, MODULES } from "@/lib/catalog";
+import { MODULES, readyByCategory, readyCategories } from "@/lib/catalog";
 import { useAuth, signOut } from "@/lib/useAuth";
 
 export default function AppHome() {
@@ -96,14 +96,14 @@ export default function AppHome() {
       {/* catalog overview */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          可选功能目录（来自需求清单）
+          已上线功能
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CATEGORIES.map((c) => (
+          {readyCategories().map((c) => (
             <div key={c.id} className="card p-4">
               <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
               <ul className="space-y-1">
-                {MODULES.filter((m) => m.category === c.id).map((m) => (
+                {readyByCategory(c.id).map((m) => (
                   <li key={m.id} className="text-sm text-ink-soft">
                     {m.icon} {m.label.zh}
                   </li>
@@ -112,6 +112,7 @@ export default function AppHome() {
             </div>
           ))}
         </div>
+        <p className="mt-3 text-xs text-ink-faint">更多功能正在逐步上线。</p>
       </section>
 
       <footer className="mt-12 border-t border-slate-200 pt-4 text-xs text-ink-faint">

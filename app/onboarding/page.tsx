@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CATEGORIES, MODULES } from "@/lib/catalog";
+import { READY_MODULES, readyByCategory, readyCategories } from "@/lib/catalog";
 import { createTenant } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 
@@ -34,7 +34,7 @@ export default function Onboarding() {
     const { slug, error } = await createTenant({
       name: name.trim() || "新商家",
       address: address.trim() || "—",
-      enabled: MODULES.filter((m) => picked.has(m.id)).map((m) => m.id),
+      enabled: READY_MODULES.filter((m) => picked.has(m.id)).map((m) => m.id),
     });
     if (slug) {
       router.push(`/${slug}`);
@@ -85,14 +85,14 @@ export default function Onboarding() {
 
       {/* checklist */}
       <section className="space-y-6">
-        {CATEGORIES.map((c) => (
+        {readyCategories().map((c) => (
           <div key={c.id}>
             <div className="mb-2 flex items-baseline gap-2">
               <h2 className="text-sm font-semibold text-ink">{c.label.zh}</h2>
               <span className="text-xs text-ink-faint">{c.label.en}</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              {MODULES.filter((m) => m.category === c.id).map((m) => {
+              {readyByCategory(c.id).map((m) => {
                 const on = picked.has(m.id);
                 return (
                   <button

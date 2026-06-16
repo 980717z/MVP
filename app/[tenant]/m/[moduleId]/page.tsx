@@ -12,6 +12,12 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
+import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
+
+/** Custom portals keyed by module id (modules with `portal: true`). */
+const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => JSX.Element> = {
+  "menu-generator": MenuGeneratorPortal,
+};
 
 export default function ModulePage() {
   const params = useParams();
@@ -42,6 +48,12 @@ export default function ModulePage() {
     );
   }
   if (!tenant) return null;
+
+  // custom portal modules render their own page
+  if (mod.portal && PORTALS[moduleId]) {
+    const Portal = PORTALS[moduleId];
+    return <Portal slug={slug} mod={mod} />;
+  }
 
   const enabled = tenant.enabled.includes(moduleId);
 
