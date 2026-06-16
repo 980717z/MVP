@@ -50,7 +50,7 @@ export default function Onboarding() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      <Link href="/" className="text-sm text-ink-faint hover:text-ink">← 返回</Link>
+      <Link href="/app" className="text-sm text-ink-faint hover:text-ink">← 返回</Link>
 
       <header className="mt-4 mb-6">
         <h1 className="text-2xl font-bold text-ink">新建商家后台</h1>

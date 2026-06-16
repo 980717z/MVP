@@ -43,9 +43,9 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
       {/* sidebar */}
       <aside className="hidden w-64 flex-none border-r border-slate-200 bg-white md:flex md:flex-col">
         <div className="border-b border-slate-200 px-4 py-4">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-sm font-bold text-white">A</div>
-            <span className="text-sm font-semibold">Alpine</span>
+          <Link href="/app" className="flex items-center gap-2">
+            <span className="text-lg">🍱</span>
+            <span className="text-sm font-semibold">BentoOS</span>
           </Link>
           <div className="mt-3">
             <div className="text-sm font-semibold text-ink">{tenant?.name.zh}</div>

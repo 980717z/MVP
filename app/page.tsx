@@ -1,120 +1,127 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { loadTenants, type Tenant } from "@/lib/store";
-import { CATEGORIES, MODULES } from "@/lib/catalog";
-import { useAuth, signOut } from "@/lib/useAuth";
+import { useAuth } from "@/lib/useAuth";
 
-export default function Home() {
-  const router = useRouter();
-  const { session, loading, email } = useAuth();
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loaded, setLoaded] = useState(false);
+type Lang = "zh" | "en";
 
-  useEffect(() => {
-    if (loading) return;
-    if (!session) {
-      router.replace("/login");
-      return;
-    }
-    loadTenants().then((t) => {
-      setTenants(t);
-      setLoaded(true);
-    });
-  }, [session, loading, router]);
+const T = {
+  nav: { product: { zh: "产品", en: "Product" }, login: { zh: "登录", en: "Log in" } },
+  slogan: {
+    zh: "一个后台，管好整间店",
+    en: "One dashboard for your whole shop",
+  },
+  sub: {
+    zh: "勾选你需要的功能，我们为你生成专属管理系统——备货、订单、对账、会员，一处搞定。",
+    en: "Pick the features you need; we generate a back-office built for you — prep, orders, reconciliation, members, all in one place.",
+  },
+  ctaStart: { zh: "免费开始", en: "Get started" },
+  ctaEnter: { zh: "进入后台", en: "Enter dashboard" },
+  ctaDemo: { zh: "看看怎么用", en: "How it works" },
+  points: [
+    {
+      icon: "✅",
+      title: { zh: "勾选即生成", en: "Check & generate" },
+      body: { zh: "像填清单一样选功能，系统自动搭好录入与报表。", en: "Tick a checklist; the system builds the forms and reports." },
+    },
+    {
+      icon: "👥",
+      title: { zh: "主账号 + 员工", en: "Owner + staff" },
+      body: { zh: "一个主账号管全店，按岗位给员工分配权限。", en: "One owner account, role-based access for every staff member." },
+    },
+    {
+      icon: "📊",
+      title: { zh: "数据看得清", en: "Clear numbers" },
+      body: { zh: "收入、损耗、毛利、会员，关键数字一眼看到。", en: "Revenue, waste, margin, members — the numbers that matter, at a glance." },
+    },
+  ],
+  footer: {
+    zh: "为华人商家打造的轻量管理系统",
+    en: "A lightweight back-office built for local merchants",
+  },
+};
 
-  if (loading || !session) {
-    return <main className="grid min-h-screen place-items-center text-ink-faint">载入中…</main>;
-  }
+export default function Landing() {
+  const [lang, setLang] = useState<Lang>("zh");
+  const { session } = useAuth();
+  const t = (b: { zh: string; en: string }) => b[lang];
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      {/* top bar */}
-      <div className="mb-8 flex items-center justify-between text-sm">
-        <span className="text-ink-faint">{email}</span>
-        <button onClick={() => signOut().then(() => router.replace("/login"))} className="text-ink-faint hover:text-ink">
-          退出登录
-        </button>
+    <main className="relative min-h-screen overflow-hidden bg-white">
+      {/* soft background accents */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-brand-wash blur-3xl" />
+        <div className="absolute -bottom-40 -right-32 h-[28rem] w-[28rem] rounded-full bg-amber-50 blur-3xl" />
       </div>
 
-      {/* hero */}
-      <header className="mb-10">
-        <div className="mb-3 flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand text-white font-bold">A</div>
-          <span className="text-lg font-semibold tracking-tight">Alpine · 商家系统平台</span>
+      {/* nav */}
+      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🍱</span>
+          <span className="text-lg font-bold tracking-tight text-ink">BentoOS</span>
         </div>
-        <h1 className="text-3xl font-bold leading-tight text-ink sm:text-4xl">
-          勾选你需要的功能，
-          <br className="hidden sm:block" />
-          一键生成专属后台管理系统
-        </h1>
-        <p className="mt-3 max-w-2xl text-ink-soft">
-          每个商家一个主账号，按需勾选功能模块（备货、库存、订单、对账、会员……），
-          系统自动生成对应的录入界面与报表输出。可添加员工子账号，按岗位分配权限。
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/onboarding" className="btn-primary text-base px-5 py-2.5">
-            + 新建商家（勾选功能）
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-slate-300"
+            aria-label="switch language"
+          >
+            {lang === "zh" ? "EN" : "中文"}
+          </button>
+          <Link href={session ? "/app" : "/login"} className="text-sm font-medium text-ink-soft hover:text-ink">
+            {session ? t(T.ctaEnter) : t(T.nav.login)}
           </Link>
         </div>
       </header>
 
-      {/* existing tenants */}
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-faint">我的商家</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {tenants.map((t) => (
-            <Link key={t.slug} href={`/${t.slug}`} className="card p-4 transition hover:border-brand hover:shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ink">{t.name.zh}</div>
-                  <div className="text-xs text-ink-faint">{t.address}</div>
-                </div>
-                <span className="pill bg-brand-wash text-brand">{t.enabled.length} 个模块</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1">
-                {t.enabled.slice(0, 6).map((id) => {
-                  const m = MODULES.find((x) => x.id === id);
-                  return m ? (
-                    <span key={id} className="pill bg-slate-100 text-ink-soft">
-                      {m.icon} {m.label.zh}
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            </Link>
-          ))}
-          {loaded && tenants.length === 0 && (
-            <div className="text-sm text-ink-faint">还没有商家，点上面「新建商家」开始。</div>
-          )}
+      {/* hero */}
+      <section className="mx-auto max-w-3xl px-6 pb-20 pt-16 text-center sm:pt-24">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs text-ink-faint backdrop-blur">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+          {lang === "zh" ? "现已上线 · bentoos.io" : "Now live · bentoos.io"}
+        </div>
+
+        <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-ink sm:text-6xl">
+          {t(T.slogan)}
+        </h1>
+        <p className="mx-auto mt-5 max-w-xl text-pretty text-base text-ink-soft sm:text-lg">
+          {t(T.sub)}
+        </p>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href={session ? "/app" : "/login"}
+            className="btn-primary px-6 py-3 text-base shadow-sm"
+          >
+            {session ? t(T.ctaEnter) : t(T.ctaStart)}
+          </Link>
+          <Link
+            href="/login"
+            className="btn-ghost border border-slate-200 px-6 py-3 text-base"
+          >
+            {t(T.ctaDemo)}
+          </Link>
         </div>
       </section>
 
-      {/* catalog overview */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          可选功能目录（来自需求清单）
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CATEGORIES.map((c) => (
-            <div key={c.id} className="card p-4">
-              <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
-              <ul className="space-y-1">
-                {MODULES.filter((m) => m.category === c.id).map((m) => (
-                  <li key={m.id} className="text-sm text-ink-soft">
-                    {m.icon} {m.label.zh}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+      {/* three points */}
+      <section className="mx-auto grid max-w-4xl gap-4 px-6 pb-24 sm:grid-cols-3">
+        {T.points.map((p, i) => (
+          <div key={i} className="rounded-2xl border border-slate-100 bg-white/60 p-5 text-left backdrop-blur">
+            <div className="text-2xl">{p.icon}</div>
+            <div className="mt-3 font-semibold text-ink">{t(p.title)}</div>
+            <p className="mt-1 text-sm text-ink-soft">{t(p.body)}</p>
+          </div>
+        ))}
       </section>
 
-      <footer className="mt-12 border-t border-slate-200 pt-4 text-xs text-ink-faint">
-        Alpine MVP · 接入 Supabase（Postgres + Auth + RLS）
+      {/* footer */}
+      <footer className="border-t border-slate-100">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-ink-faint sm:flex-row">
+          <span>🍱 BentoOS · {t(T.footer)}</span>
+          <span>© 2026 BentoOS</span>
+        </div>
       </footer>
     </main>
   );

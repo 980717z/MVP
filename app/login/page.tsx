@@ -14,7 +14,7 @@ export default function Login() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/");
+      if (data.session) router.replace("/app");
     });
   }, [router]);
 
@@ -27,12 +27,12 @@ export default function Login() {
         if (error) throw error;
         // If email confirmation is OFF, a session is returned immediately.
         const { data } = await supabase.auth.getSession();
-        if (data.session) router.replace("/");
+        if (data.session) router.replace("/app");
         else setMsg("注册成功。如开启了邮箱验证，请查收邮件后再登录。");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.replace("/");
+        router.replace("/app");
       }
     } catch (e: any) {
       setMsg(e.message ?? "出错了");
