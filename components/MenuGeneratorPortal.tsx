@@ -6,7 +6,26 @@ import type { ModuleDef } from "@/lib/catalog";
 import { addMenuItem, deleteMenuItem, listMenuItems, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { money } from "@/lib/format";
 
-const CATEGORIES = ["招牌", "海鲜", "热菜", "凉菜", "汤", "主食", "饮品"];
+const CATEGORIES = [
+  "招牌精选",
+  "滋补菜式",
+  "火锅",
+  "海鲜",
+  "汤羹",
+  "头盘",
+  "蔬菜豆腐",
+  "猪肉牛肉",
+  "鸡鸭",
+  "铁板煲仔",
+  "芙蓉蛋",
+  "炒粉面",
+  "煲仔饭",
+  "饭类",
+  "炒饭",
+  "汤粉面",
+  "粥类",
+  "酒水饮品",
+];
 
 type Tab = "manual" | "photo";
 
