@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { getTenant, type Tenant } from "@/lib/store";
-import { CATEGORIES, MODULE_BY_ID } from "@/lib/catalog";
+import { CATEGORIES, DOMAINS, MODULE_BY_ID } from "@/lib/catalog";
 
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
@@ -58,26 +58,46 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
             🏠 总览 Dashboard
           </NavLink>
 
-          {CATEGORIES.map((c) => {
-            const mods = enabled.map((id) => MODULE_BY_ID[id]).filter((m) => m && m.category === c.id);
-            if (mods.length === 0) return null;
+          {DOMAINS.map((dom) => {
+            const domCats = CATEGORIES.filter((c) => c.domain === dom.id);
+            const hasAny = domCats.some((c) =>
+              enabled.some((id) => MODULE_BY_ID[id]?.category === c.id)
+            );
+            if (!hasAny) return null;
             return (
-              <div key={c.id} className="mt-4">
-                <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                  {c.label.zh}
+              <div key={dom.id} className="mt-5">
+                <div className="px-2 pb-1 text-xs font-bold text-ink">
+                  {dom.id === "frontend" ? "🛎️ 前台" : "🗄️ 后台"}
                 </div>
-                {mods.map((m) => (
-                  <NavLink
-                    key={m.id}
-                    href={`/${slug}/m/${m.id}`}
-                    active={pathname === `/${slug}/m/${m.id}`}
-                  >
-                    {m.icon} {m.label.zh}
-                  </NavLink>
-                ))}
+                {domCats.map((c) => {
+                  const mods = enabled.map((id) => MODULE_BY_ID[id]).filter((m) => m && m.category === c.id);
+                  if (mods.length === 0) return null;
+                  return (
+                    <div key={c.id} className="mt-1">
+                      <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                        {c.label.zh}
+                      </div>
+                      {mods.map((m) => (
+                        <NavLink
+                          key={m!.id}
+                          href={`/${slug}/m/${m!.id}`}
+                          active={pathname === `/${slug}/m/${m!.id}`}
+                        >
+                          {m!.icon} {m!.label.zh}
+                        </NavLink>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
+
+          <div className="mt-4 border-t border-slate-200 pt-3">
+            <NavLink href={`/${slug}/settings`} active={false}>
+              ➕ 增减功能与板块
+            </NavLink>
+          </div>
         </nav>
 
         <div className="border-t border-slate-200 px-3 py-3">

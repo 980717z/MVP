@@ -1,123 +1,124 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loadTenants, type Tenant } from "@/lib/store";
-import { MODULES, readyByCategory, readyCategories } from "@/lib/catalog";
+import { createTenant, loadTenants } from "@/lib/store";
 import { useAuth, signOut } from "@/lib/useAuth";
 
-export default function AppHome() {
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export default function AppGate() {
   const router = useRouter();
   const { session, loading, email } = useAuth();
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [checking, setChecking] = useState(true);
 
+  // store-naming form state
+  const [name, setName] = useState("");
+  const [handle, setHandle] = useState("");
+  const [handleTouched, setHandleTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // gate: not logged in → login; already has a store → go straight to it
   useEffect(() => {
     if (loading) return;
     if (!session) {
       router.replace("/login");
       return;
     }
-    loadTenants().then((t) => {
-      setTenants(t);
-      setLoaded(true);
+    loadTenants().then((tenants) => {
+      if (tenants.length > 0) {
+        router.replace(`/${tenants[0].slug}`);
+      } else {
+        setChecking(false);
+      }
     });
   }, [session, loading, router]);
 
-  if (loading || !session) {
+  const slug = slugify(handleTouched ? handle : name);
+
+  const create = async () => {
+    if (!name.trim()) {
+      setErr("请填写店铺名称");
+      return;
+    }
+    if (!slug) {
+      setErr("专属网址需要字母或数字，请在下方填一个英文名（如 fulai）");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    const res = await createTenant({ name: name.trim(), slug });
+    if (res.slug) {
+      router.replace(`/${res.slug}`);
+    } else {
+      setBusy(false);
+      setErr(res.error ?? "创建失败，请重试");
+    }
+  };
+
+  if (loading || !session || checking) {
     return <main className="grid min-h-screen place-items-center text-ink-faint">载入中…</main>;
   }
 
+  // ── forced store-naming step (no other buttons) ──────────────────────────
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      {/* top bar */}
-      <div className="mb-8 flex items-center justify-between text-sm">
-        <Link href="/" className="flex items-center gap-2 font-bold text-ink">
-          <span className="text-xl">🍱</span> BentoOS
-        </Link>
-        <div className="flex items-center gap-4 text-ink-faint">
-          <span>{email}</span>
-          <button onClick={() => signOut().then(() => router.replace("/"))} className="hover:text-ink">
-            退出登录
+    <main className="grid min-h-screen place-items-center px-6">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <span className="text-2xl">🍱</span>
+          <span className="text-lg font-bold tracking-tight">BentoOS</span>
+        </div>
+
+        <div className="card p-6">
+          <h1 className="text-xl font-bold text-ink">先给你的店铺起个名字</h1>
+          <p className="mt-1 text-sm text-ink-soft">
+            这是你专属后台的入口。命名后，你和你的员工都通过这个网址进入。
+          </p>
+
+          <label className="label mt-5">店铺名称</label>
+          <input
+            className="input"
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && create()}
+            placeholder="如：富来小厨 / Fulai"
+          />
+
+          <label className="label mt-4">专属网址</label>
+          <div className="flex items-center rounded-lg border border-slate-300 bg-slate-50 px-3 focus-within:border-brand">
+            <span className="select-none text-sm text-ink-faint">bentoos.io/</span>
+            <input
+              className="w-full bg-transparent py-2 text-sm outline-none"
+              value={handleTouched ? handle : slug}
+              onChange={(e) => {
+                setHandleTouched(true);
+                setHandle(e.target.value);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && create()}
+              placeholder="fulai"
+            />
+          </div>
+          <p className="mt-1 text-xs text-ink-faint">只能用字母、数字（建议用拼音或英文）。</p>
+
+          {err && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+
+          <button className="btn-primary mt-5 w-full disabled:opacity-50" onClick={create} disabled={busy}>
+            {busy ? "创建中…" : "创建我的后台 →"}
           </button>
         </div>
+
+        <div className="mt-4 text-center text-xs text-ink-faint">
+          {email} · <button onClick={() => signOut().then(() => router.replace("/login"))} className="hover:text-ink">退出</button>
+        </div>
       </div>
-
-      {/* hero */}
-      <header className="mb-10">
-        <h1 className="text-3xl font-bold leading-tight text-ink sm:text-4xl">
-          勾选你需要的功能，
-          <br className="hidden sm:block" />
-          一键生成专属后台管理系统
-        </h1>
-        <p className="mt-3 max-w-2xl text-ink-soft">
-          每个商家一个主账号，按需勾选功能模块（备货、库存、订单、对账、会员……），
-          系统自动生成对应的录入界面与报表输出。可添加员工子账号，按岗位分配权限。
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/onboarding" className="btn-primary text-base px-5 py-2.5">
-            + 新建商家（勾选功能）
-          </Link>
-        </div>
-      </header>
-
-      {/* existing tenants */}
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-faint">我的商家</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {tenants.map((t) => (
-            <Link key={t.slug} href={`/${t.slug}`} className="card p-4 transition hover:border-brand hover:shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ink">{t.name.zh}</div>
-                  <div className="text-xs text-ink-faint">{t.address}</div>
-                </div>
-                <span className="pill bg-brand-wash text-brand">{t.enabled.length} 个模块</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1">
-                {t.enabled.slice(0, 6).map((id) => {
-                  const m = MODULES.find((x) => x.id === id);
-                  return m ? (
-                    <span key={id} className="pill bg-slate-100 text-ink-soft">
-                      {m.icon} {m.label.zh}
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            </Link>
-          ))}
-          {loaded && tenants.length === 0 && (
-            <div className="text-sm text-ink-faint">还没有商家，点上面「新建商家」开始。</div>
-          )}
-        </div>
-      </section>
-
-      {/* catalog overview */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-faint">
-          已上线功能
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {readyCategories().map((c) => (
-            <div key={c.id} className="card p-4">
-              <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
-              <ul className="space-y-1">
-                {readyByCategory(c.id).map((m) => (
-                  <li key={m.id} className="text-sm text-ink-soft">
-                    {m.icon} {m.label.zh}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-xs text-ink-faint">更多功能正在逐步上线。</p>
-      </section>
-
-      <footer className="mt-12 border-t border-slate-200 pt-4 text-xs text-ink-faint">
-        BentoOS · 接入 Supabase（Postgres + Auth + RLS）
-      </footer>
     </main>
   );
 }

@@ -60,19 +60,43 @@ export interface ModuleDef {
   amountKind?: "money" | "count";
 }
 
+export type Domain = "backoffice" | "frontend";
+
+export interface DomainDef {
+  id: Domain;
+  label: Bi;
+  blurb: Bi;
+}
+
+/** Top-level split: 后台（商家自用）vs 前台（面向客户）. */
+export const DOMAINS: DomainDef[] = [
+  {
+    id: "backoffice",
+    label: { zh: "后台", en: "Back office" },
+    blurb: { zh: "商家自己用的管理工具", en: "Tools the merchant uses internally" },
+  },
+  {
+    id: "frontend",
+    label: { zh: "前台", en: "Front of house" },
+    blurb: { zh: "面向顾客的功能", en: "Customer-facing features" },
+  },
+];
+
 export interface CategoryDef {
   id: string;
   label: Bi;
+  domain: Domain;
 }
 
 export const CATEGORIES: CategoryDef[] = [
-  { id: "kitchen", label: { zh: "厨房 · 备货", en: "Kitchen & Prep" } },
-  { id: "inventory", label: { zh: "库存 · 采购", en: "Inventory & Purchasing" } },
-  { id: "orders", label: { zh: "订单 · 预订", en: "Orders & Reservations" } },
-  { id: "finance", label: { zh: "财务 · 对账", en: "Finance & Reconciliation" } },
-  { id: "staff", label: { zh: "员工", en: "Staff" } },
-  { id: "marketing", label: { zh: "客户 · 营销", en: "Customers & Marketing" } },
-  { id: "compliance", label: { zh: "合规 · 设备", en: "Compliance & Equipment" } },
+  { id: "kitchen", label: { zh: "厨房 · 备货", en: "Kitchen & Prep" }, domain: "backoffice" },
+  { id: "inventory", label: { zh: "库存 · 采购", en: "Inventory & Purchasing" }, domain: "backoffice" },
+  { id: "orders", label: { zh: "订单 · 预订", en: "Orders & Reservations" }, domain: "backoffice" },
+  { id: "finance", label: { zh: "财务 · 对账", en: "Finance & Reconciliation" }, domain: "backoffice" },
+  { id: "staff", label: { zh: "员工", en: "Staff" }, domain: "backoffice" },
+  { id: "marketing", label: { zh: "客户 · 营销", en: "Customers & Marketing" }, domain: "backoffice" },
+  { id: "compliance", label: { zh: "合规 · 设备", en: "Compliance & Equipment" }, domain: "backoffice" },
+  { id: "storefront", label: { zh: "前台 · 顾客", en: "Storefront" }, domain: "frontend" },
 ];
 
 const yesNo: Bi[] = [
@@ -109,6 +133,26 @@ export const MODULES: ModuleDef[] = [
     amountLabel: { zh: "今日报废", en: "Waste today" },
     amountKind: "count",
   },
+  // ── Storefront (前台 · 面向顾客) ──────────────────────────────────────
+  {
+    id: "qr-menu",
+    category: "storefront",
+    icon: "📱",
+    ready: true,
+    portal: true,
+    label: { zh: "二维码菜单", en: "QR Code Menu" },
+    pain: {
+      zh: "顾客扫码即看菜单，免印刷、改价即时同步、中英文随时切换",
+      en: "Guests scan to view the menu — no printing, instant price sync, bilingual.",
+    },
+    fields: [],
+    outputs: [
+      { zh: "一张二维码，顾客扫码看到你的电子菜单", en: "One QR code; guests scan to see your live menu" },
+      { zh: "菜单设置里改价，扫码页实时更新", en: "Edit prices in Menu Settings, the public page updates instantly" },
+    ],
+  },
+
+  // ── Kitchen & Prep ────────────────────────────────────────────────────
   {
     id: "menu-generator",
     category: "kitchen",
@@ -250,6 +294,23 @@ export const MODULES: ModuleDef[] = [
   },
 
   // ── Orders & Reservations ─────────────────────────────────────────────
+  {
+    id: "online-orders",
+    category: "orders",
+    icon: "🧾",
+    ready: true,
+    portal: true,
+    label: { zh: "在线点餐订单", en: "Online Orders" },
+    pain: {
+      zh: "顾客扫码下的单，集中一处看，标记出餐进度",
+      en: "All QR-menu orders in one place, track prep status.",
+    },
+    fields: [],
+    outputs: [
+      { zh: "实时收到扫码菜单的订单", en: "Live orders from the QR menu" },
+      { zh: "新单 / 备餐 / 完成 状态管理", en: "New / preparing / done status" },
+    ],
+  },
   {
     id: "phone-orders",
     category: "orders",
@@ -537,6 +598,16 @@ export function readyByCategory(catId: string): ModuleDef[] {
 /** Categories that currently have at least one ready module. */
 export function readyCategories(): CategoryDef[] {
   return CATEGORIES.filter((c) => READY_MODULES.some((m) => m.category === c.id));
+}
+
+/** Ready categories within a domain (后台 / 前台). */
+export function readyCategoriesInDomain(domain: Domain): CategoryDef[] {
+  return readyCategories().filter((c) => c.domain === domain);
+}
+
+/** Domains that currently have at least one ready category. */
+export function readyDomains(): DomainDef[] {
+  return DOMAINS.filter((d) => readyCategoriesInDomain(d.id).length > 0);
 }
 
 export function modulesByCategory(catId: string): ModuleDef[] {

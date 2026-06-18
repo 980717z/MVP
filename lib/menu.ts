@@ -54,6 +54,23 @@ export async function addMenuItem(
   return {};
 }
 
+export async function updateMenuItem(
+  id: string,
+  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url">>
+): Promise<{ error?: string }> {
+  const clean: Record<string, any> = { ...patch };
+  if ("price" in clean) {
+    const p = clean.price;
+    clean.price = p === "" || p === null || p === undefined ? null : Number(p);
+  }
+  const { error } = await supabase.from("menu_items").update(clean).eq("id", id);
+  if (error) {
+    console.error("updateMenuItem", error);
+    return { error: error.message };
+  }
+  return {};
+}
+
 export async function deleteMenuItem(id: string): Promise<void> {
   const { error } = await supabase.from("menu_items").delete().eq("id", id);
   if (error) console.error("deleteMenuItem", error);

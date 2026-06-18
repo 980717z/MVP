@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   addMember,
   getTenant,
@@ -11,7 +11,7 @@ import {
   type Role,
   type Tenant,
 } from "@/lib/store";
-import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategories } from "@/lib/catalog";
+import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategoriesInDomain, readyDomains } from "@/lib/catalog";
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: "老板（全部权限）",
@@ -21,8 +21,13 @@ const ROLE_LABEL: Record<Role, string> = {
 
 export default function Settings() {
   const slug = useParams().tenant as string;
+  const router = useRouter();
   const [tenant, setTenant] = useState<Tenant | undefined>();
   const [tick, setTick] = useState(0);
+
+  // staged module selection (applied on「生成后台」)
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [genBusy, setGenBusy] = useState(false);
 
   // new-user form
   const [uName, setUName] = useState("");
@@ -30,18 +35,32 @@ export default function Settings() {
   const [uAccess, setUAccess] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    getTenant(slug).then(setTenant);
+    getTenant(slug).then((t) => {
+      setTenant(t);
+      setPicked(new Set(t?.enabled ?? []));
+    });
   }, [slug, tick]);
 
   if (!tenant) return null;
 
   const reload = () => setTick((x) => x + 1);
 
-  const toggleModule = async (id: string) => {
-    const enabled = new Set(tenant.enabled);
-    enabled.has(id) ? enabled.delete(id) : enabled.add(id);
-    await setEnabled(slug, Array.from(enabled));
-    reload();
+  const togglePick = (id: string) =>
+    setPicked((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const saved = tenant.enabled;
+  const dirty = picked.size !== saved.length || saved.some((id) => !picked.has(id));
+
+  const generate = async () => {
+    setGenBusy(true);
+    await setEnabled(slug, Array.from(picked));
+    setGenBusy(false);
+    // go to the dashboard so the regenerated sidebar shows up
+    router.push(`/${slug}`);
   };
 
   const addUser = async () => {
@@ -143,13 +162,22 @@ export default function Settings() {
         <p className="mb-4 text-sm text-ink-soft">
           随时增减功能 —— 勾选即生成对应录入与报表，无需重建系统。需要清单外的功能？我们可以为你定制适配。
         </p>
-        <div className="space-y-5">
-          {readyCategories().map((c) => (
-            <div key={c.id}>
-              <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {readyByCategory(c.id).map((m) => {
-                  const on = tenant.enabled.includes(m.id);
+        <div className="space-y-6">
+          {readyDomains().map((dom) => (
+            <div key={dom.id} className="rounded-xl border border-slate-200 p-4">
+              <div className="mb-3 flex items-baseline gap-2">
+                <span className={`pill ${dom.id === "frontend" ? "bg-amber-100 text-amber-700" : "bg-brand-wash text-brand"}`}>
+                  {dom.id === "frontend" ? "🛎️ 前台" : "🗄️ 后台"}
+                </span>
+                <span className="text-xs text-ink-faint">{dom.blurb.zh}</span>
+              </div>
+              <div className="space-y-4">
+                {readyCategoriesInDomain(dom.id).map((c) => (
+                  <div key={c.id}>
+                    <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {readyByCategory(c.id).map((m) => {
+                  const on = picked.has(m.id);
                   return (
                     <label
                       key={m.id}
@@ -157,14 +185,32 @@ export default function Settings() {
                         on ? "border-brand bg-brand-wash" : "border-slate-200 hover:border-slate-300"
                       }`}
                     >
-                      <input type="checkbox" checked={on} onChange={() => toggleModule(m.id)} className="h-4 w-4 accent-brand" />
+                      <input type="checkbox" checked={on} onChange={() => togglePick(m.id)} className="h-4 w-4 accent-brand" />
                       <span className="text-ink">{m.icon} {m.label.zh}</span>
                     </label>
                   );
-                })}
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
+        </div>
+
+        {/* generate */}
+        <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+          <span className="text-sm text-ink-faint">
+            已选 <b className="text-ink">{picked.size}</b> 个功能
+            {dirty && <span className="ml-2 text-amber-600">· 有未保存的更改</span>}
+          </span>
+          <button
+            className="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={generate}
+            disabled={!dirty || genBusy}
+          >
+            {genBusy ? "生成中…" : "生成后台 →"}
+          </button>
         </div>
       </section>
     </main>

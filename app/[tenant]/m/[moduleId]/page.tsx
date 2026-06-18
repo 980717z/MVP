@@ -13,10 +13,14 @@ import {
 import { MODULE_BY_ID, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
+import QrMenuPortal from "@/components/QrMenuPortal";
+import OrdersPortal from "@/components/OrdersPortal";
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
 const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => JSX.Element> = {
   "menu-generator": MenuGeneratorPortal,
+  "qr-menu": QrMenuPortal,
+  "online-orders": OrdersPortal,
 };
 
 export default function ModulePage() {

@@ -17,6 +17,24 @@ export default function Dashboard() {
 
   if (!tenant) return null;
 
+  // brand-new store: no features picked yet → guide owner to set up
+  if (tenant.enabled.length === 0) {
+    return (
+      <main className="grid min-h-[70vh] place-items-center px-6">
+        <div className="card max-w-md p-8 text-center">
+          <div className="text-4xl">🛠️</div>
+          <h1 className="mt-3 text-xl font-bold text-ink">{tenant.name.zh} 已创建</h1>
+          <p className="mt-2 text-sm text-ink-soft">
+            现在选择你需要的功能，系统会为你生成对应的后台。
+          </p>
+          <Link href={`/${slug}/settings`} className="btn-primary mt-5 inline-block px-6 py-2.5">
+            设置后台功能 →
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const kpiModules = tenant.enabled
     .map((id) => MODULE_BY_ID[id])

@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { addMenuItem, deleteMenuItem, listMenuItems, uploadMenuImage, type MenuItem } from "@/lib/menu";
-import { money } from "@/lib/format";
+import { addMenuItem, deleteMenuItem, listMenuItems, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { price as fmtPrice } from "@/lib/format";
 
 const CATEGORIES = [
   "招牌精选",
   "滋补菜式",
   "火锅",
+  "火锅配菜",
   "海鲜",
   "汤羹",
   "头盘",
@@ -39,7 +40,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [zh, setZh] = useState("");
   const [en, setEn] = useState("");
   const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("招牌");
+  const [category, setCategory] = useState(CATEGORIES[0]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -89,7 +90,26 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
 
   const remove = async (id: string) => {
     await deleteMenuItem(id);
-    setTick((t) => t + 1);
+    setDishes((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  // live-edit: update local state instantly (preview reacts), persist on commit
+  const patchLocal = (id: string, patch: Record<string, any>) =>
+    setDishes((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+
+  const saveField = (id: string, patch: Record<string, any>) => {
+    updateMenuItem(id, patch);
+  };
+
+  const changeImage = async (id: string, file: File | null) => {
+    if (!file) return;
+    const up = await uploadMenuImage(slug, file);
+    if (up.error) {
+      alert("图片上传失败：" + up.error);
+      return;
+    }
+    patchLocal(id, { image_url: up.url ?? "" });
+    saveField(id, { image_url: up.url ?? "" });
   };
 
   const grouped = CATEGORIES.map((c) => ({
@@ -182,27 +202,78 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 </button>
               </div>
 
-              {/* dish list */}
-              <div className="mt-4 space-y-2">
+              {/* dish list — inline editable */}
+              <div className="mt-4 flex items-center justify-between px-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                  全部菜品（点任意字段直接修改）
+                </div>
+                <div className="text-xs text-ink-faint">{dishes.length} 道</div>
+              </div>
+              <div className="mt-2 space-y-2">
                 {dishes.map((d) => (
-                  <div key={d.id} className="card flex items-center justify-between gap-3 p-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      {d.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={d.image_url} alt={d.name_zh} className="h-10 w-10 flex-none rounded-lg object-cover" />
-                      ) : (
-                        <div className="grid h-10 w-10 flex-none place-items-center rounded-lg bg-slate-100 text-ink-faint">🍽️</div>
-                      )}
-                      <div className="min-w-0">
-                        <span className="pill mr-2 bg-slate-100 text-ink-faint">{d.category || "未分类"}</span>
-                        <span className="font-medium text-ink">{d.name_zh}</span>
-                        {d.name_en && <span className="ml-2 text-xs text-ink-faint">{d.name_en}</span>}
+                  <div key={d.id} className="card flex gap-4 p-3">
+                    {/* left column: category (top) · image (fills) */}
+                    <div className="flex w-32 flex-none flex-col gap-2">
+                      <select
+                        className="input !py-1.5 !px-2 text-xs"
+                        value={d.category || CATEGORIES[0]}
+                        onChange={(e) => {
+                          patchLocal(d.id, { category: e.target.value });
+                          saveField(d.id, { category: e.target.value });
+                        }}
+                      >
+                        {CATEGORIES.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+
+                      <label className="relative min-h-[5rem] w-full flex-1 cursor-pointer overflow-hidden rounded-lg" title="点击更换图片">
+                        {d.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={d.image_url} alt={d.name_zh} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center bg-slate-100 text-xs text-ink-faint">＋图</div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => changeImage(d.id, e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                    </div>
+
+                    {/* right column: 中文 · English · 价格 */}
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <input
+                        className="input w-full !py-2 text-base font-medium"
+                        value={d.name_zh}
+                        placeholder="中文名"
+                        onChange={(e) => patchLocal(d.id, { name_zh: e.target.value })}
+                        onBlur={(e) => saveField(d.id, { name_zh: e.target.value })}
+                      />
+                      <input
+                        className="input w-full !py-2 text-sm text-ink-soft"
+                        value={d.name_en}
+                        placeholder="English"
+                        onChange={(e) => patchLocal(d.id, { name_en: e.target.value })}
+                        onBlur={(e) => saveField(d.id, { name_en: e.target.value })}
+                      />
+                      <div className="flex w-32 items-center rounded-lg border border-slate-300 px-2">
+                        <span className="text-sm text-ink-faint">$</span>
+                        <input
+                          className="w-full bg-transparent py-1.5 text-sm outline-none"
+                          type="number"
+                          step="0.01"
+                          value={d.price ?? ""}
+                          placeholder="时价"
+                          onChange={(e) => patchLocal(d.id, { price: e.target.value })}
+                          onBlur={(e) => saveField(d.id, { price: e.target.value })}
+                        />
                       </div>
                     </div>
-                    <div className="flex flex-none items-center gap-3">
-                      <span className="font-semibold text-ink">{d.price != null ? money(d.price) : "—"}</span>
-                      <button onClick={() => remove(d.id)} className="text-xs text-ink-faint hover:text-red-600">删除</button>
-                    </div>
+
+                    <button onClick={() => remove(d.id)} className="flex-none self-start px-1 text-xs text-ink-faint hover:text-red-600">删除</button>
                   </div>
                 ))}
                 {dishes.length === 0 && (
@@ -252,7 +323,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                             {d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>}
                           </div>
                         </div>
-                        <div className="flex-none font-semibold text-ink">{d.price != null ? money(d.price) : ""}</div>
+                        <div className="flex-none font-semibold text-ink">{fmtPrice(d.price)}</div>
                       </div>
                     ))}
                   </div>

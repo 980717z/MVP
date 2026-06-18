@@ -1,20 +1,13 @@
 -- ===========================================================================
---  自动归属导入：把富来小厨整本菜单导入 demo@alpinedd.com 名下的商家
---  用法：整个文件粘进 Supabase → SQL Editor → Run（无需手动填 slug）
---  它会：① 按邮箱找到该账号的商家 ② 自动启用「菜单设置」③ 导入全部菜品
+--  fulai 专属：把富来小厨整本菜单导入 /fulai 商家
+--  用法：整个文件粘进 Supabase → SQL Editor → Run
+--  直接锁定 slug = 'fulai'，不依赖登录邮箱。
 -- ===========================================================================
 do $$
-declare v_slug text;
+declare v_slug text := 'fulai';
 begin
-  select t.slug into v_slug
-  from public.tenants t
-  join auth.users u on u.id = t.owner_id
-  where u.email = 'demo@alpinedd.com'
-  order by t.created_at
-  limit 1;
-
-  if v_slug is null then
-    raise exception '找不到 demo@alpinedd.com 名下的商家——请先用该账号登录 bentoos.io 建一个商家';
+  if not exists (select 1 from public.tenants where slug = v_slug) then
+    raise exception '找不到商家 fulai —— 请先用 demo@alpinedd.com 登录、把专属网址命名为 fulai 后再跑';
   end if;
   raise notice '导入到商家: %', v_slug;
 

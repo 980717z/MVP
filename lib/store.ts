@@ -97,20 +97,22 @@ export async function getTenant(slug: string): Promise<Tenant | undefined> {
 
 export async function createTenant(input: {
   name: string;
-  address: string;
-  enabled: string[];
+  /** desired URL handle, e.g. "fulai" → bentoos.io/fulai. falls back to name. */
+  slug?: string;
+  address?: string;
+  enabled?: string[];
 }): Promise<{ slug?: string; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth.user?.id;
   if (!uid) return { error: "未登录：请先登录后再创建商家。" };
 
-  const slug = await newTenantSlug(input.name);
+  const slug = await newTenantSlug(input.slug?.trim() || input.name);
   const { error } = await supabase.from("tenants").insert({
     slug,
     name: { zh: input.name, en: input.name },
     industry: "restaurant",
-    address: input.address,
-    enabled: orderEnabled(input.enabled),
+    address: input.address ?? "",
+    enabled: orderEnabled(input.enabled ?? []),
     owner_id: uid,
   });
   if (error) {
