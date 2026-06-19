@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV } from "./data";
+import { useLang } from "./lang";
 
 function useIsActive() {
   const path = usePathname();
@@ -11,6 +12,7 @@ function useIsActive() {
 
 export function DemoSidebar() {
   const isActive = useIsActive();
+  const { t } = useLang();
   return (
     <aside className="hidden w-52 shrink-0 border-r border-slate-100 bg-slate-50/40 p-3 lg:block">
       <div className="mb-4 flex items-center gap-2 px-1">
@@ -27,7 +29,7 @@ export function DemoSidebar() {
             }`}
           >
             <span className="text-base">{n.icon}</span>
-            {n.label}
+            {t(n.label)}
           </Link>
         ))}
       </nav>
@@ -37,6 +39,7 @@ export function DemoSidebar() {
 
 export function DemoTabs() {
   const isActive = useIsActive();
+  const { t } = useLang();
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-slate-100 px-2 py-2 lg:hidden">
       {NAV.map((n) => (
@@ -47,7 +50,7 @@ export function DemoTabs() {
             isActive(n.href) ? "bg-emerald-100 font-medium text-emerald-700" : "text-slate-500"
           }`}
         >
-          {n.label}
+          {t(n.label)}
         </Link>
       ))}
     </nav>
