@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, type Order } from "@/lib/orders";
-import { postOrderSales } from "@/lib/store";
+import { postOrderSales, recordOrderSale } from "@/lib/store";
 import { price as fmtPrice } from "@/lib/format";
 
 const STATUS: Record<Order["status"], { label: string; cls: string }> = {
@@ -161,9 +161,12 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     // Post sales into 菜品销量与毛利 once, only on the transition into "done".
     if (to === "done" && o.status !== "done") {
       try {
-        await postOrderSales(slug, o.items);
+        await Promise.all([
+          postOrderSales(slug, o.items), // per-dish sold count + margin
+          recordOrderSale(slug, { id: o.id, total: o.total, items: o.items, source: "qr" }), // sales ledger + tax
+        ]);
       } catch (e) {
-        console.error("postOrderSales", e);
+        console.error("post order sale", e);
       }
     }
     load();

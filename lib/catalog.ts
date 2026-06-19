@@ -375,6 +375,26 @@ export const MODULES: ModuleDef[] = [
 
   // ── Finance ───────────────────────────────────────────────────────────
   {
+    id: "sales",
+    category: "finance",
+    icon: "🧾",
+    ready: true,
+    portal: true,
+    label: { zh: "销售流水", en: "Sales" },
+    pain: {
+      zh: "现金/扫码/Clover 的销售和税额对不上、报税难",
+      en: "Cash, QR and Clover sales don't reconcile; HST is hard to file.",
+    },
+    fields: [],
+    outputs: [
+      { zh: "每笔销售自动算税（安省 HST 13%）", en: "Per-sale tax auto-calculated (Ontario HST 13%)" },
+      { zh: "GST/PST 收取额汇总，报税一目了然", en: "GST/PST collected totals for HST remittance" },
+    ],
+    amountKey: "subtotal",
+    amountLabel: { zh: "销售额（税前）", en: "Sales (pre-tax)" },
+    amountKind: "money",
+  },
+  {
     id: "daily-close",
     category: "finance",
     icon: "💰",

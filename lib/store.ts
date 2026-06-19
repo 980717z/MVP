@@ -7,6 +7,7 @@
 
 import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
+import { computeTax } from "./tax";
 
 export type Role = "owner" | "manager" | "staff";
 
@@ -215,6 +216,61 @@ export async function syncMemberFromOrder(
     });
     if (error) console.error("syncMember/insert", error);
   }
+}
+
+/** List records for one module (newest first). */
+export async function listRecords(slug: string, moduleId: string): Promise<RecordRow[]> {
+  const { data, error } = await supabase
+    .from("records")
+    .select("*")
+    .eq("tenant_slug", slug)
+    .eq("module_id", moduleId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("listRecords", error);
+    return [];
+  }
+  return (data ?? []).map((r) => ({ id: r.id, createdAt: r.created_at, ...(r.data ?? {}) }));
+}
+
+/**
+ * When an order is completed, write a transaction into the 销售流水 (sales)
+ * ledger with the Ontario tax breakdown. Idempotent per order: skips if a sale
+ * already references this order id, so re-completing won't double-record.
+ */
+export async function recordOrderSale(
+  slug: string,
+  order: { id: string; total: number; items: { name_zh: string; qty: number }[]; source?: string },
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from("records")
+    .select("id,data")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "sales");
+  if ((existing ?? []).some((r) => r.data?.orderId === order.id)) return;
+
+  const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
+
+  const { error } = await supabase.from("records").insert({
+    tenant_slug: slug,
+    module_id: "sales",
+    data: {
+      date,
+      ts,
+      source: order.source ?? "qr",
+      desc,
+      subtotal: String(subtotal),
+      gst: String(gst),
+      pst: String(pst),
+      total: String(total),
+      orderId: order.id,
+    },
+  });
+  if (error) console.error("recordOrderSale", error);
 }
 
 /**

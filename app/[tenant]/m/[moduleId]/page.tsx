@@ -16,21 +16,19 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
+import { GST_RATE, PST_RATE } from "@/lib/tax";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
+import SalesPortal from "@/components/SalesPortal";
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
 const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElement> = {
   "menu-generator": MenuGeneratorPortal,
   "qr-menu": QrMenuPortal,
   "online-orders": OrdersPortal,
+  "sales": SalesPortal,
 };
-
-// Ontario sales tax (HST 13% = 5% federal GST + 8% provincial). Used for the
-// auto-calculated after-tax columns in 菜品销量与毛利 (dish-margin).
-const GST_RATE = 0.05;
-const PST_RATE = 0.08;
 
 function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Record<string, string> {
   if (!rules) return form;
