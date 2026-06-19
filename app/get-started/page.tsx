@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 
 const TYPES: { key: string; label: Dict }[] = [
@@ -93,20 +92,24 @@ export default function GetStarted() {
 
     setBusy(true);
     try {
-      const { error } = await supabase.from("leads").insert({
-        business_name: name.trim(),
-        business_type: type,
-        email: email.trim(),
-        phone: phone.trim() || null,
-        locations,
-        modules,
-        notes: notes.trim() || null,
-        lang,
+      // Server route stores the lead AND emails support@bentoos.io.
+      await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_name: name.trim(),
+          business_type: type,
+          email: email.trim(),
+          phone: phone.trim() || null,
+          locations,
+          modules,
+          notes: notes.trim() || null,
+          lang,
+        }),
       });
-      // Never block the prospect on a backend hiccup; the lead UX still completes.
-      if (error) console.error("lead insert failed:", error.message);
     } catch (err) {
-      console.error("lead insert error:", err);
+      // Never block the prospect on a backend hiccup; the lead UX still completes.
+      console.error("lead submit error:", err);
     } finally {
       setBusy(false);
       setDone(true);
