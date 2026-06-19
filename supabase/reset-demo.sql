@@ -1,14 +1,14 @@
 -- ===========================================================================
---  清理 demo@alpinedd.com 名下的商家数据（保留登录账号）
+--  清理 demo@bentoos.io 名下的商家数据（保留登录账号）
 --  跑完后该账号再登录会回到「强制命名」步骤，可重新走一遍流程。
 --  Supabase → SQL Editor → Run
 -- ===========================================================================
 do $$
 declare v_uid uuid;
 begin
-  select id into v_uid from auth.users where email = 'demo@alpinedd.com';
+  select id into v_uid from auth.users where email = 'demo@bentoos.io';
   if v_uid is null then
-    raise notice '没有找到 demo@alpinedd.com';
+    raise notice '没有找到 demo@bentoos.io';
     return;
   end if;
 

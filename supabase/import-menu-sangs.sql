@@ -1,5 +1,5 @@
 -- ===========================================================================
---  自动归属导入：把富来小厨整本菜单导入 demo@alpinedd.com 名下的商家
+--  自动归属导入：把富来小厨整本菜单导入 demo@bentoos.io 名下的商家
 --  用法：整个文件粘进 Supabase → SQL Editor → Run（无需手动填 slug）
 --  它会：① 按邮箱找到该账号的商家 ② 自动启用「菜单设置」③ 导入全部菜品
 -- ===========================================================================
@@ -9,12 +9,12 @@ begin
   select t.slug into v_slug
   from public.tenants t
   join auth.users u on u.id = t.owner_id
-  where u.email = 'demo@alpinedd.com'
+  where u.email = 'demo@bentoos.io'
   order by t.created_at
   limit 1;
 
   if v_slug is null then
-    raise exception '找不到 demo@alpinedd.com 名下的商家——请先用该账号登录 bentoos.io 建一个商家';
+    raise exception '找不到 demo@bentoos.io 名下的商家——请先用该账号登录 bentoos.io 建一个商家';
   end if;
   raise notice '导入到商家: %', v_slug;
 

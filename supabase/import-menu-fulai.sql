@@ -7,7 +7,7 @@ do $$
 declare v_slug text := 'fulai';
 begin
   if not exists (select 1 from public.tenants where slug = v_slug) then
-    raise exception '找不到商家 fulai —— 请先用 demo@alpinedd.com 登录、把专属网址命名为 fulai 后再跑';
+    raise exception '找不到商家 fulai —— 请先用 demo@bentoos.io 登录、把专属网址命名为 fulai 后再跑';
   end if;
   raise notice '导入到商家: %', v_slug;
 
