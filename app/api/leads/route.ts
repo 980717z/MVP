@@ -94,7 +94,12 @@ ${rows.map(([k, v]) => `<tr><td style="color:#64748b;vertical-align:top">${k}</t
           html,
         }),
       });
-      if (!r.ok) console.error("[leads] resend failed:", r.status, await r.text());
+      if (r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { id?: string };
+        console.log(`[leads] email sent to ${to} (id: ${j.id ?? "?"})`);
+      } else {
+        console.error("[leads] resend failed:", r.status, await r.text());
+      }
     } catch (e) {
       console.error("[leads] email error:", e);
     }
