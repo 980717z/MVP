@@ -117,7 +117,15 @@ const NAV: { icon: string; label: { zh: string; en: string } }[] = [
 ];
 
 /** Complete product dashboard mockup shown in the hero. */
-function Dashboard({ t, lang }: { t: (b: { zh: string; en: string }) => string; lang: Lang }) {
+function Dashboard({
+  t,
+  lang,
+  href,
+}: {
+  t: (b: { zh: string; en: string }) => string;
+  lang: Lang;
+  href: string;
+}) {
   const cur = lang === "zh" ? "¥" : "$";
   const kpis = [
     { label: { zh: "本月营收", en: "Revenue" }, value: `${cur}28,540`, up: "+12%" },
@@ -155,15 +163,18 @@ function Dashboard({ t, lang }: { t: (b: { zh: string; en: string }) => string; 
           </div>
           <nav className="space-y-0.5">
             {NAV.map((n, i) => (
-              <div
+              <Link
                 key={n.label.en}
-                className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[10px] ${
-                  i === 0 ? "bg-emerald-50 font-medium text-emerald-700" : "text-slate-500"
+                href={href}
+                className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[10px] transition ${
+                  i === 0
+                    ? "bg-emerald-50 font-medium text-emerald-700"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 }`}
               >
                 <span>{n.icon}</span>
                 <span>{t(n.label)}</span>
-              </div>
+              </Link>
             ))}
           </nav>
         </aside>
@@ -350,7 +361,7 @@ export default function Landing() {
           </div>
 
           <div className="relative z-10">
-            <Dashboard t={t} lang={lang} />
+            <Dashboard t={t} lang={lang} href={session ? "/app" : "/login"} />
           </div>
 
           {/* mobile-only Toronto photo */}
