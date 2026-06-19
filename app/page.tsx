@@ -1,58 +1,63 @@
 "use client";
 
-import { useState, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
-
-type Lang = "zh" | "en";
+import { useLang, LangToggle, type Lang, type Dict } from "@/app/i18n";
 
 const T = {
-  nav: { login: { zh: "登录", en: "Log in" } },
-  badge: { zh: "现已上线 · bentoos.io", en: "Now live · bentoos.io" },
+  nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" } },
+  badge: { zh: "现已上线 · bentoos.io", en: "Now live · bentoos.io", fr: "En ligne · bentoos.io" },
   slogan: {
-    lead: { zh: "一个后台，管好", en: "One dashboard for your " },
-    hi: { zh: "整间店", en: "whole shop" },
+    lead: { zh: "一个后台，管好", en: "One dashboard for your ", fr: "Un tableau de bord pour " },
+    hi: { zh: "整间店", en: "whole shop", fr: "tout le commerce" },
   },
   sub: {
     zh: "勾选你需要的功能，我们为你生成专属管理系统——备货、订单、对账、会员，一处搞定。",
     en: "Pick the features you need; we generate a back-office built for you — prep, orders, reconciliation, members, all in one place.",
+    fr: "Choisissez les fonctions dont vous avez besoin; nous générons un back-office sur mesure — préparation, commandes, rapprochement, membres, tout au même endroit.",
   },
-  ctaStart: { zh: "免费开始", en: "Get started" },
-  ctaEnter: { zh: "进入后台", en: "Enter dashboard" },
-  ctaDemo: { zh: "看看怎么用", en: "How it works" },
+  ctaStart: { zh: "免费开始", en: "Get started", fr: "Commencer" },
+  ctaEnter: { zh: "进入后台", en: "Enter dashboard", fr: "Tableau de bord" },
+  ctaDemo: { zh: "看看怎么用", en: "How it works", fr: "Comment ça marche" },
   quote: {
     zh: "以前账目乱，现在每天收入、毛利一眼就清楚。",
     en: "Used to be a mess. Now I see revenue and margin at a glance, every day.",
+    fr: "Avant, c'était le chaos. Maintenant je vois mes revenus et ma marge d'un coup d'œil, chaque jour.",
   },
-  quoteName: { zh: "张老板", en: "Mr. Zhang" },
-  quoteRole: { zh: "张记小吃 · 店主", en: "Owner · Zhang's Kitchen" },
-  photoCaption: { zh: "多伦多 · CN 塔天际线", en: "Toronto skyline · CN Tower" },
+  quoteName: { zh: "张老板", en: "Mr. Zhang", fr: "Mr. Zhang" },
+  quoteRole: { zh: "张记小吃 · 店主", en: "Owner · Zhang's Kitchen", fr: "Propriétaire · Zhang's Kitchen" },
+  photoCaption: { zh: "多伦多 · CN 塔天际线", en: "Toronto skyline · CN Tower", fr: "Horizon de Toronto · Tour CN" },
   points: [
     {
-      title: { zh: "勾选即生成", en: "Check & generate" },
+      title: { zh: "勾选即生成", en: "Check & generate", fr: "Cochez et générez" },
       body: {
         zh: "像填清单一样选功能，系统自动搭好录入与报表。",
         en: "Tick a checklist; the system builds the forms and reports.",
+        fr: "Cochez une liste; le système crée les formulaires et les rapports.",
       },
     },
     {
-      title: { zh: "主账号 + 员工", en: "Owner + staff" },
+      title: { zh: "主账号 + 员工", en: "Owner + staff", fr: "Propriétaire + employés" },
       body: {
         zh: "一个主账号管全店，按岗位给员工分配权限。",
         en: "One owner account, role-based access for every staff member.",
+        fr: "Un compte propriétaire, des accès par rôle pour chaque employé.",
       },
     },
     {
-      title: { zh: "数据看得清", en: "Clear numbers" },
+      title: { zh: "数据看得清", en: "Clear numbers", fr: "Des chiffres clairs" },
       body: {
         zh: "收入、损耗、毛利、会员，关键数字一眼看到。",
         en: "Revenue, waste, margin, members — the numbers that matter, at a glance.",
+        fr: "Revenus, pertes, marge, membres — les chiffres qui comptent, d'un coup d'œil.",
       },
     },
   ],
   footer: {
     zh: "为中小商家打造的轻量管理系统",
     en: "A lightweight back-office for small businesses",
+    fr: "Un back-office léger pour les petits commerces",
   },
 };
 
@@ -69,9 +74,7 @@ function MiniAvatar() {
 
 /** Small line icons for the feature cards (minimal, single stroke). */
 const ICONS: Record<string, ReactElement> = {
-  check: (
-    <path d="M4 12.5l5 5 11-11" />
-  ),
+  check: <path d="M4 12.5l5 5 11-11" />,
   staff: (
     <>
       <circle cx="9" cy="8" r="3.2" />
@@ -90,15 +93,7 @@ const ICONS: Record<string, ReactElement> = {
 
 function FeatureIcon({ name }: { name: keyof typeof ICONS }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       {ICONS[name]}
     </svg>
   );
@@ -106,42 +101,34 @@ function FeatureIcon({ name }: { name: keyof typeof ICONS }) {
 
 const FEATURE_ICONS: (keyof typeof ICONS)[] = ["check", "staff", "chart"];
 
-const NAV: { icon: string; label: { zh: string; en: string } }[] = [
-  { icon: "▦", label: { zh: "概览", en: "Overview" } },
-  { icon: "🧾", label: { zh: "订单", en: "Orders" } },
-  { icon: "📦", label: { zh: "备货", en: "Prep" } },
-  { icon: "💳", label: { zh: "对账", en: "Reconcile" } },
-  { icon: "👥", label: { zh: "会员", en: "Members" } },
-  { icon: "📈", label: { zh: "报表", en: "Reports" } },
-  { icon: "⚙️", label: { zh: "设置", en: "Settings" } },
+const NAV: { icon: string; label: Dict }[] = [
+  { icon: "▦", label: { zh: "概览", en: "Overview", fr: "Aperçu" } },
+  { icon: "🧾", label: { zh: "订单", en: "Orders", fr: "Commandes" } },
+  { icon: "📦", label: { zh: "备货", en: "Prep", fr: "Préparation" } },
+  { icon: "💳", label: { zh: "对账", en: "Reconcile", fr: "Rapprochement" } },
+  { icon: "👥", label: { zh: "会员", en: "Members", fr: "Membres" } },
+  { icon: "📈", label: { zh: "报表", en: "Reports", fr: "Rapports" } },
+  { icon: "⚙️", label: { zh: "设置", en: "Settings", fr: "Paramètres" } },
 ];
 
 /** Complete product dashboard mockup shown in the hero. */
-function Dashboard({
-  t,
-  lang,
-  href,
-}: {
-  t: (b: { zh: string; en: string }) => string;
-  lang: Lang;
-  href: string;
-}) {
+function Dashboard({ t, lang, href }: { t: (b: Dict) => string; lang: Lang; href: string }) {
   const cur = lang === "zh" ? "¥" : "$";
   const kpis = [
-    { label: { zh: "本月营收", en: "Revenue" }, value: `${cur}28,540`, up: "+12%" },
-    { label: { zh: "订单", en: "Orders" }, value: "1,248", up: "+8%" },
-    { label: { zh: "毛利", en: "Gross profit" }, value: `${cur}8,730`, up: "+5%" },
-    { label: { zh: "新会员", en: "New members" }, value: "86", up: "+23" },
+    { label: { zh: "本月营收", en: "Revenue", fr: "Revenus" }, value: `${cur}28,540`, up: "+12%" },
+    { label: { zh: "订单", en: "Orders", fr: "Commandes" }, value: "1,248", up: "+8%" },
+    { label: { zh: "毛利", en: "Gross profit", fr: "Marge brute" }, value: `${cur}8,730`, up: "+5%" },
+    { label: { zh: "新会员", en: "New members", fr: "Nouveaux membres" }, value: "86", up: "+23" },
   ];
   const topItems = [
-    { name: { zh: "招牌炒饭", en: "Signature fried rice" }, qty: 312 },
-    { name: { zh: "椒盐排骨", en: "Salt & pepper ribs" }, qty: 268 },
-    { name: { zh: "港式奶茶", en: "HK milk tea" }, qty: 245 },
+    { name: { zh: "招牌炒饭", en: "Signature fried rice", fr: "Riz frit maison" }, qty: 312 },
+    { name: { zh: "椒盐排骨", en: "Salt & pepper ribs", fr: "Côtes sel et poivre" }, qty: 268 },
+    { name: { zh: "港式奶茶", en: "HK milk tea", fr: "Thé au lait HK" }, qty: 245 },
   ];
   const orders = [
-    { id: "#1042", typ: { zh: "桌台 6", en: "Table 6" }, amt: `${cur}186` },
-    { id: "#1041", typ: { zh: "外卖", en: "Takeout" }, amt: `${cur}92` },
-    { id: "#1040", typ: { zh: "堂食", en: "Dine-in" }, amt: `${cur}240` },
+    { id: "#1042", typ: { zh: "桌台 6", en: "Table 6", fr: "Table 6" }, amt: `${cur}186` },
+    { id: "#1041", typ: { zh: "外卖", en: "Takeout", fr: "À emporter" }, amt: `${cur}92` },
+    { id: "#1040", typ: { zh: "堂食", en: "Dine-in", fr: "Sur place" }, amt: `${cur}240` },
   ];
 
   return (
@@ -167,9 +154,7 @@ function Dashboard({
                 key={n.label.en}
                 href={href}
                 className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[10px] transition ${
-                  i === 0
-                    ? "bg-emerald-50 font-medium text-emerald-700"
-                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  i === 0 ? "bg-emerald-50 font-medium text-emerald-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 }`}
               >
                 <span>{n.icon}</span>
@@ -182,9 +167,9 @@ function Dashboard({
         {/* main */}
         <div className="min-w-0 flex-1 p-3 sm:p-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-800">{lang === "zh" ? "概览" : "Overview"}</span>
+            <span className="text-sm font-semibold text-slate-800">{t({ zh: "概览", en: "Overview", fr: "Aperçu" })}</span>
             <span className="rounded-md border border-slate-200 px-2 py-0.5 text-[10px] text-slate-400">
-              {lang === "zh" ? "5月1日 – 5月31日" : "May 1 – May 31"}
+              {t({ zh: "5月1日 – 5月31日", en: "May 1 – May 31", fr: "1–31 mai" })}
             </span>
           </div>
 
@@ -201,7 +186,7 @@ function Dashboard({
 
           {/* trend chart */}
           <div className="mt-3 rounded-xl border border-slate-100 p-3">
-            <div className="text-[11px] font-medium text-slate-500">{lang === "zh" ? "销售趋势" : "Sales trend"}</div>
+            <div className="text-[11px] font-medium text-slate-500">{t({ zh: "销售趋势", en: "Sales trend", fr: "Tendance des ventes" })}</div>
             <svg viewBox="0 0 300 80" className="mt-1 h-20 w-full" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
@@ -227,14 +212,12 @@ function Dashboard({
           {/* two lists */}
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-100 p-3">
-              <div className="text-[11px] font-medium text-slate-500">{lang === "zh" ? "热销菜品" : "Top items"}</div>
+              <div className="text-[11px] font-medium text-slate-500">{t({ zh: "热销菜品", en: "Top items", fr: "Meilleures ventes" })}</div>
               <ul className="mt-2 space-y-1.5">
                 {topItems.map((it, i) => (
                   <li key={it.name.en} className="flex items-center justify-between text-[11px]">
                     <span className="flex items-center gap-1.5 text-slate-600">
-                      <span className="grid h-4 w-4 place-items-center rounded bg-emerald-50 text-[9px] font-semibold text-emerald-600">
-                        {i + 1}
-                      </span>
+                      <span className="grid h-4 w-4 place-items-center rounded bg-emerald-50 text-[9px] font-semibold text-emerald-600">{i + 1}</span>
                       {t(it.name)}
                     </span>
                     <span className="text-slate-400">{it.qty}</span>
@@ -245,8 +228,8 @@ function Dashboard({
 
             <div className="rounded-xl border border-slate-100 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-slate-500">{lang === "zh" ? "最近订单" : "Recent orders"}</span>
-                <span className="text-[10px] text-emerald-600">{lang === "zh" ? "查看全部" : "View all"}</span>
+                <span className="text-[11px] font-medium text-slate-500">{t({ zh: "最近订单", en: "Recent orders", fr: "Commandes récentes" })}</span>
+                <span className="text-[10px] text-emerald-600">{t({ zh: "查看全部", en: "View all", fr: "Voir tout" })}</span>
               </div>
               <ul className="mt-2 space-y-1.5">
                 {orders.map((o) => (
@@ -267,9 +250,8 @@ function Dashboard({
 }
 
 export default function Landing() {
-  const [lang, setLang] = useState<Lang>("en");
+  const { lang, t } = useLang();
   const { session } = useAuth();
-  const t = (b: { zh: string; en: string }) => b[lang];
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-white">
@@ -288,19 +270,10 @@ export default function Landing() {
         </div>
         <div className="flex items-center gap-3">
           <Link href="/pricing" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
-            {lang === "zh" ? "价格" : "Pricing"}
+            {t(T.nav.pricing)}
           </Link>
-          <button
-            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
-            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-            aria-label="switch language"
-          >
-            {lang === "zh" ? "EN" : "中文"}
-          </button>
-          <Link
-            href={session ? "/app" : "/login"}
-            className="text-sm font-medium text-slate-600 transition hover:text-slate-900"
-          >
+          <LangToggle />
+          <Link href={session ? "/app" : "/login"} className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
             {session ? t(T.ctaEnter) : t(T.nav.login)}
           </Link>
         </div>
@@ -317,17 +290,13 @@ export default function Landing() {
 
           <h1 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
             {t(T.slogan.lead)}
-            <span className="bg-gradient-to-r from-emerald-500 to-sky-500 bg-clip-text text-transparent">
-              {t(T.slogan.hi)}
-            </span>
+            <span className="bg-gradient-to-r from-emerald-500 to-sky-500 bg-clip-text text-transparent">{t(T.slogan.hi)}</span>
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-pretty text-base text-slate-600 sm:text-lg lg:mx-0">
-            {t(T.sub)}
-          </p>
+          <p className="mx-auto mt-5 max-w-xl text-pretty text-base text-slate-600 sm:text-lg lg:mx-0">{t(T.sub)}</p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
             <Link
-              href={session ? "/app" : "/login"}
+              href={session ? "/app" : "/get-started"}
               className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-3 text-base font-medium text-white shadow-lg shadow-emerald-500/25 transition hover:from-emerald-600 hover:to-emerald-700"
             >
               {session ? t(T.ctaEnter) : t(T.ctaStart)}
@@ -377,10 +346,7 @@ export default function Landing() {
       {/* three feature cards */}
       <section className="mx-auto grid max-w-5xl gap-4 px-6 pb-24 pt-10 sm:grid-cols-3">
         {T.points.map((p, i) => (
-          <div
-            key={i}
-            className="rounded-2xl border border-slate-100 bg-white/70 p-6 text-left shadow-sm backdrop-blur transition hover:shadow-md"
-          >
+          <div key={i} className="rounded-2xl border border-slate-100 bg-white/70 p-6 text-left shadow-sm backdrop-blur transition hover:shadow-md">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
               <FeatureIcon name={FEATURE_ICONS[i]} />
             </div>

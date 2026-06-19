@@ -3,121 +3,135 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
+import { useLang, LangToggle, type Dict } from "@/app/i18n";
 
-type Lang = "zh" | "en";
 type Period = "monthly" | "annual";
 
 const T = {
   nav: {
-    pricing: { zh: "价格", en: "Pricing" },
-    login: { zh: "登录", en: "Log in" },
-    enter: { zh: "进入后台", en: "Dashboard" },
+    pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" },
+    login: { zh: "登录", en: "Log in", fr: "Connexion" },
+    enter: { zh: "进入后台", en: "Dashboard", fr: "Tableau de bord" },
   },
-  badge: { zh: "简单透明 · 无合同", en: "Simple & transparent · no contract" },
+  badge: { zh: "简单透明 · 无合同", en: "Simple & transparent · no contract", fr: "Simple et transparent · sans contrat" },
   title: {
-    lead: { zh: "定价简单，", en: "Simple pricing. " },
-    hi: { zh: "收入全归你", en: "Keep 100% of your revenue" },
+    lead: { zh: "定价简单，", en: "Simple pricing. ", fr: "Tarifs simples. " },
+    hi: { zh: "收入全归你", en: "Keep 100% of your revenue", fr: "Gardez 100% de vos revenus" },
   },
   sub: {
     zh: "零抽成、无合同、无需专用设备。每一单收入都归你自己。",
     en: "No commission, no contract, no hardware. Every order's revenue is yours.",
+    fr: "Aucune commission, aucun contrat, aucun matériel. Chaque dollar de vos commandes vous revient.",
   },
-  monthly: { zh: "按月", en: "Monthly" },
-  annual: { zh: "按年", en: "Annual" },
-  save: { zh: "省 2 个月", en: "Save 2 months" },
-  perMo: { zh: "/月", en: "/mo" },
-  billedAnnually: { zh: "按年结算", en: "billed annually" },
+  monthly: { zh: "按月", en: "Monthly", fr: "Mensuel" },
+  annual: { zh: "按年", en: "Annual", fr: "Annuel" },
+  save: { zh: "省 2 个月", en: "Save 2 months", fr: "2 mois offerts" },
+  perMo: { zh: "/月", en: "/mo", fr: "/mois" },
+  billedAnnually: { zh: "按年结算", en: "billed annually", fr: "facturé annuellement" },
   founder: {
     zh: "🎉 创始价：前 50 家门店锁定「标准版」$29/月，永久不涨。",
     en: "🎉 Founder pricing: first 50 shops lock Standard at $29/mo, forever.",
+    fr: "🎉 Tarif fondateur : les 50 premiers commerces gardent Standard à 29 $/mois, à vie.",
   },
-  comingSoon: { zh: "即将推出", en: "Coming soon" },
+  comingSoon: { zh: "即将推出", en: "Coming soon", fr: "Bientôt" },
   payTitle: {
     zh: "直接收款：支付宝 · 微信支付 · Apple Pay",
     en: "Accept Alipay, WeChat Pay & Apple Pay directly",
+    fr: "Acceptez Alipay, WeChat Pay et Apple Pay directement",
   },
   payBody: {
     zh: "用顾客习惯的方式收款，无需额外终端或第三方平台抽成。即将上线。",
     en: "Take payments your customers already use — no extra terminal, no platform cut. Rolling out soon.",
+    fr: "Encaissez avec les moyens que vos clients utilisent déjà — sans terminal supplémentaire ni commission de plateforme. Bientôt disponible.",
   },
-  faqTitle: { zh: "常见问题", en: "Questions" },
+  faqTitle: { zh: "常见问题", en: "Questions", fr: "Questions" },
   faq: [
     {
-      q: { zh: "需要签合同吗？", en: "Is there a contract?" },
-      a: { zh: "不需要。随时升级、降级或取消。", en: "No. Upgrade, downgrade, or cancel anytime." },
-    },
-    {
-      q: { zh: "「零抽成」是什么意思？", en: "What does commission-free mean?" },
+      q: { zh: "需要签合同吗？", en: "Is there a contract?", fr: "Y a-t-il un contrat ?" },
       a: {
-        zh: "每一单收入 100% 归你，我们不像外卖平台那样按比例抽成。",
-        en: "You keep 100% of every order — we don't take a percentage like the delivery apps.",
+        zh: "不需要。随时升级、降级或取消。",
+        en: "No. Upgrade, downgrade, or cancel anytime.",
+        fr: "Non. Changez ou annulez à tout moment.",
       },
     },
     {
-      q: { zh: "需要专用设备吗？", en: "Do I need special hardware?" },
-      a: { zh: "不需要。手机、平板、电脑都能用。", en: "No. It runs on any phone, tablet, or computer." },
+      q: { zh: "「零抽成」是什么意思？", en: "What does commission-free mean?", fr: "Que signifie « sans commission » ?" },
+      a: {
+        zh: "每一单收入 100% 归你，我们不像外卖平台那样按比例抽成。",
+        en: "You keep 100% of every order — we don't take a percentage like the delivery apps.",
+        fr: "Vous gardez 100% de chaque commande — nous ne prenons pas de pourcentage comme les applis de livraison.",
+      },
+    },
+    {
+      q: { zh: "需要专用设备吗？", en: "Do I need special hardware?", fr: "Faut-il du matériel spécial ?" },
+      a: {
+        zh: "不需要。手机、平板、电脑都能用。",
+        en: "No. It runs on any phone, tablet, or computer.",
+        fr: "Non. Ça fonctionne sur tout téléphone, tablette ou ordinateur.",
+      },
     },
   ],
   footer: {
     zh: "为中小商家打造的轻量管理系统",
     en: "A lightweight back-office for small businesses",
+    fr: "Un back-office léger pour les petits commerces",
   },
 };
 
 const TIERS: {
   id: string;
-  name: { zh: string; en: string };
-  tagline: { zh: string; en: string };
+  name: Dict;
+  tagline: Dict;
   monthly: number;
   annual: number;
   featured?: boolean;
-  features: { zh: string; en: string }[];
-  cta: { zh: string; en: string };
+  features: Dict[];
+  cta: Dict;
 }[] = [
   {
     id: "free",
-    name: { zh: "免费版", en: "Free" },
-    tagline: { zh: "刚起步的小店", en: "Just getting started" },
+    name: { zh: "免费版", en: "Free", fr: "Gratuit" },
+    tagline: { zh: "刚起步的小店", en: "Just getting started", fr: "Pour bien démarrer" },
     monthly: 0,
     annual: 0,
     features: [
-      { zh: "1 间门店", en: "1 location" },
-      { zh: "二维码菜单", en: "QR code menu" },
-      { zh: "基础后台（订单、菜单）", en: "Basic back-office (orders, menu)" },
-      { zh: "每月最多 50 单", en: "Up to 50 orders / mo" },
-      { zh: "邮件支持", en: "Email support" },
+      { zh: "1 间门店", en: "1 location", fr: "1 site" },
+      { zh: "二维码菜单", en: "QR code menu", fr: "Menu par code QR" },
+      { zh: "基础后台（订单、菜单）", en: "Basic back-office (orders, menu)", fr: "Back-office de base (commandes, menu)" },
+      { zh: "每月最多 50 单", en: "Up to 50 orders / mo", fr: "Jusqu'à 50 commandes / mois" },
+      { zh: "邮件支持", en: "Email support", fr: "Soutien par courriel" },
     ],
-    cta: { zh: "免费开始", en: "Get started free" },
+    cta: { zh: "免费开始", en: "Get started free", fr: "Commencer gratuitement" },
   },
   {
     id: "standard",
-    name: { zh: "标准版", en: "Standard" },
-    tagline: { zh: "大多数商家的选择", en: "For most shops" },
+    name: { zh: "标准版", en: "Standard", fr: "Standard" },
+    tagline: { zh: "大多数商家的选择", en: "For most shops", fr: "Pour la plupart des commerces" },
     monthly: 49,
     annual: 41,
     featured: true,
     features: [
-      { zh: "无限量订单 · 零抽成", en: "Unlimited orders · 0% commission" },
-      { zh: "全部模块：备货 · 对账 · 会员 · 报表", en: "All modules: prep · reconciliation · members · reports" },
-      { zh: "在线 + 二维码点餐", en: "Online + QR ordering" },
-      { zh: "员工账号与权限", en: "Staff accounts & roles" },
-      { zh: "数据导出", en: "Data export" },
+      { zh: "无限量订单 · 零抽成", en: "Unlimited orders · 0% commission", fr: "Commandes illimitées · 0% commission" },
+      { zh: "全部模块：备货 · 对账 · 会员 · 报表", en: "All modules: prep · reconciliation · members · reports", fr: "Tous les modules : prépa · rapprochement · membres · rapports" },
+      { zh: "在线 + 二维码点餐", en: "Online + QR ordering", fr: "Commande en ligne + QR" },
+      { zh: "员工账号与权限", en: "Staff accounts & roles", fr: "Comptes et rôles employés" },
+      { zh: "数据导出", en: "Data export", fr: "Export de données" },
     ],
-    cta: { zh: "开始使用", en: "Get started" },
+    cta: { zh: "开始使用", en: "Get started", fr: "Commencer" },
   },
   {
     id: "multi",
-    name: { zh: "多店版", en: "Multi" },
-    tagline: { zh: "连锁与多门店", en: "Chains & multi-location" },
+    name: { zh: "多店版", en: "Multi", fr: "Multi" },
+    tagline: { zh: "连锁与多门店", en: "Chains & multi-location", fr: "Chaînes et multi-sites" },
     monthly: 99,
     annual: 83,
     features: [
-      { zh: "包含标准版全部功能", en: "Everything in Standard" },
-      { zh: "多家门店统一管理", en: "Manage multiple locations" },
-      { zh: "高级报表与门店对比", en: "Advanced reports & comparisons" },
-      { zh: "优先支持", en: "Priority support" },
+      { zh: "包含标准版全部功能", en: "Everything in Standard", fr: "Tout ce qui est dans Standard" },
+      { zh: "多家门店统一管理", en: "Manage multiple locations", fr: "Gérez plusieurs sites" },
+      { zh: "高级报表与门店对比", en: "Advanced reports & comparisons", fr: "Rapports avancés et comparaisons" },
+      { zh: "优先支持", en: "Priority support", fr: "Soutien prioritaire" },
     ],
-    cta: { zh: "开始使用", en: "Get started" },
+    cta: { zh: "开始使用", en: "Get started", fr: "Commencer" },
   },
 ];
 
@@ -130,11 +144,10 @@ function Check() {
 }
 
 export default function Pricing() {
-  const [lang, setLang] = useState<Lang>("en");
+  const { t } = useLang();
   const [period, setPeriod] = useState<Period>("monthly");
   const { session } = useAuth();
-  const t = (b: { zh: string; en: string }) => b[lang];
-  const href = session ? "/app" : "/login";
+  const href = session ? "/app" : "/get-started";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-white">
@@ -154,13 +167,7 @@ export default function Pricing() {
           <Link href="/pricing" className="text-sm font-medium text-slate-900">
             {t(T.nav.pricing)}
           </Link>
-          <button
-            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
-            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-            aria-label="switch language"
-          >
-            {lang === "zh" ? "EN" : "中文"}
-          </button>
+          <LangToggle />
           <Link href={href} className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
             {session ? t(T.nav.enter) : t(T.nav.login)}
           </Link>
@@ -214,7 +221,7 @@ export default function Pricing() {
             >
               {tier.featured && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-emerald-500 to-sky-500 px-3 py-1 text-[11px] font-semibold text-white shadow">
-                  {lang === "zh" ? "最受欢迎" : "Most popular"}
+                  {t({ zh: "最受欢迎", en: "Most popular", fr: "Le plus populaire" })}
                 </span>
               )}
               <div className="text-sm font-semibold text-slate-900">{t(tier.name)}</div>
