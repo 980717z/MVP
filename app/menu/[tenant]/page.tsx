@@ -16,8 +16,8 @@ const ORDER = [
 type Lang = "zh" | "en";
 
 const T = {
-  zh: { menu: "扫码菜单", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
-  en: { menu: "Digital Menu", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
 };
 
 export default function PublicMenu() {
@@ -38,6 +38,7 @@ export default function PublicMenu() {
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(false);
   const [activeCat, setActiveCat] = useState<string>("");
+  const [query, setQuery] = useState("");
 
   const t = (k: keyof typeof T["zh"]) => T[lang][k];
 
@@ -119,6 +120,44 @@ export default function PublicMenu() {
 
   const activeGroup = cats.find((g) => g.category === activeCat) ?? cats[0];
 
+  // Search across all dishes (zh + en), case-insensitive, flat results.
+  const q = query.trim().toLowerCase();
+  const results = q
+    ? dishes.filter(
+        (d) => d.name_zh.toLowerCase().includes(q) || (d.name_en || "").toLowerCase().includes(q),
+      )
+    : [];
+
+  const renderDish = (d: MenuItem) => {
+    const qty = cart[d.id] ?? 0;
+    return (
+      <div key={d.id} className="flex items-center gap-3">
+        {d.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={d.image_url} alt={d.name_zh} className="h-14 w-14 flex-none rounded-lg object-cover" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+          {lang === "zh"
+            ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
+            : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
+          <div className="mt-0.5 text-sm font-semibold text-ink">{fmtPrice(d.price) || t("market")}</div>
+        </div>
+        {qty === 0 ? (
+          <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white">
+            ＋
+          </button>
+        ) : (
+          <div className="flex flex-none items-center gap-2">
+            <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+            <span className="w-5 text-center font-semibold text-ink">{qty}</span>
+            <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-brand text-white">＋</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <main className={`min-h-screen bg-slate-50 ${count > 0 ? "pb-72" : "pb-24"}`}>
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-ink text-white">
@@ -142,6 +181,39 @@ export default function PublicMenu() {
       <div className="mx-auto max-w-2xl px-5 py-6">
         {loaded && dishes.length === 0 && <p className="py-20 text-center text-sm text-ink-faint">菜单还没准备好。</p>}
 
+        {/* search bar — filters across all categories */}
+        {dishes.length > 0 && (
+          <div className="relative mb-5">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("search")}
+              type="search"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                aria-label="clear"
+                className="absolute right-2.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-ink-faint hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
+        {q ? (
+          <section className="mb-7">
+            {results.length === 0 ? (
+              <p className="py-12 text-center text-sm text-ink-faint">{t("noResults")}</p>
+            ) : (
+              <div className="space-y-3">{results.map(renderDish)}</div>
+            )}
+          </section>
+        ) : (
+        <>
         {/* category tabs — centered window, folds front/back; lives with the menu */}
         {cats.length > 1 && (() => {
           const idx = Math.max(0, cats.findIndex((g) => g.category === activeGroup?.category));
@@ -195,39 +267,10 @@ export default function PublicMenu() {
         {activeGroup && (
           <section className="mb-7">
             <h2 className="mb-3 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">{activeGroup.category}</h2>
-            <div className="space-y-3">
-              {activeGroup.items.map((d) => {
-                const qty = cart[d.id] ?? 0;
-                return (
-                  <div key={d.id} className="flex items-center gap-3">
-                    {d.image_url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={d.image_url} alt={d.name_zh} className="h-14 w-14 flex-none rounded-lg object-cover" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
-                      {lang === "zh"
-                        ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
-                        : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
-                      <div className="mt-0.5 text-sm font-semibold text-ink">{fmtPrice(d.price) || t("market")}</div>
-                    </div>
-                    {/* qty control */}
-                    {qty === 0 ? (
-                      <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white">
-                        ＋
-                      </button>
-                    ) : (
-                      <div className="flex flex-none items-center gap-2">
-                        <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
-                        <span className="w-5 text-center font-semibold text-ink">{qty}</span>
-                        <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-brand text-white">＋</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <div className="space-y-3">{activeGroup.items.map(renderDish)}</div>
           </section>
+        )}
+        </>
         )}
       </div>
 
