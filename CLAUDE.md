@@ -10,6 +10,11 @@ Always read DESIGN.md before making visual or UI decisions on the menu/storefron
 defined there — do not deviate without explicit user approval. In QA/design review,
 flag any menu code that doesn't match DESIGN.md.
 
-Note: the BentoOS platform UI (landing, pricing, demo, dashboard) is a separate brand
-with its own pastel/emerald look and its own EN/FR/中 i18n; DESIGN.md governs the
-restaurant menu surface specifically.
+The BentoOS platform UI (landing, pricing, demo, dashboard, settings, sidebar) is a
+**separate brand** with its own design system in **DESIGN-PLATFORM.md** — calm app UI,
+pastel **emerald** accent (`#0E9F6E`, replacing legacy blue `#2563eb`), Plus Jakarta Sans
++ Noto Sans SC, EN/FR/中 i18n. Read DESIGN-PLATFORM.md before visual/UI work on the
+back-office or marketing surfaces; read DESIGN.md for the restaurant menu
+(`app/menu/[tenant]`). Don't mix them: diner sees jade/paper, owner sees emerald/app-grey.
+In QA/design review, flag platform code that doesn't match DESIGN-PLATFORM.md and menu code
+that doesn't match DESIGN.md.

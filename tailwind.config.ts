@@ -14,10 +14,13 @@ const config: Config = {
           soft: "#334155",
           faint: "#64748b",
         },
+        // BentoOS platform brand — emerald (see DESIGN-PLATFORM.md).
+        // Replaces legacy blue #2563eb; unifies back-office with the landing.
         brand: {
-          DEFAULT: "#2563eb",
-          soft: "#3b82f6",
-          wash: "#eff6ff",
+          DEFAULT: "#0E9F6E",
+          soft: "#0B8A5E", // hover/press (darker)
+          wash: "#E9F6F0", // active surface / secondary button
+          ink: "#0A6A49", // emerald text on wash / links
         },
         // Sang's Seafood customer-menu palette (see DESIGN.md)
         paper: "#FAF7F2",
