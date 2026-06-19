@@ -1,5 +1,5 @@
 -- ===========================================================================
---  Alpine MVP — database schema + multi-tenant Row Level Security
+--  BentoOS — database schema + multi-tenant Row Level Security
 --  Run this in Supabase Studio → SQL Editor → New query → Run.
 --  Safe to re-run (idempotent): drops & recreates policies.
 -- ===========================================================================

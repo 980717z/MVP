@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, type ReactElement } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -21,7 +21,7 @@ import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
-const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => JSX.Element> = {
+const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElement> = {
   "menu-generator": MenuGeneratorPortal,
   "qr-menu": QrMenuPortal,
   "online-orders": OrdersPortal,
