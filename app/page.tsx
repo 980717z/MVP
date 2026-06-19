@@ -51,8 +51,8 @@ const T = {
     },
   ],
   footer: {
-    zh: "为华人商家打造的轻量管理系统",
-    en: "A lightweight back-office built for local merchants",
+    zh: "为中小商家打造的轻量管理系统",
+    en: "A lightweight back-office for small businesses",
   },
 };
 
@@ -256,7 +256,7 @@ function Dashboard({ t, lang }: { t: (b: { zh: string; en: string }) => string; 
 }
 
 export default function Landing() {
-  const [lang, setLang] = useState<Lang>("zh");
+  const [lang, setLang] = useState<Lang>("en");
   const { session } = useAuth();
   const t = (b: { zh: string; en: string }) => b[lang];
 
