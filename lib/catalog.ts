@@ -194,14 +194,21 @@ export const MODULES: ModuleDef[] = [
       { key: "price", label: { zh: "售价", en: "Price" }, type: "money", half: true },
       { key: "cost", label: { zh: "成本", en: "Cost" }, type: "money", half: true },
       { key: "soldMonth", label: { zh: "月销量", en: "Sold / month" }, type: "number", suffix: "份", half: true },
+      // Auto-calculated, read-only (Ontario HST 13% = 5% federal GST + 8% provincial).
+      // Computed in app/[tenant]/m/[moduleId]/page.tsx; soldMonth auto-increments on order completion.
+      { key: "revenue", label: { zh: "销售额", en: "Sales" }, type: "money", half: true },
+      { key: "gst", label: { zh: "联邦税 GST 5%", en: "Federal GST 5%" }, type: "money", half: true },
+      { key: "pst", label: { zh: "省税 PST 8%", en: "Provincial PST 8%" }, type: "money", half: true },
+      { key: "afterTax", label: { zh: "税后销售额", en: "After-tax (HST 13%)" }, type: "money", half: true },
     ],
     outputs: [
       { zh: "毛利率排行：明星菜 / 拖后腿菜", en: "Margin ranking: stars vs. laggards" },
       { zh: "贡献毛利 = (售价−成本) × 销量", en: "Profit contribution per dish" },
+      { zh: "税后销售额按安省 HST 13% 自动计算；完成的订单自动累加销量", en: "After-tax (Ontario HST 13%) auto-calculated; completed orders auto-add sales" },
     ],
-    amountKey: "soldMonth",
-    amountLabel: { zh: "总月销量", en: "Monthly sales" },
-    amountKind: "count",
+    amountKey: "revenue",
+    amountLabel: { zh: "销售额（税前）", en: "Sales (pre-tax)" },
+    amountKind: "money",
   },
 
   // ── Inventory & Purchasing ────────────────────────────────────────────

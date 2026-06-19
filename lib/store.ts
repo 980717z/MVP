@@ -217,6 +217,55 @@ export async function syncMemberFromOrder(
   }
 }
 
+/**
+ * When an order is completed, add each dish's quantity to 菜品销量与毛利
+ * (dish-margin) so sales figures update automatically. Matches by Chinese dish
+ * name; creates the dish row if it doesn't exist yet. Call exactly once per
+ * order (on the transition into "done") to avoid double-counting.
+ */
+export async function postOrderSales(
+  slug: string,
+  items: { name_zh: string; qty: number; price: number | null }[],
+): Promise<void> {
+  // aggregate qty per dish first (an order may list the same dish twice)
+  const want = new Map<string, { qty: number; price?: string }>();
+  for (const it of items) {
+    const name = (it.name_zh || "").trim();
+    const qty = Number(it.qty) || 0;
+    if (!name || !qty) continue;
+    const e = want.get(name) ?? { qty: 0 };
+    e.qty += qty;
+    if (e.price == null && it.price != null) e.price = String(it.price);
+    want.set(name, e);
+  }
+  if (want.size === 0) return;
+
+  const { data: existing } = await supabase
+    .from("records")
+    .select("*")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "dish-margin");
+  const byDish = new Map((existing ?? []).map((r) => [r.data?.dish, r]));
+
+  for (const [dish, { qty, price }] of want) {
+    const match = byDish.get(dish);
+    if (match) {
+      const prev = match.data ?? {};
+      const sold = (parseFloat(prev.soldMonth) || 0) + qty;
+      const data = { ...prev, soldMonth: String(sold), price: prev.price && prev.price !== "" ? prev.price : price ?? "" };
+      const { error } = await supabase.from("records").update({ data }).eq("id", match.id);
+      if (error) console.error("postOrderSales/update", error);
+    } else {
+      const { error } = await supabase.from("records").insert({
+        tenant_slug: slug,
+        module_id: "dish-margin",
+        data: { dish, price: price ?? "", cost: "", soldMonth: String(qty) },
+      });
+      if (error) console.error("postOrderSales/insert", error);
+    }
+  }
+}
+
 /** Pull dishes from 菜单设置 into 菜品销量与毛利 (dish-margin) records. */
 export async function syncMenuToMargin(slug: string): Promise<{ added: number; updated: number }> {
   const [{ data: menuItems }, { data: existing }] = await Promise.all([

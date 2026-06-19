@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, type Order } from "@/lib/orders";
+import { postOrderSales } from "@/lib/store";
 import { price as fmtPrice } from "@/lib/format";
 
 const STATUS: Record<Order["status"], { label: string; cls: string }> = {
@@ -157,6 +158,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   const advance = async (o: Order, to: Order["status"]) => {
     await setOrderStatus(o.id, to);
+    // Post sales into 菜品销量与毛利 once, only on the transition into "done".
+    if (to === "done" && o.status !== "done") {
+      try {
+        await postOrderSales(slug, o.items);
+      } catch (e) {
+        console.error("postOrderSales", e);
+      }
+    }
     load();
   };
 

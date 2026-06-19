@@ -27,6 +27,11 @@ const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElem
   "online-orders": OrdersPortal,
 };
 
+// Ontario sales tax (HST 13% = 5% federal GST + 8% provincial). Used for the
+// auto-calculated after-tax columns in 菜品销量与毛利 (dish-margin).
+const GST_RATE = 0.05;
+const PST_RATE = 0.08;
+
 function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Record<string, string> {
   if (!rules) return form;
   const next = { ...form };
@@ -216,21 +221,39 @@ export default function ModulePage() {
   );
 
   const rows: RecordRow[] = useMemo(() => {
-    if (moduleId !== "stock-loss") return rawRows;
-    const totals: Record<string, { inQty: number; lossQty: number }> = {};
-    for (const r of rawRows) {
-      const item = r.item || "";
-      if (!item) continue;
-      if (!totals[item]) totals[item] = { inQty: 0, lossQty: 0 };
-      totals[item].inQty += parseFloat(r.inQty) || 0;
-      totals[item].lossQty += parseFloat(r.lossQty) || 0;
+    if (moduleId === "stock-loss") {
+      const totals: Record<string, { inQty: number; lossQty: number }> = {};
+      for (const r of rawRows) {
+        const item = r.item || "";
+        if (!item) continue;
+        if (!totals[item]) totals[item] = { inQty: 0, lossQty: 0 };
+        totals[item].inQty += parseFloat(r.inQty) || 0;
+        totals[item].lossQty += parseFloat(r.lossQty) || 0;
+      }
+      return rawRows.map((r) => {
+        const t = totals[r.item || ""];
+        if (!t) return r;
+        const onHand = Math.round((t.inQty - t.lossQty) * 100) / 100;
+        return { ...r, onHand: onHand > 0 ? String(onHand) : "0" };
+      });
     }
-    return rawRows.map((r) => {
-      const t = totals[r.item || ""];
-      if (!t) return r;
-      const onHand = Math.round((t.inQty - t.lossQty) * 100) / 100;
-      return { ...r, onHand: onHand > 0 ? String(onHand) : "0" };
-    });
+    if (moduleId === "dish-margin") {
+      // Ontario sales tax: HST 13% = 5% federal (GST) + 8% provincial.
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      return rawRows.map((r) => {
+        const revenue = r2((parseFloat(r.price) || 0) * (parseFloat(r.soldMonth) || 0));
+        const gst = r2(revenue * GST_RATE);
+        const pst = r2(revenue * PST_RATE);
+        return {
+          ...r,
+          revenue: String(revenue),
+          gst: String(gst),
+          pst: String(pst),
+          afterTax: String(r2(revenue + gst + pst)),
+        };
+      });
+    }
+    return rawRows;
   }, [rawRows, moduleId]);
 
   const filteredRows = useMemo(() => {
@@ -300,18 +323,19 @@ export default function ModulePage() {
     return list;
   }, [rows, moduleId]);
 
-  const stockAutoFields = useMemo(
-    () => moduleId === "stock-loss" ? new Set(["onHand"]) : new Set<string>(),
-    [moduleId]
-  );
+  const autoFields = useMemo(() => {
+    if (moduleId === "stock-loss") return new Set(["onHand"]);
+    if (moduleId === "dish-margin") return new Set(["revenue", "gst", "pst", "afterTax"]);
+    return new Set<string>();
+  }, [moduleId]);
 
   const computedTargets = useMemo(
     () => {
       const set = new Set((mod?.computed ?? []).map((r) => r.target));
-      stockAutoFields.forEach((f) => set.add(f));
+      autoFields.forEach((f) => set.add(f));
       return set;
     },
-    [mod, stockAutoFields]
+    [mod, autoFields]
   );
 
   const updateForm = useCallback(
