@@ -170,9 +170,116 @@ export async function addRecord(
   if (error) console.error("addRecord", error);
 }
 
+export async function updateRecord(id: string, data: Record<string, any>): Promise<void> {
+  const { error } = await supabase.from("records").update({ data }).eq("id", id);
+  if (error) console.error("updateRecord", error);
+}
+
 export async function deleteRecord(id: string): Promise<void> {
   const { error } = await supabase.from("records").delete().eq("id", id);
   if (error) console.error("deleteRecord", error);
+}
+
+// ── cross-module sync helpers ──────────────────────────────────────────────
+
+/** When an order comes in with a phone, upsert into the members (会员) records. */
+export async function syncMemberFromOrder(
+  slug: string,
+  phone: string,
+  customerName: string,
+  amount: number,
+): Promise<void> {
+  if (!phone) return;
+  const { data: existing } = await supabase
+    .from("records")
+    .select("*")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "members")
+    .order("created_at", { ascending: false });
+
+  const match = (existing ?? []).find((r) => r.data?.phone === phone);
+  if (match) {
+    const prev = match.data ?? {};
+    const visits = (parseInt(prev.visits) || 0) + 1;
+    const spend = (parseFloat(prev.spend) || 0) + amount;
+    const { error } = await supabase
+      .from("records")
+      .update({ data: { ...prev, visits: String(visits), spend: String(Math.round(spend * 100) / 100) } })
+      .eq("id", match.id);
+    if (error) console.error("syncMember/update", error);
+  } else {
+    const { error } = await supabase.from("records").insert({
+      tenant_slug: slug,
+      module_id: "members",
+      data: { phone, name: customerName || "", visits: "1", spend: String(amount || 0), tier: "普通", note: "" },
+    });
+    if (error) console.error("syncMember/insert", error);
+  }
+}
+
+/** Pull dishes from 菜单设置 into 菜品销量与毛利 (dish-margin) records. */
+export async function syncMenuToMargin(slug: string): Promise<{ added: number; updated: number }> {
+  const [{ data: menuItems }, { data: existing }] = await Promise.all([
+    supabase.from("menu_items").select("*").eq("tenant_slug", slug),
+    supabase.from("records").select("*").eq("tenant_slug", slug).eq("module_id", "dish-margin"),
+  ]);
+  const dishes = menuItems ?? [];
+  const byDish = new Map((existing ?? []).map((r) => [r.data?.dish, r]));
+  let added = 0, updated = 0;
+  for (const d of dishes) {
+    const match = byDish.get(d.name_zh);
+    if (match) {
+      const prev = match.data ?? {};
+      const price = d.price != null ? String(d.price) : prev.price ?? "";
+      if (prev.price !== price) {
+        await supabase.from("records").update({ data: { ...prev, price } }).eq("id", match.id);
+        updated++;
+      }
+    } else {
+      await supabase.from("records").insert({
+        tenant_slug: slug,
+        module_id: "dish-margin",
+        data: { dish: d.name_zh, price: d.price != null ? String(d.price) : "", cost: "", soldMonth: "" },
+      });
+      added++;
+    }
+  }
+  return { added, updated };
+}
+
+/** Pull purchasing records into 库存与损耗 (stock-loss). */
+export async function syncPurchasingToStock(slug: string): Promise<{ added: number; updated: number }> {
+  const [{ data: purchaseRecs }, { data: stockRecs }] = await Promise.all([
+    supabase.from("records").select("*").eq("tenant_slug", slug).eq("module_id", "purchasing"),
+    supabase.from("records").select("*").eq("tenant_slug", slug).eq("module_id", "stock-loss"),
+  ]);
+  const purchases = purchaseRecs ?? [];
+  const stockByKey = new Map((stockRecs ?? []).map((r) => [`${r.data?.date}_${r.data?.item}`, r]));
+  let added = 0, updated = 0;
+  for (const p of purchases) {
+    const d = p.data ?? {};
+    if (!d.item) continue;
+    const key = `${d.date}_${d.item}`;
+    const match = stockByKey.get(key);
+    if (match) {
+      const prev = match.data ?? {};
+      const changed = prev.unitCost !== (d.unitPrice || "") || prev.type !== (d.itemType || "");
+      if (changed) {
+        await supabase.from("records").update({
+          data: { ...prev, unitCost: d.unitPrice || prev.unitCost, type: d.itemType || prev.type },
+        }).eq("id", match.id);
+        updated++;
+      }
+    } else {
+      await supabase.from("records").insert({
+        tenant_slug: slug,
+        module_id: "stock-loss",
+        data: { date: d.date || "", item: d.item, type: d.itemType || "", inQty: d.qty || "", unitCost: d.unitPrice || "", lossQty: "", onHand: "" },
+      });
+      added++;
+    }
+  }
+  return { added, updated };
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────

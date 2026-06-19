@@ -30,6 +30,13 @@ export interface Field {
   half?: boolean;
 }
 
+export interface ComputedRule {
+  target: string;
+  formula: "sum" | "subtract" | "multiply";
+  /** field keys; prefix with "-" to subtract that field */
+  fields: string[];
+}
+
 export interface ModuleDef {
   id: string;
   category: string;
@@ -58,6 +65,8 @@ export interface ModuleDef {
   amountLabel?: Bi;
   /** how the KPI sum is shown */
   amountKind?: "money" | "count";
+  /** auto-calculation rules: compute a field from others */
+  computed?: ComputedRule[];
 }
 
 export type Domain = "backoffice" | "frontend";
@@ -171,32 +180,10 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
-    id: "prep-list",
-    category: "kitchen",
-    icon: "📝",
-    label: { zh: "厨房备货 / Prep List", en: "Kitchen Prep List" },
-    pain: {
-      zh: "每天备料靠经验，忙时不够、闲时浪费",
-      en: "Prep runs on gut feel — short when busy, wasted when slow.",
-    },
-    fields: [
-      { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
-      { key: "station", label: { zh: "档口", en: "Station" }, type: "select", half: true,
-        options: [{ zh: "热菜", en: "Hot" }, { zh: "凉菜", en: "Cold" }, { zh: "海鲜", en: "Seafood" }, { zh: "面点", en: "Dim sum" }] },
-      { key: "item", label: { zh: "备料项", en: "Item" }, type: "text", half: true, required: true },
-      { key: "qty", label: { zh: "数量", en: "Qty" }, type: "number", half: true },
-      { key: "unit", label: { zh: "单位", en: "Unit" }, type: "text", half: true },
-      { key: "done", label: { zh: "是否完成", en: "Done" }, type: "select", options: yesNo, half: true },
-    ],
-    outputs: [
-      { zh: "每日 prep 清单，自动按档口分组", en: "Daily prep list grouped by station" },
-      { zh: "完成率追踪", en: "Completion tracking" },
-    ],
-  },
-  {
     id: "dish-margin",
     category: "kitchen",
     icon: "📊",
+    ready: true,
     label: { zh: "菜品销量与毛利", en: "Dish Sales & Margin" },
     pain: {
       zh: "不知道哪些菜真赚钱、哪些占时间又不赚",
@@ -212,36 +199,36 @@ export const MODULES: ModuleDef[] = [
       { zh: "毛利率排行：明星菜 / 拖后腿菜", en: "Margin ranking: stars vs. laggards" },
       { zh: "贡献毛利 = (售价−成本) × 销量", en: "Profit contribution per dish" },
     ],
-    amountKey: "price",
-    amountLabel: { zh: "在售菜品", en: "Menu items" },
+    amountKey: "soldMonth",
+    amountLabel: { zh: "总月销量", en: "Monthly sales" },
     amountKind: "count",
   },
 
   // ── Inventory & Purchasing ────────────────────────────────────────────
   {
-    id: "seafood-stock",
+    id: "stock-loss",
     category: "inventory",
-    icon: "🦞",
-    label: { zh: "海鲜库存与损耗", en: "Seafood Stock & Loss" },
+    icon: "📦",
+    ready: true,
+    label: { zh: "库存与损耗", en: "Stock & Loss" },
     pain: {
-      zh: "活海鲜/冰鲜/冷冻的进出、死亡报废、成本不好算",
-      en: "Live/chilled/frozen in-out, die-off, hard to cost.",
+      zh: "食材进出、报废损耗、成本不好算",
+      en: "Inventory in-out, spoilage, hard to cost.",
     },
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
       { key: "item", label: { zh: "品种", en: "Item" }, type: "text", half: true, required: true },
       { key: "type", label: { zh: "类型", en: "Type" }, type: "select", half: true,
-        options: [{ zh: "活鲜", en: "Live" }, { zh: "冰鲜", en: "Chilled" }, { zh: "冷冻", en: "Frozen" }] },
+        options: [{ zh: "干货", en: "Dry goods" }, { zh: "蔬菜", en: "Vegetables" }, { zh: "肉类", en: "Meat" }, { zh: "海鲜", en: "Seafood" }, { zh: "冷冻", en: "Frozen" }, { zh: "调料", en: "Seasoning" }] },
       { key: "inQty", label: { zh: "进货", en: "In" }, type: "number", suffix: "kg", half: true },
-      { key: "deadQty", label: { zh: "死亡/报废", en: "Loss" }, type: "number", suffix: "kg", half: true },
+      { key: "lossQty", label: { zh: "报废/损耗", en: "Loss" }, type: "number", suffix: "kg", half: true },
       { key: "onHand", label: { zh: "现存", en: "On hand" }, type: "number", suffix: "kg", half: true },
-      { key: "unitCost", label: { zh: "进价", en: "Unit cost" }, type: "money", suffix: "/kg", half: true },
     ],
     outputs: [
       { zh: "损耗率与损耗金额", en: "Loss rate & dollar value" },
       { zh: "低库存预警", en: "Low-stock alerts" },
     ],
-    amountKey: "deadQty",
+    amountKey: "lossQty",
     amountLabel: { zh: "今日损耗", en: "Loss today" },
     amountKind: "count",
   },
@@ -249,6 +236,7 @@ export const MODULES: ModuleDef[] = [
     id: "purchasing",
     category: "inventory",
     icon: "🚚",
+    ready: true,
     label: { zh: "采购与供应商比价", en: "Purchasing & Suppliers" },
     pain: {
       zh: "进货靠经验，价格变化、到货数量不好核对",
@@ -257,7 +245,9 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
       { key: "supplier", label: { zh: "供应商", en: "Supplier" }, type: "text", half: true, required: true },
-      { key: "item", label: { zh: "品项", en: "Item" }, type: "text", half: true },
+      { key: "item", label: { zh: "品种", en: "Item" }, type: "text", half: true },
+      { key: "itemType", label: { zh: "类型", en: "Type" }, type: "select", half: true,
+        options: [{ zh: "干货", en: "Dry goods" }, { zh: "蔬菜", en: "Vegetables" }, { zh: "肉类", en: "Meat" }, { zh: "海鲜", en: "Seafood" }, { zh: "冷冻", en: "Frozen" }, { zh: "调料", en: "Seasoning" }, { zh: "酒水", en: "Beverages" }, { zh: "其他", en: "Other" }] },
       { key: "qty", label: { zh: "数量", en: "Qty" }, type: "number", half: true },
       { key: "unitPrice", label: { zh: "单价", en: "Unit price" }, type: "money", half: true },
       { key: "total", label: { zh: "金额", en: "Total" }, type: "money", half: true },
@@ -270,27 +260,7 @@ export const MODULES: ModuleDef[] = [
     amountKey: "total",
     amountLabel: { zh: "采购支出", en: "Purchasing spend" },
     amountKind: "money",
-  },
-  {
-    id: "menu-price",
-    category: "inventory",
-    icon: "📋",
-    label: { zh: "菜单与价格管理", en: "Menu & Price Management" },
-    pain: {
-      zh: "菜多，价格变动、平台价不同步、sold out 难追",
-      en: "Many items; price changes & platform prices out of sync.",
-    },
-    fields: [
-      { key: "dish", label: { zh: "菜名", en: "Dish" }, type: "text", half: true, required: true },
-      { key: "dineIn", label: { zh: "堂食价", en: "Dine-in" }, type: "money", half: true },
-      { key: "delivery", label: { zh: "外卖价", en: "Delivery" }, type: "money", half: true },
-      { key: "status", label: { zh: "状态", en: "Status" }, type: "select", half: true,
-        options: [{ zh: "在售", en: "On sale" }, { zh: "沽清", en: "Sold out" }, { zh: "下架", en: "Off menu" }] },
-    ],
-    outputs: [
-      { zh: "一处改价，堂食/外卖一致", en: "One edit, prices consistent everywhere" },
-      { zh: "沽清状态一目了然", en: "Sold-out status at a glance" },
-    ],
+    computed: [{ target: "total", formula: "multiply", fields: ["qty", "unitPrice"] }],
   },
 
   // ── Orders & Reservations ─────────────────────────────────────────────
@@ -315,6 +285,7 @@ export const MODULES: ModuleDef[] = [
     id: "phone-orders",
     category: "orders",
     icon: "📞",
+    ready: true,
     label: { zh: "电话 / 微信订单", en: "Phone / WeChat Orders" },
     pain: {
       zh: "纸笔接单容易漏，常客资料没沉淀",
@@ -343,6 +314,7 @@ export const MODULES: ModuleDef[] = [
     id: "delivery-agg",
     category: "orders",
     icon: "🛵",
+    ready: true,
     label: { zh: "外卖平台订单汇总", en: "Delivery Platform Roll-up" },
     pain: {
       zh: "DoorDash / UberEats / 熊猫 / 饭团 平台太多，订单和收入不好统一看",
@@ -369,6 +341,7 @@ export const MODULES: ModuleDef[] = [
     id: "group-booking",
     category: "orders",
     icon: "🎉",
+    ready: true,
     label: { zh: "团餐 / 大桌预订与订金", en: "Group Bookings & Deposits" },
     pain: {
       zh: "大单靠人记，订金、菜单、备货容易乱",
@@ -398,6 +371,7 @@ export const MODULES: ModuleDef[] = [
     id: "daily-close",
     category: "finance",
     icon: "💰",
+    ready: true,
     label: { zh: "每日结账与收入", en: "Daily Close & Revenue" },
     pain: {
       zh: "堂食/外卖/现金/刷卡对不上；平台扣了多少看不清",
@@ -409,16 +383,19 @@ export const MODULES: ModuleDef[] = [
       { key: "delivery", label: { zh: "外卖", en: "Delivery" }, type: "money", half: true },
       { key: "cash", label: { zh: "现金", en: "Cash" }, type: "money", half: true },
       { key: "card", label: { zh: "刷卡", en: "Card" }, type: "money", half: true },
+      { key: "tips", label: { zh: "小费", en: "Tips" }, type: "money", half: true },
       { key: "expenses", label: { zh: "当日支出", en: "Expenses" }, type: "money", half: true },
-      { key: "net", label: { zh: "净收入", en: "Net" }, type: "money", half: true },
+      { key: "net", label: { zh: "净收入（已扣小费）", en: "Net (tips excluded)" }, type: "money", half: true },
     ],
     outputs: [
       { zh: "每日收入汇总 + 对账差额", en: "Daily revenue + reconciliation gap" },
+      { zh: "小费单独统计，不计入营业净收入", en: "Tips tracked separately, excluded from net revenue" },
       { zh: "周/月趋势", en: "Weekly / monthly trends" },
     ],
     amountKey: "net",
     amountLabel: { zh: "今日净收入", en: "Net today" },
     amountKind: "money",
+    computed: [{ target: "net", formula: "subtract", fields: ["dineIn", "delivery", "-tips", "-expenses"] }],
   },
 
   // ── Staff ─────────────────────────────────────────────────────────────
@@ -426,6 +403,7 @@ export const MODULES: ModuleDef[] = [
     id: "scheduling",
     category: "staff",
     icon: "👥",
+    ready: true,
     label: { zh: "员工排班与工时", en: "Scheduling & Hours" },
     pain: {
       zh: "排班、换班、请假、工时 / 工资容易乱",
@@ -436,6 +414,8 @@ export const MODULES: ModuleDef[] = [
       { key: "staff", label: { zh: "员工", en: "Staff" }, type: "text", half: true, required: true },
       { key: "role", label: { zh: "岗位", en: "Role" }, type: "select", half: true,
         options: [{ zh: "厨房", en: "Kitchen" }, { zh: "楼面", en: "Floor" }, { zh: "收银", en: "Cashier" }, { zh: "外卖", en: "Delivery" }] },
+      { key: "attendance", label: { zh: "出勤状态", en: "Attendance" }, type: "select", half: true,
+        options: [{ zh: "正常", en: "Present" }, { zh: "请假", en: "Leave" }, { zh: "休息", en: "Day off" }, { zh: "迟到", en: "Late" }] },
       { key: "start", label: { zh: "上班", en: "Start" }, type: "time", half: true },
       { key: "end", label: { zh: "下班", en: "End" }, type: "time", half: true },
       { key: "hours", label: { zh: "工时", en: "Hours" }, type: "number", suffix: "h", half: true },
@@ -455,16 +435,17 @@ export const MODULES: ModuleDef[] = [
     id: "members",
     category: "marketing",
     icon: "⭐",
-    label: { zh: "熟客 / 会员跟进", en: "Members & Regulars" },
+    ready: true,
+    label: { zh: "会员", en: "Members" },
     pain: {
       zh: "没系统沉淀，节日生日提醒、微信回访做不起来",
       en: "No CRM — birthday/holiday follow-ups never happen.",
     },
     fields: [
-      { key: "name", label: { zh: "姓名", en: "Name" }, type: "text", half: true, required: true },
-      { key: "phone", label: { zh: "电话", en: "Phone" }, type: "text", half: true },
+      { key: "phone", label: { zh: "电话", en: "Phone" }, type: "text", half: true, required: true },
+      { key: "name", label: { zh: "姓名", en: "Name" }, type: "text", half: true },
       { key: "birthday", label: { zh: "生日", en: "Birthday" }, type: "date", half: true },
-      { key: "visits", label: { zh: "到店次数", en: "Visits" }, type: "number", half: true },
+      { key: "visits", label: { zh: "订单次数", en: "Orders" }, type: "number", half: true },
       { key: "spend", label: { zh: "累计消费", en: "Lifetime spend" }, type: "money", half: true },
       { key: "tier", label: { zh: "等级", en: "Tier" }, type: "select", half: true,
         options: [{ zh: "普通", en: "Regular" }, { zh: "银卡", en: "Silver" }, { zh: "金卡", en: "Gold" }] },
@@ -482,7 +463,8 @@ export const MODULES: ModuleDef[] = [
     id: "reviews",
     category: "marketing",
     icon: "💬",
-    label: { zh: "客户评价与差评", en: "Reviews & Complaints" },
+    ready: true,
+    label: { zh: "改进意见", en: "Improvement Feedback" },
     pain: {
       zh: "Google / 外卖差评分散，回复慢、不知道问题集中在哪",
       en: "Reviews scattered; slow replies, unclear what's wrong.",
@@ -490,7 +472,7 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
       { key: "source", label: { zh: "来源", en: "Source" }, type: "select", half: true,
-        options: [{ zh: "Google", en: "Google" }, { zh: "DoorDash", en: "DoorDash" }, { zh: "UberEats", en: "UberEats" }, { zh: "大众点评", en: "Dianping" }] },
+        options: [{ zh: "Google", en: "Google" }, { zh: "Yelp", en: "Yelp" }, { zh: "DoorDash", en: "DoorDash" }, { zh: "UberEats", en: "UberEats" }, { zh: "大众点评", en: "Dianping" }] },
       { key: "rating", label: { zh: "评分", en: "Rating" }, type: "number", suffix: "★", half: true },
       { key: "topic", label: { zh: "问题类别", en: "Topic" }, type: "select", half: true,
         options: [{ zh: "出餐慢", en: "Slow" }, { zh: "口味", en: "Taste" }, { zh: "份量", en: "Portion" }, { zh: "服务", en: "Service" }, { zh: "好评", en: "Praise" }] },
@@ -506,6 +488,7 @@ export const MODULES: ModuleDef[] = [
     id: "social",
     category: "marketing",
     icon: "📣",
+    ready: true,
     label: { zh: "社交媒体与促销", en: "Social & Promotions" },
     pain: {
       zh: "想推广，但平时没时间写文案、发帖（中英文）",
@@ -531,6 +514,7 @@ export const MODULES: ModuleDef[] = [
     id: "food-safety",
     category: "compliance",
     icon: "🧊",
+    ready: true,
     label: { zh: "食品安全与清洁记录", en: "Food Safety & Cleaning" },
     pain: {
       zh: "温度记录、开关店清单分散，检查 / 留档不方便",
@@ -554,6 +538,7 @@ export const MODULES: ModuleDef[] = [
     id: "equipment",
     category: "compliance",
     icon: "🔧",
+    ready: true,
     label: { zh: "设备维护", en: "Equipment Maintenance" },
     pain: {
       zh: "冰箱/冷柜/海鲜池/炉灶坏了影响营业，维护记录不系统",

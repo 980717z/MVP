@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { addMenuItem, deleteMenuItem, listMenuItems, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { addMenuItem, deleteMenuItem, getCatOrder, listMenuItems, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 
 const CATEGORIES = [
@@ -35,6 +35,9 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [dishes, setDishes] = useState<MenuItem[]>([]);
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [catOrder, setCatOrder] = useState<string[]>([]);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   // new-dish form
   const [zh, setZh] = useState("");
@@ -47,6 +50,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
 
   useEffect(() => {
     listMenuItems(slug).then(setDishes);
+    getCatOrder(slug).then(setCatOrder);
   }, [slug, tick]);
 
   const pickImage = (f: File | null) => {
@@ -112,10 +116,25 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     saveField(id, { image_url: up.url ?? "" });
   };
 
-  const grouped = CATEGORIES.map((c) => ({
+  // present categories (have dishes) in the saved custom order
+  const presentCats = orderedCategories(
+    Array.from(new Set(dishes.map((d) => d.category).filter(Boolean))),
+    catOrder,
+    CATEGORIES
+  );
+
+  const grouped = presentCats.map((c) => ({
     category: c,
     items: dishes.filter((d) => d.category === c),
-  })).filter((g) => g.items.length > 0);
+  }));
+
+  const reorderCat = (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...presentCats];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setCatOrder(next);
+  };
 
   return (
     <main className="px-6 py-8 lg:px-10">
@@ -128,6 +147,54 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
         </div>
         <span className="pill bg-brand-wash text-brand">{dishes.length} 道菜</span>
       </header>
+
+      {/* category order */}
+      {presentCats.length > 1 && (
+        <div className="card mb-6 p-4">
+          <button
+            className="flex w-full items-center justify-between text-left"
+            onClick={() => setOrderOpen((o) => !o)}
+          >
+            <span className="text-sm font-semibold text-ink">⚙️ 分类顺序</span>
+            <span className="text-xs text-ink-faint">
+              {orderOpen ? "收起" : "拖动调整顾客菜单上的分类排序 ›"}
+            </span>
+          </button>
+          {orderOpen && (
+            <>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {grouped.map((g, i) => (
+                  <div
+                    key={g.category}
+                    draggable
+                    onDragStart={() => setDragIdx(i)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (dragIdx !== null && dragIdx !== i) {
+                        reorderCat(dragIdx, i);
+                        setDragIdx(i);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDragIdx(null);
+                      saveCatOrder(slug, presentCats);
+                    }}
+                    className={`flex cursor-move select-none items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-sm transition ${
+                      dragIdx === i ? "border-brand opacity-50" : "border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="text-ink-faint">⠿</span>
+                    <span className="text-ink-faint">{i + 1}.</span>
+                    <span className="text-ink">{g.category}</span>
+                    <span className="text-xs text-ink-faint">{g.items.length}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-ink-faint">拖动卡片调整顺序，松手即保存。</p>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-5">
         {/* left: input */}

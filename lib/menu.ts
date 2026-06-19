@@ -71,6 +71,31 @@ export async function updateMenuItem(
   return {};
 }
 
+// ── category order ─────────────────────────────────────────────────────────
+
+/** Read a tenant's custom category order (public-safe via storefront view). */
+export async function getCatOrder(slug: string): Promise<string[]> {
+  const { data } = await supabase.from("storefront").select("cat_order").eq("slug", slug).maybeSingle();
+  const v = (data as any)?.cat_order;
+  return Array.isArray(v) ? v : [];
+}
+
+export async function saveCatOrder(slug: string, order: string[]): Promise<void> {
+  const { error } = await supabase.from("tenants").update({ cat_order: order }).eq("slug", slug);
+  if (error) console.error("saveCatOrder", error);
+}
+
+/** Order the present categories: custom order first, then the fallback order. */
+export function orderedCategories(present: string[], catOrder: string[], fallback: string[]): string[] {
+  const rank = (c: string) => {
+    const i = catOrder.indexOf(c);
+    if (i >= 0) return i;
+    const j = fallback.indexOf(c);
+    return 1000 + (j < 0 ? 999 : j);
+  };
+  return [...present].sort((a, b) => rank(a) - rank(b));
+}
+
 export async function deleteMenuItem(id: string): Promise<void> {
   const { error } = await supabase.from("menu_items").delete().eq("id", id);
   if (error) console.error("deleteMenuItem", error);
