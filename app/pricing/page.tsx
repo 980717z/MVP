@@ -301,7 +301,10 @@ export default function Pricing() {
       <footer className="border-t border-slate-100">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
           <span>🍱 BentoOS · {t(T.footer)}</span>
-          <span>© 2026 BentoOS</span>
+          <div className="flex items-center gap-4">
+            <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
+            <span>© 2026 BentoOS</span>
+          </div>
         </div>
       </footer>
     </main>

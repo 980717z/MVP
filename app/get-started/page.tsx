@@ -159,6 +159,12 @@ export default function GetStarted() {
           <>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">{t(T.title)}</h1>
             <p className="mt-3 text-pretty text-slate-600">{t(T.sub)}</p>
+            <p className="mt-2 text-sm text-slate-500">
+              {t({ zh: "也可邮件联系：", en: "Prefer email? ", fr: "Vous préférez le courriel ? " })}
+              <a href="mailto:support@bentoos.io" className="font-medium text-emerald-600 hover:text-emerald-700">
+                support@bentoos.io
+              </a>
+            </p>
 
             <form onSubmit={submit} className="mt-8 space-y-6" noValidate>
               {/* business name */}
