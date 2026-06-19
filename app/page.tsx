@@ -26,7 +26,7 @@ const T = {
   },
   quoteName: { zh: "张老板", en: "Mr. Zhang" },
   quoteRole: { zh: "张记小吃 · 店主", en: "Owner · Zhang's Kitchen" },
-  photoCaption: { zh: "多伦多 · 士巴丹拿华埠", en: "Spadina Chinatown, Toronto" },
+  photoCaption: { zh: "多伦多 · CN 塔天际线", en: "Toronto skyline · CN Tower" },
   panel: {
     title: { zh: "概览", en: "Overview" },
     today: { zh: "今日营收", en: "Revenue today" },
