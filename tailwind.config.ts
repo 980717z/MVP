@@ -19,6 +19,13 @@ const config: Config = {
           soft: "#3b82f6",
           wash: "#eff6ff",
         },
+        // Sang's Seafood customer-menu palette (see DESIGN.md)
+        paper: "#FAF7F2",
+        jade: {
+          DEFAULT: "#117A65",
+          wash: "#E7F1ED",
+        },
+        gold: "#B8862F",
       },
       fontFamily: {
         sans: [

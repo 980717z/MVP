@@ -137,21 +137,21 @@ export default function PublicMenu() {
           <img src={d.image_url} alt={d.name_zh} className="h-14 w-14 flex-none rounded-lg object-cover" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+          <div className="text-[17px] font-semibold leading-snug text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
           {lang === "zh"
             ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
             : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
-          <div className="mt-0.5 text-sm font-semibold text-ink">{fmtPrice(d.price) || t("market")}</div>
+          <div className="mt-1 text-sm font-bold text-jade">{fmtPrice(d.price) || t("market")}</div>
         </div>
         {qty === 0 ? (
-          <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white">
+          <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
             ＋
           </button>
         ) : (
           <div className="flex flex-none items-center gap-2">
             <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
             <span className="w-5 text-center font-semibold text-ink">{qty}</span>
-            <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-brand text-white">＋</button>
+            <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
           </div>
         )}
       </div>
@@ -159,21 +159,39 @@ export default function PublicMenu() {
   };
 
   return (
-    <main className={`min-h-screen bg-slate-50 ${count > 0 ? "pb-72" : "pb-24"}`}>
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-ink text-white">
+    <main
+      className={`min-h-screen bg-paper ${count > 0 ? "pb-72" : "pb-24"}`}
+      style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
+    >
+      {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap"
+        rel="stylesheet"
+      />
+      <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
+
+      <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-4">
-          <div>
-            <div className="text-lg font-bold tracking-wide">{name ? name[lang] : "…"}</div>
-            <div className="text-[11px] text-white/50">{t("menu")} · Digital Menu</div>
+          <div className="min-w-0">
+            <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
+              {name ? name.zh : "…"}
+            </div>
+            {name?.en && name.en !== name.zh && (
+              <div className="text-[11px] uppercase tracking-[0.15em] text-ink-faint">{name.en}</div>
+            )}
           </div>
-          <button onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))} className="rounded-full border border-white/30 px-3 py-1 text-xs">
+          <button
+            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
+            className="flex-none rounded-full border border-slate-200 px-3 py-1 text-xs text-ink-soft"
+          >
             {lang === "zh" ? "EN" : "中文"}
           </button>
         </div>
       </header>
 
       {lockedTable && (
-        <div className="bg-brand-wash py-2 text-center text-sm font-medium text-brand">
+        <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
           🪑 {lang === "zh" ? `您正在为 ${lockedTable} 号桌点餐` : `Ordering for Table ${lockedTable}`}
         </div>
       )}
@@ -190,7 +208,7 @@ export default function PublicMenu() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("search")}
               type="search"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none focus:border-jade focus:ring-2 focus:ring-jade/20"
             />
             {query && (
               <button
@@ -242,7 +260,7 @@ export default function PublicMenu() {
                       key={g.category}
                       onClick={() => jump(cats.findIndex((c) => c.category === g.category))}
                       className={`flex-none whitespace-nowrap rounded-full px-3 py-1 text-sm transition ${
-                        on ? "bg-ink font-medium text-white" : "text-ink-soft hover:bg-slate-100"
+                        on ? "bg-jade font-medium text-white" : "text-ink-soft hover:bg-slate-100"
                       }`}
                     >
                       {g.category}
@@ -288,7 +306,7 @@ export default function PublicMenu() {
                   <div className="flex flex-none items-center gap-2">
                     <button onClick={() => inc(x.d.id, -1)} className="grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-sm">－</button>
                     <span className="w-4 text-center text-sm font-semibold">{x.qty}</span>
-                    <button onClick={() => inc(x.d.id, 1)} className="grid h-6 w-6 place-items-center rounded-full bg-brand text-sm text-white">＋</button>
+                    <button onClick={() => inc(x.d.id, 1)} className="grid h-6 w-6 place-items-center rounded-full bg-jade text-sm text-white">＋</button>
                   </div>
                 </div>
               ))}
@@ -308,12 +326,12 @@ export default function PublicMenu() {
                         key={d.id}
                         onClick={() => inc(d.id, 1)}
                         className={`flex-none rounded-lg border px-2.5 py-1.5 text-left transition ${
-                          q > 0 ? "border-brand bg-brand-wash" : "border-slate-200 bg-white hover:border-slate-300"
+                          q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white hover:border-slate-300"
                         }`}
                       >
                         <div className="text-xs font-medium text-ink">
                           {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
-                          {q > 0 && <span className="ml-1 text-brand">×{q}</span>}
+                          {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
                         </div>
                         <div className="text-[11px] text-ink-faint">{fmtPrice(d.price) || t("market")} ＋</div>
                       </button>
@@ -325,7 +343,7 @@ export default function PublicMenu() {
 
             <button
               onClick={() => setOpen(true)}
-              className="flex w-full items-center justify-between gap-3 border-t border-slate-100 bg-brand px-5 py-3.5 text-white"
+              className="flex w-full items-center justify-between gap-3 border-t border-slate-100 bg-jade px-5 py-3.5 text-white"
             >
               <span className="text-sm font-medium">🛒 {count} {t("items")} · {t("total")} ${total.toFixed(2)}</span>
               <span className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-medium">{t("submit")} →</span>
@@ -357,7 +375,7 @@ export default function PublicMenu() {
                       <div className="flex items-center gap-2">
                         <button onClick={() => inc(x.d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
                         <span className="w-5 text-center font-semibold">{x.qty}</span>
-                        <button onClick={() => inc(x.d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-brand text-white">＋</button>
+                        <button onClick={() => inc(x.d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
                       </div>
                     </div>
                   ))}
@@ -377,12 +395,12 @@ export default function PublicMenu() {
                             key={d.id}
                             onClick={() => inc(d.id, 1)}
                             className={`flex-none rounded-lg border px-3 py-2 text-left transition ${
-                              q > 0 ? "border-brand bg-brand-wash" : "border-slate-200 bg-white hover:border-slate-300"
+                              q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white hover:border-slate-300"
                             }`}
                           >
                             <div className="text-sm font-medium text-ink">
                               {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
-                              {q > 0 && <span className="ml-1 text-brand">×{q}</span>}
+                              {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
                             </div>
                             <div className="text-xs text-ink-faint">{fmtPrice(d.price) || t("market")} ＋</div>
                           </button>
@@ -394,7 +412,7 @@ export default function PublicMenu() {
 
                 <div className="mt-4 grid gap-2">
                   {lockedTable ? (
-                    <div className="rounded-lg border border-brand/30 bg-brand-wash px-3 py-2 text-sm font-medium text-brand">
+                    <div className="rounded-lg border border-jade/30 bg-jade-wash px-3 py-2 text-sm font-medium text-jade">
                       🪑 {lockedTable} 号桌
                     </div>
                   ) : (
@@ -416,7 +434,7 @@ export default function PublicMenu() {
 
                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-sm text-ink-soft">{t("total")} <b className="text-ink">${total.toFixed(2)}</b></span>
-                  <button onClick={submit} disabled={submitting} className="btn-primary px-6 py-2.5 disabled:opacity-50">
+                  <button onClick={submit} disabled={submitting} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 px-6 py-2.5 disabled:opacity-50">
                     {submitting ? t("submitting") : t("submit")}
                   </button>
                 </div>
@@ -432,7 +450,7 @@ export default function PublicMenu() {
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="text-4xl">✅</div>
             <p className="mt-3 font-medium text-ink">{t("placed")}</p>
-            <button onClick={() => { setPlaced(false); setOpen(false); }} className="btn-primary mt-5 px-6 py-2.5">{t("another")}</button>
+            <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>
       )}
