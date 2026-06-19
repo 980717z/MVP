@@ -9,7 +9,7 @@
 本地已经是 git 仓库并完成首次提交。去 https://github.com/new 建一个**私有**仓库（名字随意，如 `bentoos`），**不要**勾选 "Add README"。建好后它会给你两条命令，在 MVP 目录里跑：
 
 ```bash
-cd /Users/zeyangwen/Desktop/Alpine/MVP
+cd ~/Desktop/MVP
 git remote add origin https://github.com/<你的用户名>/bentoos.git
 git branch -M main
 git push -u origin main
