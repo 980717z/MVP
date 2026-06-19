@@ -3,7 +3,8 @@
 import { type ReactElement } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
-import { useLang, LangToggle, type Lang, type Dict } from "@/app/i18n";
+import { useLang, LangToggle } from "@/app/i18n";
+import HeroDemo from "@/components/HeroDemo";
 
 const T = {
   nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" } },
@@ -101,156 +102,8 @@ function FeatureIcon({ name }: { name: keyof typeof ICONS }) {
 
 const FEATURE_ICONS: (keyof typeof ICONS)[] = ["check", "staff", "chart"];
 
-const NAV: { icon: string; label: Dict }[] = [
-  { icon: "▦", label: { zh: "概览", en: "Overview", fr: "Aperçu" } },
-  { icon: "🧾", label: { zh: "订单", en: "Orders", fr: "Commandes" } },
-  { icon: "📦", label: { zh: "备货", en: "Prep", fr: "Préparation" } },
-  { icon: "💳", label: { zh: "对账", en: "Reconcile", fr: "Rapprochement" } },
-  { icon: "👥", label: { zh: "会员", en: "Members", fr: "Membres" } },
-  { icon: "📈", label: { zh: "报表", en: "Reports", fr: "Rapports" } },
-  { icon: "⚙️", label: { zh: "设置", en: "Settings", fr: "Paramètres" } },
-];
-
-/** Complete product dashboard mockup shown in the hero. */
-function Dashboard({ t, lang, href }: { t: (b: Dict) => string; lang: Lang; href: string }) {
-  const cur = lang === "zh" ? "¥" : "$";
-  const kpis = [
-    { label: { zh: "本月营收", en: "Revenue", fr: "Revenus" }, value: `${cur}28,540`, up: "+12%" },
-    { label: { zh: "订单", en: "Orders", fr: "Commandes" }, value: "1,248", up: "+8%" },
-    { label: { zh: "毛利", en: "Gross profit", fr: "Marge brute" }, value: `${cur}8,730`, up: "+5%" },
-    { label: { zh: "新会员", en: "New members", fr: "Nouveaux membres" }, value: "86", up: "+23" },
-  ];
-  const topItems = [
-    { name: { zh: "招牌炒饭", en: "Signature fried rice", fr: "Riz frit maison" }, qty: 312 },
-    { name: { zh: "椒盐排骨", en: "Salt & pepper ribs", fr: "Côtes sel et poivre" }, qty: 268 },
-    { name: { zh: "港式奶茶", en: "HK milk tea", fr: "Thé au lait HK" }, qty: 245 },
-  ];
-  const orders = [
-    { id: "#1042", typ: { zh: "桌台 6", en: "Table 6", fr: "Table 6" }, amt: `${cur}186` },
-    { id: "#1041", typ: { zh: "外卖", en: "Takeout", fr: "À emporter" }, amt: `${cur}92` },
-    { id: "#1040", typ: { zh: "堂食", en: "Dine-in", fr: "Sur place" }, amt: `${cur}240` },
-  ];
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl shadow-slate-900/15">
-      {/* window chrome */}
-      <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50/80 px-3 py-2">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-        <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-        <span className="ml-2 text-[10px] text-slate-400">app.bentoos.io</span>
-      </div>
-
-      <div className="flex">
-        {/* sidebar */}
-        <aside className="hidden w-28 shrink-0 border-r border-slate-100 bg-slate-50/40 p-2 sm:block">
-          <div className="mb-3 flex items-center gap-1.5 px-1">
-            <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-emerald-500 to-sky-500 text-[10px]">🍱</span>
-            <span className="text-[11px] font-bold text-slate-800">BentoOS</span>
-          </div>
-          <nav className="space-y-0.5">
-            {NAV.map((n, i) => (
-              <Link
-                key={n.label.en}
-                href={href}
-                className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[10px] transition ${
-                  i === 0 ? "bg-emerald-50 font-medium text-emerald-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                }`}
-              >
-                <span>{n.icon}</span>
-                <span>{t(n.label)}</span>
-              </Link>
-            ))}
-          </nav>
-        </aside>
-
-        {/* main */}
-        <div className="min-w-0 flex-1 p-3 sm:p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-800">{t({ zh: "概览", en: "Overview", fr: "Aperçu" })}</span>
-            <span className="rounded-md border border-slate-200 px-2 py-0.5 text-[10px] text-slate-400">
-              {t({ zh: "5月1日 – 5月31日", en: "May 1 – May 31", fr: "1–31 mai" })}
-            </span>
-          </div>
-
-          {/* KPIs */}
-          <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {kpis.map((k) => (
-              <div key={k.label.en} className="rounded-xl bg-slate-50 p-2.5">
-                <div className="truncate text-[10px] text-slate-400">{t(k.label)}</div>
-                <div className="mt-0.5 text-sm font-bold tracking-tight text-slate-800">{k.value}</div>
-                <div className="text-[10px] font-medium text-emerald-600">{k.up}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* trend chart */}
-          <div className="mt-3 rounded-xl border border-slate-100 p-3">
-            <div className="text-[11px] font-medium text-slate-500">{t({ zh: "销售趋势", en: "Sales trend", fr: "Tendance des ventes" })}</div>
-            <svg viewBox="0 0 300 80" className="mt-1 h-20 w-full" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.22" />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M0,60 L25,52 L50,56 L75,40 L100,46 L125,30 L150,36 L175,22 L200,28 L225,16 L250,24 L275,12 L300,18 L300,80 L0,80 Z"
-                fill="url(#trendFill)"
-              />
-              <polyline
-                points="0,60 25,52 50,56 75,40 100,46 125,30 150,36 175,22 200,28 225,16 250,24 275,12 300,18"
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          {/* two lists */}
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div className="rounded-xl border border-slate-100 p-3">
-              <div className="text-[11px] font-medium text-slate-500">{t({ zh: "热销菜品", en: "Top items", fr: "Meilleures ventes" })}</div>
-              <ul className="mt-2 space-y-1.5">
-                {topItems.map((it, i) => (
-                  <li key={it.name.en} className="flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5 text-slate-600">
-                      <span className="grid h-4 w-4 place-items-center rounded bg-emerald-50 text-[9px] font-semibold text-emerald-600">{i + 1}</span>
-                      {t(it.name)}
-                    </span>
-                    <span className="text-slate-400">{it.qty}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-slate-500">{t({ zh: "最近订单", en: "Recent orders", fr: "Commandes récentes" })}</span>
-                <span className="text-[10px] text-emerald-600">{t({ zh: "查看全部", en: "View all", fr: "Voir tout" })}</span>
-              </div>
-              <ul className="mt-2 space-y-1.5">
-                {orders.map((o) => (
-                  <li key={o.id} className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-600">
-                      <span className="text-slate-400">{o.id}</span> · {t(o.typ)}
-                    </span>
-                    <span className="font-medium text-slate-700">{o.amt}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function Landing() {
-  const { lang, t } = useLang();
+  const { t } = useLang();
   const { session } = useAuth();
 
   return (
@@ -303,7 +156,7 @@ export default function Landing() {
               <span aria-hidden>→</span>
             </Link>
             <Link
-              href="/demo"
+              href="/how-it-works"
               className="inline-flex items-center rounded-full border border-slate-200 bg-white px-6 py-3 text-base font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
             >
               {t(T.ctaDemo)}
@@ -333,7 +186,7 @@ export default function Landing() {
           </div>
 
           <div className="relative z-10">
-            <Dashboard t={t} lang={lang} href="/demo" />
+            <HeroDemo />
           </div>
 
           {/* mobile-only Toronto photo */}
