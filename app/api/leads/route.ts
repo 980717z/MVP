@@ -29,6 +29,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "missing business_name or email" }, { status: 400 });
   }
 
+  let stored = false;
+  let emailed = false;
+  let emailStatus: number | null = null;
+  let emailId: string | null = null;
+
   // 1) Persist to Supabase (anon insert allowed by RLS — see supabase/leads.sql)
   const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const sbKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -53,6 +58,7 @@ export async function POST(req: Request) {
           lang: d.lang ?? null,
         }),
       });
+      stored = res.ok;
       if (!res.ok) console.error("[leads] supabase insert failed:", res.status, await res.text());
     } catch (e) {
       console.error("[leads] supabase insert error:", e);
@@ -85,18 +91,14 @@ ${rows.map(([k, v]) => `<tr><td style="color:#64748b;vertical-align:top">${k}</t
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from,
-          to: [to],
-          reply_to: d.email,
-          subject: `New lead: ${d.business_name}`,
-          text,
-          html,
-        }),
+        body: JSON.stringify({ from, to: [to], reply_to: d.email, subject: `New lead: ${d.business_name}`, text, html }),
       });
+      emailStatus = r.status;
       if (r.ok) {
         const j = (await r.json().catch(() => ({}))) as { id?: string };
-        console.log(`[leads] email sent to ${to} (id: ${j.id ?? "?"})`);
+        emailed = true;
+        emailId = j.id ?? null;
+        console.log(`[leads] email sent to ${to} (id: ${emailId ?? "?"})`);
       } else {
         console.error("[leads] resend failed:", r.status, await r.text());
       }
@@ -107,5 +109,5 @@ ${rows.map(([k, v]) => `<tr><td style="color:#64748b;vertical-align:top">${k}</t
     console.warn(`[leads] RESEND_API_KEY not set — email to ${to} skipped`);
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, stored, emailed, emailStatus, emailId });
 }
