@@ -16,8 +16,8 @@ const ORDER = [
 type Lang = "zh" | "en";
 
 const T = {
-  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
-  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
 };
 
 export default function PublicMenu() {
@@ -76,6 +76,23 @@ export default function PublicMenu() {
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
   const total = cartLines.reduce((a, x) => a + (Number(x.d.price) || 0) * x.qty, 0);
 
+  // Orders already placed this session (each "再点一单" round). Lets a returning
+  // diner see what they've ordered plus the running total across rounds.
+  type PlacedLine = { name_zh: string; name_en: string; price: number | null; qty: number };
+  const [placedOrders, setPlacedOrders] = useState<{ lines: PlacedLine[]; total: number }[]>([]);
+  const placedTotal = placedOrders.reduce((a, o) => a + o.total, 0);
+  const grandTotal = placedTotal + total;
+  const placedLines = useMemo(() => {
+    const m = new Map<string, PlacedLine>();
+    for (const o of placedOrders)
+      for (const l of o.lines) {
+        const e = m.get(l.name_zh);
+        if (e) e.qty += l.qty;
+        else m.set(l.name_zh, { ...l });
+      }
+    return [...m.values()];
+  }, [placedOrders]);
+
   // upsell: when a 火锅 dish is in the cart, suggest 火锅配菜 add-ons
   const hasHotpot = cartLines.some((x) => x.d.category === "火锅");
   const hotpotSides = useMemo(() => dishes.filter((d) => d.category === "火锅配菜"), [dishes]);
@@ -99,6 +116,10 @@ export default function PublicMenu() {
       return;
     }
     setPlaced(true);
+    setPlacedOrders((p) => [
+      ...p,
+      { lines: cartLines.map((x) => ({ name_zh: x.d.name_zh, name_en: x.d.name_en, price: x.d.price, qty: x.qty })), total },
+    ]);
     setCart({});
     setTableNo(lockedTable ?? "");
     setPhone("");
@@ -160,7 +181,7 @@ export default function PublicMenu() {
 
   return (
     <main
-      className={`min-h-screen bg-paper ${count > 0 ? "pb-72" : "pb-24"}`}
+      className="min-h-screen bg-paper pb-20"
       style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
@@ -172,8 +193,26 @@ export default function PublicMenu() {
       <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-4">
-          <div className="min-w-0">
+        <div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4">
+          {/* shopping cart — top-left; shows subtotal, opens the order sheet */}
+          {(count > 0 || placedTotal > 0) && (
+            <button
+              onClick={() => setOpen(true)}
+              aria-label={t("cart")}
+              className="flex flex-none items-center gap-2 rounded-full bg-jade px-3 py-1.5 text-white shadow-sm transition active:scale-95"
+            >
+              <span className="relative text-base leading-none">
+                🛒
+                {count > 0 && (
+                  <span className="absolute -right-2 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-white px-1 text-[10px] font-bold text-jade">
+                    {count}
+                  </span>
+                )}
+              </span>
+              <span className="text-sm font-semibold tabular-nums">${(count > 0 ? total : placedTotal).toFixed(2)}</span>
+            </button>
+          )}
+          <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
               {name ? name.zh : "…"}
             </div>
@@ -292,66 +331,6 @@ export default function PublicMenu() {
         )}
       </div>
 
-      {/* sticky mini-cart — auto-shows what you've added */}
-      {count > 0 && !open && (
-        <div className="fixed inset-x-0 bottom-0 z-20">
-          <div className="mx-auto max-w-2xl rounded-t-2xl border-t border-slate-200 bg-white shadow-[0_-6px_24px_rgba(0,0,0,0.10)]">
-            <div className="max-h-44 overflow-y-auto px-4 pt-3">
-              {cartLines.map((x) => (
-                <div key={x.d.id} className="flex items-center justify-between gap-3 py-1.5">
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                    {lang === "zh" ? x.d.name_zh : x.d.name_en || x.d.name_zh}
-                    <span className="ml-1 text-ink-faint">{fmtPrice(x.d.price)}</span>
-                  </span>
-                  <div className="flex flex-none items-center gap-2">
-                    <button onClick={() => inc(x.d.id, -1)} className="grid h-6 w-6 place-items-center rounded-full border border-slate-300 text-sm">－</button>
-                    <span className="w-4 text-center text-sm font-semibold">{x.qty}</span>
-                    <button onClick={() => inc(x.d.id, 1)} className="grid h-6 w-6 place-items-center rounded-full bg-jade text-sm text-white">＋</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* hot-pot add-on upsell (only when a 火锅 dish is in cart) */}
-            {hasHotpot && hotpotSides.length > 0 && (
-              <div className="border-t border-slate-100 bg-amber-50 px-4 py-2.5">
-                <div className="mb-1.5 text-xs font-medium text-amber-800">
-                  🍲 {lang === "zh" ? "加点火锅配菜？" : "Add hot pot sides?"}
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {hotpotSides.map((d) => {
-                    const q = cart[d.id] ?? 0;
-                    return (
-                      <button
-                        key={d.id}
-                        onClick={() => inc(d.id, 1)}
-                        className={`flex-none rounded-lg border px-2.5 py-1.5 text-left transition ${
-                          q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white hover:border-slate-300"
-                        }`}
-                      >
-                        <div className="text-xs font-medium text-ink">
-                          {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
-                          {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
-                        </div>
-                        <div className="text-[11px] text-ink-faint">{fmtPrice(d.price) || t("market")} ＋</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={() => setOpen(true)}
-              className="flex w-full items-center justify-between gap-3 border-t border-slate-100 bg-jade px-5 py-3.5 text-white"
-            >
-              <span className="text-sm font-medium">🛒 {count} {t("items")} · {t("total")} ${total.toFixed(2)}</span>
-              <span className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-medium">{t("submit")} →</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* cart sheet */}
       {open && (
         <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={() => setOpen(false)}>
@@ -360,6 +339,24 @@ export default function PublicMenu() {
               <div className="text-lg font-bold text-ink">{t("cart")}</div>
               <button onClick={() => setOpen(false)} className="text-ink-faint">✕</button>
             </div>
+
+            {/* already-ordered rounds (this session) */}
+            {placedLines.length > 0 && (
+              <div className="mb-3 rounded-xl border border-jade/20 bg-jade-wash/50 p-3">
+                <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-jade">
+                  <span>✓ {t("prevOrdered")}</span>
+                  <span className="tabular-nums">${placedTotal.toFixed(2)}</span>
+                </div>
+                <div className="space-y-0.5">
+                  {placedLines.map((l, i) => (
+                    <div key={i} className="flex justify-between gap-2 text-xs text-ink-soft">
+                      <span className="min-w-0 truncate">{lang === "zh" ? l.name_zh : l.name_en || l.name_zh} ×{l.qty}</span>
+                      <span className="flex-none tabular-nums">{fmtPrice((Number(l.price) || 0) * l.qty)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {cartLines.length === 0 ? (
               <p className="py-8 text-center text-sm text-ink-faint">{t("empty")}</p>
@@ -432,9 +429,17 @@ export default function PublicMenu() {
                   <input className="input" placeholder={t("note")} value={note} onChange={(e) => setNote(e.target.value)} />
                 </div>
 
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-sm text-ink-soft">{t("total")} <b className="text-ink">${total.toFixed(2)}</b></span>
-                  <button onClick={submit} disabled={submitting} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 px-6 py-2.5 disabled:opacity-50">
+                <div className="mt-4">
+                  {placedTotal > 0 ? (
+                    <div className="mb-3 space-y-1 text-sm">
+                      <div className="flex justify-between text-ink-soft"><span>{t("prevOrdered")}</span><span className="tabular-nums">${placedTotal.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-ink-soft"><span>{t("thisRound")}</span><span className="tabular-nums">${total.toFixed(2)}</span></div>
+                      <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t("grand")}</span><span className="tabular-nums">${grandTotal.toFixed(2)}</span></div>
+                    </div>
+                  ) : (
+                    <div className="mb-3 flex justify-between text-base font-bold text-ink"><span>{t("total")}</span><span className="tabular-nums">${total.toFixed(2)}</span></div>
+                  )}
+                  <button onClick={submit} disabled={submitting} className="w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50">
                     {submitting ? t("submitting") : t("submit")}
                   </button>
                 </div>
