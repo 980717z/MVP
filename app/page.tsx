@@ -287,6 +287,9 @@ export default function Landing() {
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/pricing" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+            {lang === "zh" ? "价格" : "Pricing"}
+          </Link>
           <button
             onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
