@@ -63,8 +63,8 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         <SidebarHead slug={slug} tenant={tenant} />
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
         <div className="border-t border-[#F3F2EE] px-2.5 py-3">
-          <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
-            ⚙️ {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
+          <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
+            {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
           </NavLink>
         </div>
       </aside>
@@ -151,59 +151,54 @@ function NavTree({
   tl: (b: { zh: string; en: string }) => string;
   lang: string;
 }) {
+  // category id → domain, so we can group by the two domains only (no per-category
+  // sub-headings — they create a staircase when each category holds one module).
+  const catDomain = new Map(CATEGORIES.map((c) => [c.id, c.domain]));
+  const modsIn = (domId: string) =>
+    enabled.map((id) => MODULE_BY_ID[id]).filter((m) => m && catDomain.get(m.category) === domId);
+
   return (
     <>
-      <NavLink href={`/${slug}`} active={pathname === `/${slug}`}>
-        ▦ {tl({ zh: "总览", en: "Overview" })}
+      <NavLink href={`/${slug}`} active={pathname === `/${slug}`} icon="▦">
+        {tl({ zh: "总览", en: "Overview" })}
       </NavLink>
 
       {DOMAINS.map((dom) => {
-        const domCats = CATEGORIES.filter((c) => c.domain === dom.id);
-        const hasAny = domCats.some((c) => enabled.some((id) => MODULE_BY_ID[id]?.category === c.id));
-        if (!hasAny) return null;
+        const mods = modsIn(dom.id);
+        if (mods.length === 0) return null;
         return (
-          <div key={dom.id} className="mt-5">
-            <div className="px-2 pb-1 text-[11px] font-bold text-ink">
-              {dom.id === "frontend" ? `🛎️ ${tl({ zh: "前台", en: "Front" })}` : `🗄️ ${tl({ zh: "后台", en: "Back office" })}`}
+          <div key={dom.id} className="mt-4">
+            <div className="px-2.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">
+              {dom.id === "frontend" ? `🛎️ ${tl({ zh: "前台", en: "Front of house" })}` : `🗄️ ${tl({ zh: "后台", en: "Back office" })}`}
             </div>
-            {domCats.map((c) => {
-              const mods = enabled.map((id) => MODULE_BY_ID[id]).filter((m) => m && m.category === c.id);
-              if (mods.length === 0) return null;
-              return (
-                <div key={c.id} className="mt-1">
-                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    {tl(c.label)}
-                  </div>
-                  {mods.map((m) => (
-                    <NavLink key={m!.id} href={`/${slug}/m/${m!.id}`} active={pathname === `/${slug}/m/${m!.id}`}>
-                      {m!.icon} {tl(m!.label)}
-                    </NavLink>
-                  ))}
-                </div>
-              );
-            })}
+            {mods.map((m) => (
+              <NavLink key={m!.id} href={`/${slug}/m/${m!.id}`} active={pathname === `/${slug}/m/${m!.id}`} icon={m!.icon}>
+                {tl(m!.label)}
+              </NavLink>
+            ))}
           </div>
         );
       })}
 
       <div className="mt-4 border-t border-[#F3F2EE] pt-3">
-        <NavLink href={`/${slug}/settings`} active={false}>
-          ➕ {tl({ zh: "增减功能与板块", en: "Add / remove modules" })}
+        <NavLink href={`/${slug}/settings`} active={false} icon="＋">
+          {tl({ zh: "增减功能", en: "Add / remove modules" })}
         </NavLink>
       </div>
     </>
   );
 }
 
-function NavLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+function NavLink({ href, active, icon, children }: { href: string; active: boolean; icon?: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}
-      className={`mb-0.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition ${
+      className={`mb-px flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition ${
         active ? "bg-brand-wash font-semibold text-brand-ink" : "text-ink-soft hover:bg-[#F3F2EE]"
       }`}
     >
-      {children}
+      {icon && <span className="w-5 flex-none text-center text-[15px] leading-none">{icon}</span>}
+      <span className="min-w-0 truncate">{children}</span>
     </Link>
   );
 }
