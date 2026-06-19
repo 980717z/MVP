@@ -33,8 +33,8 @@ const T = {
   },
   comingSoon: { zh: "即将推出", en: "Coming soon" },
   payTitle: {
-    zh: "直接收款：支付宝 · 微信支付",
-    en: "Accept Alipay & WeChat Pay directly",
+    zh: "直接收款：支付宝 · 微信支付 · Apple Pay",
+    en: "Accept Alipay, WeChat Pay & Apple Pay directly",
   },
   payBody: {
     zh: "用顾客习惯的方式收款，无需额外终端或第三方平台抽成。即将上线。",
@@ -262,10 +262,10 @@ export default function Pricing() {
       {/* payments coming soon */}
       <section className="mx-auto mt-6 max-w-5xl px-6">
         <div className="flex flex-col items-start gap-3 rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-50 to-emerald-50 p-6 sm:flex-row sm:items-center">
-          <div className="flex shrink-0 items-center gap-2 text-2xl">
-            <span>💳</span>
-            <span>支付宝</span>
-            <span>微信</span>
+          <div className="flex shrink-0 items-center gap-4">
+            <img src="/logos/alipay.svg" alt="Alipay" className="h-7 w-auto" />
+            <img src="/logos/wechat.svg" alt="WeChat Pay" className="h-7 w-auto" />
+            <img src="/logos/applepay.svg" alt="Apple Pay" className="h-7 w-auto" />
           </div>
           <div className="flex-1">
             <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700">
