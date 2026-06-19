@@ -334,7 +334,7 @@ export default function Landing() {
               <span aria-hidden>→</span>
             </Link>
             <Link
-              href="/login"
+              href="/demo"
               className="inline-flex items-center rounded-full border border-slate-200 bg-white px-6 py-3 text-base font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
             >
               {t(T.ctaDemo)}
@@ -364,7 +364,7 @@ export default function Landing() {
           </div>
 
           <div className="relative z-10">
-            <Dashboard t={t} lang={lang} href={session ? "/app" : "/login"} />
+            <Dashboard t={t} lang={lang} href="/demo" />
           </div>
 
           {/* mobile-only Toronto photo */}
