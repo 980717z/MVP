@@ -23,6 +23,12 @@ alter table public.orders add column if not exists phone text not null default '
 create index if not exists orders_tenant_idx
   on public.orders (tenant_slug, created_at desc);
 
+-- 必填电话：规范化后必须是 10 位数字（与前端校验一致，防止直接调用 API 绕过）。
+-- NOT VALID：只对新插入生效，不会因历史空号行导致迁移失败。
+alter table public.orders drop constraint if exists orders_phone_chk;
+alter table public.orders add constraint orders_phone_chk
+  check (phone ~ '^[0-9]{10}$') not valid;
+
 alter table public.orders enable row level security;
 
 -- 顾客（未登录）可以提交订单到任意已存在的店（FK 保证店存在）

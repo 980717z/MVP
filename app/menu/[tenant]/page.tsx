@@ -16,8 +16,8 @@ const ORDER = [
 type Lang = "zh" | "en";
 
 const T = {
-  zh: { menu: "扫码菜单", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（可选）", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
-  en: { menu: "Digital Menu", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (optional)", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
+  zh: { menu: "扫码菜单", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
+  en: { menu: "Digital Menu", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
 };
 
 export default function PublicMenu() {
@@ -33,6 +33,7 @@ export default function PublicMenu() {
   const [tableNo, setTableNo] = useState("");
   const [lockedTable, setLockedTable] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
+  const [phoneErr, setPhoneErr] = useState(false);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(false);
@@ -79,11 +80,18 @@ export default function PublicMenu() {
   const hotpotSides = useMemo(() => dishes.filter((d) => d.category === "火锅配菜"), [dishes]);
 
   const submit = async () => {
+    // Required phone: strip formatting, drop a NA country-code "1", require 10 digits.
+    const digits = phone.replace(/\D/g, "").replace(/^1(\d{10})$/, "$1");
+    if (digits.length !== 10) {
+      setPhoneErr(true);
+      return;
+    }
+    setPhoneErr(false);
     setSubmitting(true);
     const items: OrderItem[] = cartLines.map((x) => ({
       id: x.d.id, name_zh: x.d.name_zh, name_en: x.d.name_en, price: x.d.price, qty: x.qty,
     }));
-    const res = await createOrder(slug, { items, total, table_no: tableNo, phone, note });
+    const res = await createOrder(slug, { items, total, table_no: tableNo, phone: digits, note });
     setSubmitting(false);
     if (res.error) {
       alert("提交失败：" + res.error);
@@ -349,7 +357,17 @@ export default function PublicMenu() {
                   ) : (
                     <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />
                   )}
-                  <input className="input" type="tel" inputMode="tel" placeholder={t("phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  <div>
+                    <input
+                      className={`input ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
+                      type="tel"
+                      inputMode="tel"
+                      placeholder={t("phone")}
+                      value={phone}
+                      onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
+                    />
+                    {phoneErr && <p className="mt-1 text-xs text-red-600">{t("phoneErr")}</p>}
+                  </div>
                   <input className="input" placeholder={t("note")} value={note} onChange={(e) => setNote(e.target.value)} />
                 </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, type Order } from "@/lib/orders";
@@ -18,17 +18,146 @@ const NEXT: Partial<Record<Order["status"], { to: Order["status"]; label: string
   preparing: { to: "done", label: "标记完成" },
 };
 
+const POLL_MS = 8000;
+
+/** Display phone as (XXX) XXX-XXXX; falls back to raw if not 10 digits. */
+function fmtPhone(p: string) {
+  const d = (p || "").replace(/\D/g, "");
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : p;
+}
+
 export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [tick, setTick] = useState(0);
+  const [unread, setUnread] = useState(0);
+  const [soundOn, setSoundOn] = useState(false);
+
+  const seen = useRef<Set<string>>(new Set()); // order IDs we've already shown
+  const inited = useRef(false); // first successful fetch seeds `seen`, no alert
+  const audioCtx = useRef<AudioContext | null>(null);
+  const baseTitle = useRef<string>("");
+  const soundRef = useRef(false);
 
   useEffect(() => {
-    listOrders(slug).then(setOrders);
-  }, [slug, tick]);
+    try {
+      const on = localStorage.getItem("bento_order_sound") === "on";
+      setSoundOn(on);
+      soundRef.current = on;
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const beep = useCallback(() => {
+    const ctx = audioCtx.current;
+    if (!ctx) return;
+    try {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.value = 0.05;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.18);
+    } catch {
+      /* playback can still be rejected — degrade silently */
+    }
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await listOrders(slug);
+      setOrders(data);
+      const ids = data.map((o) => o.id);
+      if (!inited.current) {
+        // seed from the FIRST successful fetch so mount doesn't alert for existing orders
+        seen.current = new Set(ids);
+        inited.current = true;
+        return;
+      }
+      const fresh = data.filter((o) => !seen.current.has(o.id));
+      ids.forEach((id) => seen.current.add(id));
+      const freshActive = fresh.filter((o) => o.status === "new" || o.status === "preparing");
+      if (freshActive.length > 0) {
+        setUnread((u) => u + freshActive.length);
+        if (soundRef.current) beep();
+      }
+    } catch {
+      // Keep the last good list — a transient/auth error must not blank the kitchen screen.
+    }
+  }, [slug, beep]);
+
+  // Poll while visible; pause when hidden; refetch immediately on return.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!timer) timer = setInterval(load, POLL_MS);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    load();
+    start();
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        setUnread(0); // staff is looking at the screen
+        load();
+        start();
+      } else {
+        stop();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [load]);
+
+  // Flash the tab title while there are unread new orders; always restore it.
+  useEffect(() => {
+    if (!baseTitle.current) baseTitle.current = document.title;
+    if (unread <= 0) {
+      document.title = baseTitle.current;
+      return;
+    }
+    let on = false;
+    const flip = setInterval(() => {
+      on = !on;
+      document.title = on ? `🔔 ${unread} 新订单` : baseTitle.current;
+    }, 1000);
+    return () => {
+      clearInterval(flip);
+      document.title = baseTitle.current;
+    };
+  }, [unread]);
+
+  const enableSound = () => {
+    try {
+      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      audioCtx.current = new Ctor();
+      audioCtx.current.resume?.();
+      beep(); // unlock + confirm via the user gesture
+      setSoundOn(true);
+      soundRef.current = true;
+      localStorage.setItem("bento_order_sound", "on");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const refresh = () => {
+    setUnread(0);
+    load();
+  };
 
   const advance = async (o: Order, to: Order["status"]) => {
     await setOrderStatus(o.id, to);
-    setTick((t) => t + 1);
+    load();
   };
 
   const fmtTime = (iso: string) => {
@@ -47,8 +176,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           <p className="mt-1 text-sm text-ink-soft">{mod.pain.zh}</p>
         </div>
         <div className="flex items-center gap-3">
+          {unread > 0 && <span className="pill bg-red-100 text-red-700">🔔 {unread} 个新订单</span>}
           <span className="pill bg-amber-100 text-amber-700">{active.length} 单待处理</span>
-          <button onClick={() => setTick((t) => t + 1)} className="btn-ghost border border-slate-300 text-sm">刷新</button>
+          {!soundOn && (
+            <button onClick={enableSound} className="btn-ghost border border-slate-300 text-sm" title="新订单提示音">
+              🔔 开启提示音
+            </button>
+          )}
+          <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">刷新</button>
         </div>
       </header>
 
@@ -64,7 +199,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
                   {o.table_no && <span className="text-sm font-medium text-ink">桌号 {o.table_no}</span>}
-                  {o.phone && <a href={`tel:${o.phone}`} className="text-sm text-brand hover:underline">📞 {o.phone}</a>}
+                  {o.phone && (
+                    <a href={`tel:${o.phone.replace(/\D/g, "")}`} className="text-sm text-brand hover:underline">
+                      📞 {fmtPhone(o.phone)}
+                    </a>
+                  )}
                 </div>
                 <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
               </div>
