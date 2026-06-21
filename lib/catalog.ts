@@ -28,6 +28,9 @@ export interface Field {
   required?: boolean;
   /** half-width on the form grid */
   half?: boolean;
+  /** per-unit value (price/rate/unit cost): summing it is meaningless, so stats
+   *  show the average instead of a total. */
+  unit?: boolean;
 }
 
 export interface ComputedRule {
@@ -191,8 +194,8 @@ export const MODULES: ModuleDef[] = [
     },
     fields: [
       { key: "dish", label: { zh: "菜名", en: "Dish" }, type: "text", half: true, required: true },
-      { key: "price", label: { zh: "售价", en: "Price" }, type: "money", half: true },
-      { key: "cost", label: { zh: "成本", en: "Cost" }, type: "money", half: true },
+      { key: "price", label: { zh: "售价", en: "Price" }, type: "money", half: true, unit: true },
+      { key: "cost", label: { zh: "成本", en: "Cost" }, type: "money", half: true, unit: true },
       { key: "soldMonth", label: { zh: "月销量", en: "Sold / month" }, type: "number", suffix: "份", half: true },
       // Auto-calculated, read-only (Ontario HST 13% = 5% federal GST + 8% provincial).
       // Computed in app/[tenant]/m/[moduleId]/page.tsx; soldMonth auto-increments on order completion.
@@ -228,11 +231,13 @@ export const MODULES: ModuleDef[] = [
       { key: "type", label: { zh: "类型", en: "Type" }, type: "select", half: true,
         options: [{ zh: "干货", en: "Dry goods" }, { zh: "蔬菜", en: "Vegetables" }, { zh: "肉类", en: "Meat" }, { zh: "海鲜", en: "Seafood" }, { zh: "冷冻", en: "Frozen" }, { zh: "调料", en: "Seasoning" }] },
       { key: "inQty", label: { zh: "进货", en: "In" }, type: "number", suffix: "kg", half: true },
+      { key: "unitCost", label: { zh: "成本单价", en: "Unit cost" }, type: "money", suffix: "/kg", half: true, unit: true },
       { key: "lossQty", label: { zh: "报废/损耗", en: "Loss" }, type: "number", suffix: "kg", half: true },
       { key: "onHand", label: { zh: "现存", en: "On hand" }, type: "number", suffix: "kg", half: true },
     ],
     outputs: [
-      { zh: "损耗率与损耗金额", en: "Loss rate & dollar value" },
+      { zh: "损耗率与损耗金额（报废 × 成本单价）", en: "Loss rate & dollar value" },
+      { zh: "成本单价可从采购自动带入", en: "Unit cost auto-filled from purchasing" },
       { zh: "低库存预警", en: "Low-stock alerts" },
     ],
     amountKey: "lossQty",
@@ -256,7 +261,7 @@ export const MODULES: ModuleDef[] = [
       { key: "itemType", label: { zh: "类型", en: "Type" }, type: "select", half: true,
         options: [{ zh: "干货", en: "Dry goods" }, { zh: "蔬菜", en: "Vegetables" }, { zh: "肉类", en: "Meat" }, { zh: "海鲜", en: "Seafood" }, { zh: "冷冻", en: "Frozen" }, { zh: "调料", en: "Seasoning" }, { zh: "酒水", en: "Beverages" }, { zh: "其他", en: "Other" }] },
       { key: "qty", label: { zh: "数量", en: "Qty" }, type: "number", half: true },
-      { key: "unitPrice", label: { zh: "单价", en: "Unit price" }, type: "money", half: true },
+      { key: "unitPrice", label: { zh: "单价", en: "Unit price" }, type: "money", half: true, unit: true },
       { key: "total", label: { zh: "金额", en: "Total" }, type: "money", half: true },
       { key: "received", label: { zh: "到货核对", en: "Received OK" }, type: "select", options: yesNo, half: true },
     ],
@@ -413,16 +418,20 @@ export const MODULES: ModuleDef[] = [
       { key: "tips", label: { zh: "小费", en: "Tips" }, type: "money", half: true },
       { key: "expenses", label: { zh: "当日支出", en: "Expenses" }, type: "money", half: true },
       { key: "net", label: { zh: "净收入（已扣小费）", en: "Net (tips excluded)" }, type: "money", half: true },
+      { key: "gap", label: { zh: "对账差额（现金+刷卡−堂食）", en: "Reconciliation gap" }, type: "money", half: true },
     ],
     outputs: [
       { zh: "每日收入汇总 + 对账差额", en: "Daily revenue + reconciliation gap" },
+      { zh: "对账差额 =（现金+刷卡）− 堂食；外卖平台另结，不进钱箱", en: "Gap = (cash+card) − dine-in; delivery settled separately" },
       { zh: "小费单独统计，不计入营业净收入", en: "Tips tracked separately, excluded from net revenue" },
-      { zh: "周/月趋势", en: "Weekly / monthly trends" },
     ],
     amountKey: "net",
     amountLabel: { zh: "今日净收入", en: "Net today" },
     amountKind: "money",
-    computed: [{ target: "net", formula: "subtract", fields: ["dineIn", "delivery", "-tips", "-expenses"] }],
+    computed: [
+      { target: "net", formula: "subtract", fields: ["dineIn", "delivery", "-tips", "-expenses"] },
+      { target: "gap", formula: "subtract", fields: ["cash", "card", "-dineIn"] },
+    ],
   },
 
   // ── Staff ─────────────────────────────────────────────────────────────
@@ -446,15 +455,17 @@ export const MODULES: ModuleDef[] = [
       { key: "start", label: { zh: "上班", en: "Start" }, type: "time", half: true },
       { key: "end", label: { zh: "下班", en: "End" }, type: "time", half: true },
       { key: "hours", label: { zh: "工时", en: "Hours" }, type: "number", suffix: "h", half: true },
-      { key: "rate", label: { zh: "时薪", en: "Rate" }, type: "money", suffix: "/h", half: true },
+      { key: "rate", label: { zh: "时薪", en: "Rate" }, type: "money", suffix: "/h", half: true, unit: true },
+      { key: "pay", label: { zh: "工资", en: "Pay" }, type: "money", half: true },
     ],
     outputs: [
       { zh: "周排班表 + 工时统计", en: "Weekly roster + hour totals" },
-      { zh: "工资预估", en: "Payroll estimate" },
+      { zh: "工资预估 = 工时 × 时薪", en: "Payroll estimate = hours × rate" },
     ],
-    amountKey: "hours",
-    amountLabel: { zh: "今日工时", en: "Hours today" },
-    amountKind: "count",
+    amountKey: "pay",
+    amountLabel: { zh: "今日工资", en: "Pay today" },
+    amountKind: "money",
+    computed: [{ target: "pay", formula: "multiply", fields: ["hours", "rate"] }],
   },
 
   // ── Customers & Marketing ─────────────────────────────────────────────

@@ -168,12 +168,18 @@ async function importCsv(
   return { count };
 }
 
+/** The YYYY-MM-DD a record belongs to: its `date` field, else when it was created.
+ *  (Never `time` — that's HH:MM and breaks date comparisons, e.g. phone orders.) */
+function rowDate(r: RecordRow): string {
+  return r.date || (r.createdAt ? String(r.createdAt).slice(0, 10) : "");
+}
+
 function filterByDateRange(rows: RecordRow[], days: number): RecordRow[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   return rows.filter((r) => {
-    const d = r.date || r.time;
+    const d = rowDate(r);
     return d && d >= cutoffStr;
   });
 }
@@ -219,22 +225,6 @@ export default function ModulePage() {
   );
 
   const rows: RecordRow[] = useMemo(() => {
-    if (moduleId === "stock-loss") {
-      const totals: Record<string, { inQty: number; lossQty: number }> = {};
-      for (const r of rawRows) {
-        const item = r.item || "";
-        if (!item) continue;
-        if (!totals[item]) totals[item] = { inQty: 0, lossQty: 0 };
-        totals[item].inQty += parseFloat(r.inQty) || 0;
-        totals[item].lossQty += parseFloat(r.lossQty) || 0;
-      }
-      return rawRows.map((r) => {
-        const t = totals[r.item || ""];
-        if (!t) return r;
-        const onHand = Math.round((t.inQty - t.lossQty) * 100) / 100;
-        return { ...r, onHand: onHand > 0 ? String(onHand) : "0" };
-      });
-    }
     if (moduleId === "dish-margin") {
       // Ontario sales tax: HST 13% = 5% federal (GST) + 8% provincial.
       const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -251,6 +241,8 @@ export default function ModulePage() {
         };
       });
     }
+    // `现存` is the merchant's stock-take entry. We do NOT auto-compute it from
+    // in − loss: that ignores normal kitchen usage and overstates stock forever.
     return rawRows;
   }, [rawRows, moduleId]);
 
@@ -258,7 +250,7 @@ export default function ModulePage() {
     let result = rows;
     if (dateFrom || dateTo) {
       result = result.filter((r) => {
-        const d = r.date || r.time || "";
+        const d = rowDate(r);
         if (!d) return true;
         if (dateFrom && d < dateFrom) return false;
         if (dateTo && d > dateTo) return false;
@@ -285,17 +277,35 @@ export default function ModulePage() {
   const alerts = useMemo(() => {
     const list: { type: "warn" | "info"; text: string }[] = [];
     if (moduleId === "stock-loss") {
-      const totals: Record<string, number> = {};
+      const latest: Record<string, { d: string; oh: number }> = {};
+      const flow: Record<string, { in: number; loss: number }> = {};
+      let lossAmount = 0;
       for (const r of rows) {
         const item = r.item || "";
         if (!item) continue;
-        const oh = parseFloat(r.onHand) || 0;
-        totals[item] = oh;
+        // 现存取该品项最新一条盘点（按日期，退回创建时间）
+        const d = r.date || (r.createdAt ? String(r.createdAt).slice(0, 10) : "");
+        if (r.onHand != null && r.onHand !== "" && (!latest[item] || d >= latest[item].d)) {
+          latest[item] = { d, oh: parseFloat(r.onHand) || 0 };
+        }
+        const f = (flow[item] ??= { in: 0, loss: 0 });
+        f.in += parseFloat(r.inQty) || 0;
+        f.loss += parseFloat(r.lossQty) || 0;
+        lossAmount += (parseFloat(r.lossQty) || 0) * (parseFloat(r.unitCost) || 0);
       }
+      const totals: Record<string, number> = Object.fromEntries(
+        Object.entries(latest).map(([k, v]) => [k, v.oh])
+      );
+      if (lossAmount > 0) list.push({ type: "warn", text: `💸 累计损耗金额：${money(lossAmount)}（报废 × 成本单价）` });
       const low = Object.entries(totals).filter(([, v]) => v > 0 && v <= 5);
       const zero = Object.entries(totals).filter(([, v]) => v <= 0);
       if (zero.length) list.push({ type: "warn", text: `⚠️ 零库存：${zero.map(([k]) => k).join("、")}` });
       if (low.length) list.push({ type: "warn", text: `📉 低库存（≤5）：${low.map(([k, v]) => `${k}(${v})`).join("、")}` });
+      // 损耗率 = 报废 / 进货；≥10% 视为偏高，提示商家关注
+      const highLoss = Object.entries(flow)
+        .filter(([, f]) => f.in > 0 && f.loss / f.in >= 0.1)
+        .map(([k, f]) => `${k}(${Math.round((f.loss / f.in) * 100)}%)`);
+      if (highLoss.length) list.push({ type: "warn", text: `🗑️ 损耗率偏高（≥10%）：${highLoss.join("、")}` });
     }
     if (moduleId === "group-booking") {
       const today = new Date().toISOString().slice(0, 10);
@@ -318,11 +328,77 @@ export default function ModulePage() {
       const drafts = rows.filter((r) => r.status === "草稿" || r.status === "待发");
       if (drafts.length) list.push({ type: "info", text: `📣 ${drafts.length} 条内容待发布` });
     }
+    if (moduleId === "members") {
+      // 近7天（含今天）生日的会员，按 月-日 比对（忽略年份）
+      const upcoming = new Set<string>();
+      const base = new Date();
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(base);
+        d.setDate(base.getDate() + i);
+        upcoming.add(`${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+      }
+      const bday = rows.filter((r) => r.birthday && upcoming.has(String(r.birthday).slice(5)));
+      if (bday.length) {
+        list.push({
+          type: "info",
+          text: `🎂 近7天 ${bday.length} 位会员生日：${bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")}`,
+        });
+      }
+    }
+    if (moduleId === "daily-close") {
+      // 对账差额 =（现金+刷卡）− 堂食；外卖平台另结，不进钱箱。|差额|≥$1 视为对不上。
+      const off = rows.filter((r) => {
+        if (!r.cash && !r.card && !r.dineIn) return false;
+        const gap = (parseFloat(r.cash) || 0) + (parseFloat(r.card) || 0) - (parseFloat(r.dineIn) || 0);
+        return Math.abs(gap) >= 1;
+      });
+      if (off.length) {
+        list.push({
+          type: "warn",
+          text: `💵 ${off.length} 天钱箱与堂食对不上：${off
+            .slice(0, 5)
+            .map((r) => {
+              const gap = (parseFloat(r.cash) || 0) + (parseFloat(r.card) || 0) - (parseFloat(r.dineIn) || 0);
+              return `${r.date || "?"}(${gap > 0 ? "+" : ""}${Math.round(gap)})`;
+            })
+            .join("、")}`,
+        });
+      }
+    }
+    if (moduleId === "prep-signature") {
+      // 卖断提醒：实际售出 ≥ 备货份数（且有备货）
+      const soldOut = rows.filter((r) => (parseFloat(r.prepped) || 0) > 0 && (parseFloat(r.sold) || 0) >= (parseFloat(r.prepped) || 0));
+      if (soldOut.length) {
+        list.push({
+          type: "warn",
+          text: `🔥 卖断 ${soldOut.length} 次：${Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")}（可能少备了）`,
+        });
+      }
+      // 浪费提醒：剩余/报废合计
+      const waste = rows.reduce((a, r) => a + (parseFloat(r.leftover) || 0), 0);
+      if (waste > 0) list.push({ type: "info", text: `♻️ 累计剩余/报废 ${Math.round(waste)} 份` });
+
+      // 明日备货建议 = round(近7天该菜日均售出 × 1.1)，多备10%防卖断
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const byDish: Record<string, { sold: number; days: Set<string> }> = {};
+      for (const r of rows) {
+        if (!r.dish || !r.date || r.date < cutoffStr) continue;
+        const g = (byDish[r.dish] ??= { sold: 0, days: new Set() });
+        g.sold += parseFloat(r.sold) || 0;
+        g.days.add(r.date);
+      }
+      const suggest = Object.entries(byDish)
+        .filter(([, g]) => g.days.size > 0)
+        .map(([dish, g]) => `${dish} ${Math.round((g.sold / g.days.size) * 1.1)}份`);
+      if (suggest.length) list.push({ type: "info", text: `📋 明日备货建议（近7天均销×1.1）：${suggest.join("、")}` });
+    }
     return list;
   }, [rows, moduleId]);
 
+  // 现存(onHand) 改回手填盘点，不再自动计算；dish-margin 的税额仍自动只读。
   const autoFields = useMemo(() => {
-    if (moduleId === "stock-loss") return new Set(["onHand"]);
     if (moduleId === "dish-margin") return new Set(["revenue", "gst", "pst", "afterTax"]);
     return new Set<string>();
   }, [moduleId]);
@@ -532,17 +608,25 @@ export default function ModulePage() {
           {summableFields
             .filter((f) => f.key !== mod.amountKey)
             .slice(0, mod.amountKey ? 2 : 3)
-            .map((f) => (
-              <div key={f.key} className="card p-4">
-                <div className="text-xs text-ink-faint">{f.label.zh}（合计 / 均值）</div>
-                <div className="mt-1 text-xl font-bold text-ink">
-                  {f.type === "money" ? money(sum(statsRows, f.key)) : num(sum(statsRows, f.key))}
+            .map((f) => {
+              const fmt = (v: number) => (f.type === "money" ? money(v) : num(v));
+              // 单价类字段（售价/时薪/单价…）求和无意义，只展示均值
+              if (f.unit) {
+                return (
+                  <div key={f.key} className="card p-4">
+                    <div className="text-xs text-ink-faint">{f.label.zh}（均值）</div>
+                    <div className="mt-1 text-xl font-bold text-ink">{fmt(avg(statsRows, f.key))}</div>
+                  </div>
+                );
+              }
+              return (
+                <div key={f.key} className="card p-4">
+                  <div className="text-xs text-ink-faint">{f.label.zh}（合计 / 均值）</div>
+                  <div className="mt-1 text-xl font-bold text-ink">{fmt(sum(statsRows, f.key))}</div>
+                  <div className="text-xs text-ink-faint">均值: {fmt(avg(statsRows, f.key))}</div>
                 </div>
-                <div className="text-xs text-ink-faint">
-                  均值: {f.type === "money" ? money(avg(statsRows, f.key)) : num(avg(statsRows, f.key))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
         </div>
       </section>
 
@@ -563,6 +647,9 @@ export default function ModulePage() {
           ))}
         </div>
       )}
+
+      {/* module-specific analytics (毛利排行 / 供应商比价 / 评价类别…) */}
+      <ModuleInsights moduleId={moduleId} rows={rows} />
 
       {/* trend chart */}
       {mod.amountKey && rows.length >= 2 && (
@@ -913,6 +1000,200 @@ function renderCell(field: Field, value: any) {
   if (value === undefined || value === "" || value === null) return <span className="text-slate-300">—</span>;
   if (field.type === "money") return money(value);
   return String(value);
+}
+
+/** Per-module analytics blocks that the generic stats/alerts can't express. */
+function ModuleInsights({ moduleId, rows }: { moduleId: string; rows: RecordRow[] }) {
+  if (moduleId === "dish-margin") return <DishMarginRanking rows={rows} />;
+  if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
+  if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
+  return null;
+}
+
+/** 菜品毛利排行：贡献毛利 =（售价−成本）× 月销量；毛利率 =（售价−成本）/售价。 */
+function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
+  const ranked = useMemo(() => {
+    return rows
+      .map((r) => {
+        const price = parseFloat(r.price) || 0;
+        const cost = parseFloat(r.cost) || 0;
+        const sold = parseFloat(r.soldMonth) || 0;
+        const profit = (price - cost) * sold;
+        const margin = price > 0 ? (price - cost) / price : 0;
+        return { dish: r.dish || "—", price, cost, sold, profit, margin };
+      })
+      .filter((d) => d.price > 0 || d.sold > 0)
+      .sort((a, b) => b.profit - a.profit);
+  }, [rows]);
+
+  if (ranked.length < 2) return null;
+  const top = ranked.slice(0, 3);
+  const bottom = ranked.slice(-3).reverse().filter((d) => !top.includes(d));
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-3 text-sm font-semibold text-ink">毛利排行</div>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 明星菜（贡献毛利最高）</div>
+          {top.map((d) => (
+            <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
+              <span>{d.dish}</span>
+              <span className="font-medium">{money(d.profit)} · {Math.round(d.margin * 100)}%</span>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 拖后腿（贡献毛利最低）</div>
+          {bottom.length ? bottom.map((d) => (
+            <div key={d.dish} className="flex justify-between text-xs text-amber-900">
+              <span>{d.dish}</span>
+              <span className="font-medium">{money(d.profit)} · {Math.round(d.margin * 100)}%</span>
+            </div>
+          )) : <div className="text-xs text-amber-700/60">菜品太少，暂无</div>}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-ink-faint">
+              <th className="py-1.5 pr-3 font-medium">菜名</th>
+              <th className="py-1.5 px-3 font-medium text-right">售价</th>
+              <th className="py-1.5 px-3 font-medium text-right">成本</th>
+              <th className="py-1.5 px-3 font-medium text-right">毛利率</th>
+              <th className="py-1.5 px-3 font-medium text-right">月销</th>
+              <th className="py-1.5 pl-3 font-medium text-right">贡献毛利</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranked.map((d) => (
+              <tr key={d.dish} className="border-b border-slate-100 last:border-0">
+                <td className="py-1.5 pr-3 text-ink">{d.dish}</td>
+                <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.price)}</td>
+                <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.cost)}</td>
+                <td className={`py-1.5 px-3 text-right ${d.margin < 0.3 ? "text-amber-600" : "text-ink-soft"}`}>{Math.round(d.margin * 100)}%</td>
+                <td className="py-1.5 px-3 text-right text-ink-soft">{d.sold}</td>
+                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.profit)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** 供应商比价：同一品项跨供应商的均价对比，标出最低价。 */
+function SupplierCompare({ rows }: { rows: RecordRow[] }) {
+  const items = useMemo(() => {
+    // item → supplier → {sum, n}
+    const map: Record<string, Record<string, { sum: number; n: number }>> = {};
+    for (const r of rows) {
+      const item = r.item || "";
+      const supplier = r.supplier || "";
+      const price = parseFloat(r.unitPrice) || 0;
+      if (!item || !supplier || price <= 0) continue;
+      const s = ((map[item] ??= {})[supplier] ??= { sum: 0, n: 0 });
+      s.sum += price;
+      s.n += 1;
+    }
+    return Object.entries(map)
+      .map(([item, suppliers]) => {
+        const list = Object.entries(suppliers)
+          .map(([supplier, v]) => ({ supplier, avg: v.sum / v.n }))
+          .sort((a, b) => a.avg - b.avg);
+        return { item, list };
+      })
+      .filter((x) => x.list.length >= 2); // 只显示有比价意义的（≥2 家）
+  }, [rows]);
+
+  if (!items.length) return null;
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-1 text-sm font-semibold text-ink">供应商比价</div>
+      <div className="mb-3 text-xs text-ink-faint">同一品项各供应商的平均单价，绿色为最低价</div>
+      <div className="space-y-3">
+        {items.map(({ item, list }) => {
+          const cheapest = list[0].avg;
+          const dearest = list[list.length - 1].avg;
+          const save = dearest - cheapest;
+          return (
+            <div key={item} className="rounded-lg border border-slate-200 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-ink">{item}</span>
+                {save > 0 && (
+                  <span className="text-xs text-emerald-600">最低比最高省 {money(save)}/单位</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                {list.map((s, i) => (
+                  <div key={s.supplier} className="flex items-center gap-2 text-xs">
+                    <span className={`w-28 shrink-0 ${i === 0 ? "font-medium text-emerald-700" : "text-ink-soft"}`}>
+                      {i === 0 ? "✓ " : ""}{s.supplier}
+                    </span>
+                    <div className="h-2 flex-1 rounded bg-slate-100">
+                      <div
+                        className={`h-2 rounded ${i === 0 ? "bg-emerald-400" : "bg-slate-300"}`}
+                        style={{ width: `${Math.max(6, (s.avg / dearest) * 100)}%` }}
+                      />
+                    </div>
+                    <span className={`w-16 shrink-0 text-right ${i === 0 ? "font-medium text-emerald-700" : "text-ink-soft"}`}>
+                      {money(s.avg)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** 评价问题类别统计：各 topic 的条数与平均分。 */
+function ReviewTopics({ rows }: { rows: RecordRow[] }) {
+  const topics = useMemo(() => {
+    const map: Record<string, { n: number; ratingSum: number; ratingN: number }> = {};
+    for (const r of rows) {
+      const topic = r.topic || "";
+      if (!topic) continue;
+      const t = (map[topic] ??= { n: 0, ratingSum: 0, ratingN: 0 });
+      t.n += 1;
+      const rating = parseFloat(r.rating);
+      if (!isNaN(rating)) { t.ratingSum += rating; t.ratingN += 1; }
+    }
+    return Object.entries(map)
+      .map(([topic, v]) => ({ topic, n: v.n, avg: v.ratingN ? v.ratingSum / v.ratingN : null }))
+      .sort((a, b) => b.n - a.n);
+  }, [rows]);
+
+  if (!topics.length) return null;
+  const max = Math.max(...topics.map((t) => t.n), 1);
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-3 text-sm font-semibold text-ink">问题类别统计</div>
+      <div className="space-y-2">
+        {topics.map((t) => (
+          <div key={t.topic} className="flex items-center gap-2 text-xs">
+            <span className="w-16 shrink-0 text-ink-soft">{t.topic}</span>
+            <div className="h-3 flex-1 rounded bg-slate-100">
+              <div
+                className={`h-3 rounded ${t.topic === "好评" ? "bg-emerald-400" : "bg-brand/60"}`}
+                style={{ width: `${(t.n / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-10 shrink-0 text-right font-medium text-ink">{t.n} 条</span>
+            <span className="w-14 shrink-0 text-right text-ink-faint">
+              {t.avg != null ? `${(Math.round(t.avg * 10) / 10)}★` : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function TrendChart({ rows, valueKey, label, isMoney }: { rows: RecordRow[]; valueKey: string; label: string; isMoney?: boolean }) {
