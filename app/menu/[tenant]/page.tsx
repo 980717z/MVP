@@ -115,6 +115,15 @@ export default function PublicMenu() {
       alert("提交失败：" + res.error);
       return;
     }
+    // Fire the kitchen ticket off to the cloud printer. Best-effort: never block
+    // or fail the order if printing is off/unconfigured/offline.
+    if (res.id) {
+      fetch("/api/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: res.id }),
+      }).catch(() => {});
+    }
     setPlaced(true);
     setPlacedOrders((p) => [
       ...p,
