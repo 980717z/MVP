@@ -315,6 +315,19 @@ export default function ModulePage() {
     if (moduleId === "equipment") {
       const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
       if (open.length) list.push({ type: "warn", text: `🔧 ${open.length} 个设备问题待处理：${open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")}` });
+      // 保养到期提醒：下次保养日期已过期或在近7天内
+      const today = new Date().toISOString().slice(0, 10);
+      const soon = addDays(today, 7);
+      const due = rows.filter((r) => r.nextService && r.nextService <= soon);
+      if (due.length) {
+        const overdue = due.filter((r) => r.nextService < today);
+        list.push({
+          type: "warn",
+          text: `🛠️ ${due.length} 台设备保养到期${overdue.length ? `（${overdue.length} 台已过期）` : ""}：${due
+            .map((r) => `${r.equipment || "设备"}(${r.nextService})`)
+            .join("、")}`,
+        });
+      }
     }
     if (moduleId === "reviews") {
       const unreplied = rows.filter((r) => r.replied !== "是" && parseFloat(r.rating) <= 3);

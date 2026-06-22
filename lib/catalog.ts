@@ -343,11 +343,12 @@ export const MODULES: ModuleDef[] = [
     ],
     outputs: [
       { zh: "各平台订单/收入/抽成一张表", en: "All platforms in one table" },
-      { zh: "实收对账，看清平台扣了多少", en: "See exactly what each platform took" },
+      { zh: "实收对账（实收 = 营业额 − 抽成），看清平台扣了多少", en: "Net = gross − commission; see exactly what each platform took" },
     ],
     amountKey: "net",
     amountLabel: { zh: "外卖实收", en: "Delivery net" },
     amountKind: "money",
+    computed: [{ target: "net", formula: "subtract", fields: ["gross", "-commission"] }],
   },
   {
     id: "group-booking",
@@ -367,15 +368,17 @@ export const MODULES: ModuleDef[] = [
       { key: "tables", label: { zh: "桌数", en: "Tables" }, type: "number", half: true },
       { key: "deposit", label: { zh: "订金", en: "Deposit" }, type: "money", half: true },
       { key: "total", label: { zh: "预估总额", en: "Est. total" }, type: "money", half: true },
+      { key: "balance", label: { zh: "待收尾款", en: "Balance due" }, type: "money", half: true },
       { key: "menu", label: { zh: "菜单/要求", en: "Menu / notes" }, type: "textarea" },
     ],
     outputs: [
-      { zh: "预订日历 + 订金台账", en: "Booking calendar + deposit ledger" },
-      { zh: "备货与到店提醒", en: "Prep & arrival reminders" },
+      { zh: "预订台账 + 待收尾款（预估总额 − 订金）", en: "Booking ledger + balance due (est. total − deposit)" },
+      { zh: "近3天到店提醒", en: "Arrival reminders for the next 3 days" },
     ],
     amountKey: "deposit",
     amountLabel: { zh: "已收订金", en: "Deposits held" },
     amountKind: "money",
+    computed: [{ target: "balance", formula: "subtract", fields: ["total", "-deposit"] }],
   },
 
   // ── Finance ───────────────────────────────────────────────────────────
@@ -591,6 +594,7 @@ export const MODULES: ModuleDef[] = [
       { key: "cost", label: { zh: "费用", en: "Cost" }, type: "money", half: true },
       { key: "status", label: { zh: "状态", en: "Status" }, type: "select", half: true,
         options: [{ zh: "待处理", en: "Open" }, { zh: "处理中", en: "In progress" }, { zh: "已完成", en: "Done" }] },
+      { key: "nextService", label: { zh: "下次保养日期", en: "Next service" }, type: "date", half: true },
     ],
     outputs: [
       { zh: "设备维护台账 + 保养到期提醒", en: "Maintenance log + service reminders" },
