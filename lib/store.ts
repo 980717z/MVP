@@ -510,12 +510,13 @@ export async function computeDailyClose(
   slug: string,
   date: string,
 ): Promise<{ dineIn: string; delivery: string; expenses: string; tips: string }> {
-  const [{ data: salesRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }] =
+  const [{ data: salesRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }, { data: equipRecs }] =
     await Promise.all([
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "sales"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "delivery-agg"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "purchasing"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "group-booking"),
+      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "equipment"),
     ]);
 
   let dineIn = 0;
@@ -539,6 +540,9 @@ export async function computeDailyClose(
   for (const r of purchaseRecs ?? []) {
     if (r.data?.date === date) expenses += parseFloat(r.data.total) || 0;
   }
+  for (const r of equipRecs ?? []) {
+    if (r.data?.date === date) expenses += parseFloat(r.data.cost) || 0;
+  }
 
   const r2 = (n: number) => String(Math.round(n * 100) / 100);
   return { dineIn: r2(dineIn), delivery: r2(delivery), expenses: r2(expenses), tips: r2(tips) };
@@ -546,12 +550,13 @@ export async function computeDailyClose(
 
 /** Auto-create or update daily-close records for all dates with activity. */
 export async function autoSyncDailyClose(slug: string): Promise<void> {
-  const [{ data: salesRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }, { data: closeRecs }] =
+  const [{ data: salesRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }, { data: equipRecs }, { data: closeRecs }] =
     await Promise.all([
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "sales"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "delivery-agg"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "purchasing"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "group-booking"),
+      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "equipment"),
       supabase.from("records").select("*").eq("tenant_slug", slug).eq("module_id", "daily-close"),
     ]);
 
@@ -561,6 +566,7 @@ export async function autoSyncDailyClose(slug: string): Promise<void> {
   for (const r of deliveryRecs ?? []) if (r.data?.date) dates.add(r.data.date);
   for (const r of purchaseRecs ?? []) if (r.data?.date) dates.add(r.data.date);
   for (const r of groupRecs ?? []) if (r.data?.date) dates.add(r.data.date);
+  for (const r of equipRecs ?? []) if (r.data?.date && (parseFloat(r.data.cost) || 0) > 0) dates.add(r.data.date);
 
   const closeByDate = new Map((closeRecs ?? []).map((r) => [r.data?.date, r]));
   const r2 = (n: number) => String(Math.round(n * 100) / 100);
@@ -581,6 +587,9 @@ export async function autoSyncDailyClose(slug: string): Promise<void> {
     }
     for (const r of purchaseRecs ?? []) {
       if (r.data?.date === date) expenses += parseFloat(r.data.total) || 0;
+    }
+    for (const r of equipRecs ?? []) {
+      if (r.data?.date === date) expenses += parseFloat(r.data.cost) || 0;
     }
 
     const d = r2(dineIn), del = r2(delivery), exp = r2(expenses), tip = r2(tips);
