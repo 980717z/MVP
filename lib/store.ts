@@ -328,7 +328,7 @@ export async function recordOrderSale(
 
   const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
   const now = new Date();
-  const date = now.toISOString().slice(0, 10);
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
 
@@ -399,17 +399,41 @@ export async function postOrderSales(
   }
 }
 
-/** Pull dishes from 菜单设置 into 菜品销量与毛利 (dish-margin) records. */
-export async function syncMenuToMargin(slug: string): Promise<{ added: number; updated: number }> {
+/** Pull dishes from 菜单设置 into 菜品销量 (dish-margin) records. */
+let _syncMenuLock: Promise<{ added: number; updated: number }> | null = null;
+export function syncMenuToMargin(slug: string): Promise<{ added: number; updated: number }> {
+  if (_syncMenuLock) return _syncMenuLock;
+  _syncMenuLock = _syncMenuToMarginImpl(slug).finally(() => { _syncMenuLock = null; });
+  return _syncMenuLock;
+}
+async function _syncMenuToMarginImpl(slug: string): Promise<{ added: number; updated: number }> {
   const [{ data: menuItems }, { data: existing }] = await Promise.all([
     supabase.from("menu_items").select("*").eq("tenant_slug", slug),
     supabase.from("records").select("*").eq("tenant_slug", slug).eq("module_id", "dish-margin"),
   ]);
   const dishes = menuItems ?? [];
-  const byDish = new Map((existing ?? []).map((r) => [r.data?.dish, r]));
+  // dedupe: if multiple records exist for the same dish, keep the one with the most sales
+  const byDish = new Map<string, typeof existing extends (infer T)[] | null ? T : never>();
+  for (const r of existing ?? []) {
+    const name = r.data?.dish;
+    if (!name) continue;
+    const prev = byDish.get(name);
+    if (!prev || (parseFloat(r.data?.soldMonth) || 0) > (parseFloat(prev.data?.soldMonth) || 0)) {
+      byDish.set(name, r);
+    }
+  }
+  // remove duplicate records
+  for (const r of existing ?? []) {
+    const name = r.data?.dish;
+    if (name && byDish.get(name)?.id !== r.id) {
+      await supabase.from("records").delete().eq("id", r.id);
+    }
+  }
   let added = 0, updated = 0;
   for (const d of dishes) {
-    const match = byDish.get(d.name_zh);
+    const name = (d.name_zh || "").trim();
+    if (!name) continue;
+    const match = byDish.get(name);
     if (match) {
       const prev = match.data ?? {};
       const price = d.price != null ? String(d.price) : prev.price ?? "";
@@ -421,8 +445,9 @@ export async function syncMenuToMargin(slug: string): Promise<{ added: number; u
       await supabase.from("records").insert({
         tenant_slug: slug,
         module_id: "dish-margin",
-        data: { dish: d.name_zh, price: d.price != null ? String(d.price) : "", cost: "", soldMonth: "" },
+        data: { dish: name, price: d.price != null ? String(d.price) : "", soldMonth: "" },
       });
+      byDish.set(name, { id: "pending" } as any);
       added++;
     }
   }
@@ -485,10 +510,9 @@ export async function computeDailyClose(
   slug: string,
   date: string,
 ): Promise<{ dineIn: string; delivery: string; expenses: string; tips: string }> {
-  const [{ data: salesRecs }, { data: phoneRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }] =
+  const [{ data: salesRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }] =
     await Promise.all([
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "sales"),
-      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "phone-orders"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "delivery-agg"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "purchasing"),
       supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "group-booking"),
@@ -498,12 +522,6 @@ export async function computeDailyClose(
   let tips = 0;
   for (const r of salesRecs ?? []) {
     if (r.data?.date === date) dineIn += parseFloat(r.data.subtotal) || 0;
-  }
-  for (const r of phoneRecs ?? []) {
-    if (r.data?.date === date && r.data?.status !== "已取消") {
-      dineIn += parseFloat(r.data?.amount) || 0;
-      tips += parseFloat(r.data?.tips) || 0;
-    }
   }
   for (const r of groupRecs ?? []) {
     if (r.data?.date === date) {
@@ -524,6 +542,66 @@ export async function computeDailyClose(
 
   const r2 = (n: number) => String(Math.round(n * 100) / 100);
   return { dineIn: r2(dineIn), delivery: r2(delivery), expenses: r2(expenses), tips: r2(tips) };
+}
+
+/** Auto-create or update daily-close records for all dates with activity. */
+export async function autoSyncDailyClose(slug: string): Promise<void> {
+  const [{ data: salesRecs }, { data: deliveryRecs }, { data: purchaseRecs }, { data: groupRecs }, { data: closeRecs }] =
+    await Promise.all([
+      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "sales"),
+      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "delivery-agg"),
+      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "purchasing"),
+      supabase.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "group-booking"),
+      supabase.from("records").select("*").eq("tenant_slug", slug).eq("module_id", "daily-close"),
+    ]);
+
+  // collect all dates with activity
+  const dates = new Set<string>();
+  for (const r of salesRecs ?? []) if (r.data?.date) dates.add(r.data.date);
+  for (const r of deliveryRecs ?? []) if (r.data?.date) dates.add(r.data.date);
+  for (const r of purchaseRecs ?? []) if (r.data?.date) dates.add(r.data.date);
+  for (const r of groupRecs ?? []) if (r.data?.date) dates.add(r.data.date);
+
+  const closeByDate = new Map((closeRecs ?? []).map((r) => [r.data?.date, r]));
+  const r2 = (n: number) => String(Math.round(n * 100) / 100);
+
+  for (const date of dates) {
+    let dineIn = 0, tips = 0, delivery = 0, expenses = 0;
+    for (const r of salesRecs ?? []) {
+      if (r.data?.date === date) dineIn += parseFloat(r.data.subtotal) || 0;
+    }
+    for (const r of groupRecs ?? []) {
+      if (r.data?.date === date) {
+        dineIn += (parseFloat(r.data?.total) || 0) - (parseFloat(r.data?.balance) || 0);
+        tips += parseFloat(r.data?.tips) || 0;
+      }
+    }
+    for (const r of deliveryRecs ?? []) {
+      if (r.data?.date === date) delivery += parseFloat(r.data.net) || 0;
+    }
+    for (const r of purchaseRecs ?? []) {
+      if (r.data?.date === date) expenses += parseFloat(r.data.total) || 0;
+    }
+
+    const d = r2(dineIn), del = r2(delivery), exp = r2(expenses), tip = r2(tips);
+    const net = r2(dineIn + delivery - tips - expenses);
+    const match = closeByDate.get(date);
+
+    if (match) {
+      const prev = match.data ?? {};
+      if (prev.dineIn !== d || prev.delivery !== del || prev.expenses !== exp || prev.tips !== tip) {
+        await supabase.from("records").update({
+          data: { ...prev, date, dineIn: d, delivery: del, expenses: exp, tips: tip, net },
+        }).eq("id", match.id);
+      }
+    } else {
+      await supabase.from("records").insert({
+        tenant_slug: slug,
+        module_id: "daily-close",
+        data: { date, dineIn: d, delivery: del, expenses: exp, tips: tip, net },
+      });
+    }
+  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────

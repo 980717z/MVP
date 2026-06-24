@@ -12,6 +12,7 @@ import {
   syncMenuToMargin,
   syncPurchasingToStock,
   computeDailyClose,
+  autoSyncDailyClose,
   loadTierRules,
   saveTierRules,
   reapplyTiers,
@@ -21,7 +22,6 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
-import { GST_RATE, PST_RATE } from "@/lib/tax";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
@@ -347,7 +347,6 @@ export default function ModulePage() {
   const [tick, setTick] = useState(0);
   const [statsRange, setStatsRange] = useState<7 | 30 | 0>(0);
   const [importing, setImporting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
@@ -363,6 +362,8 @@ export default function ModulePage() {
 
   useEffect(() => {
     getTenant(slug).then(setTenant);
+    if (moduleId === "dish-margin") syncMenuToMargin(slug);
+    if (moduleId === "daily-close") autoSyncDailyClose(slug).then(() => getTenant(slug).then(setTenant));
   }, [slug, moduleId, tick]);
 
   useEffect(() => {
@@ -379,19 +380,10 @@ export default function ModulePage() {
 
   const rows: RecordRow[] = useMemo(() => {
     if (moduleId === "dish-margin") {
-      // Ontario sales tax: HST 13% = 5% federal (GST) + 8% provincial.
       const r2 = (n: number) => Math.round(n * 100) / 100;
       return rawRows.map((r) => {
         const revenue = r2((parseFloat(r.price) || 0) * (parseFloat(r.soldMonth) || 0));
-        const gst = r2(revenue * GST_RATE);
-        const pst = r2(revenue * PST_RATE);
-        return {
-          ...r,
-          revenue: String(revenue),
-          gst: String(gst),
-          pst: String(pst),
-          afterTax: String(r2(revenue + gst + pst)),
-        };
+        return { ...r, revenue: String(revenue) };
       });
     }
     if (moduleId === "stock-loss") {
@@ -474,8 +466,11 @@ export default function ModulePage() {
         });
       }
     }
+    if (moduleId === "daily-close") {
+      result = [...result].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    }
     return result;
-  }, [rows, colFilters, dateFrom, dateTo]);
+  }, [rows, colFilters, dateFrom, dateTo, moduleId]);
 
   const hasAnyFilter = Object.values(colFilters).some((s) => s.size > 0) || !!dateFrom || !!dateTo;
 
@@ -595,7 +590,7 @@ export default function ModulePage() {
   }, [rows, moduleId]);
 
   const autoFields = useMemo(() => {
-    if (moduleId === "dish-margin") return new Set(["revenue", "gst", "pst", "afterTax"]);
+    if (moduleId === "dish-margin") return new Set(["revenue"]);
     if (moduleId === "stock-loss") return new Set(["inQty", "unitCost", "onHand", "scrapValue", "lossValue"]);
     return new Set<string>();
   }, [moduleId]);
@@ -621,6 +616,29 @@ export default function ModulePage() {
     }
     return mod.fields;
   }, [mod, moduleId]);
+
+  useEffect(() => {
+    if (!open || moduleId !== "daily-close") return;
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const date = form.date || localDate;
+    setAutoFilling(true);
+    computeDailyClose(slug, date).then((result) => {
+      setForm((prev) => {
+        const next = {
+          ...prev,
+          date,
+          dineIn: result.dineIn !== "0" ? result.dineIn : prev.dineIn ?? "",
+          delivery: result.delivery !== "0" ? result.delivery : prev.delivery ?? "",
+          expenses: result.expenses !== "0" ? result.expenses : prev.expenses ?? "",
+          tips: result.tips !== "0" ? result.tips : prev.tips ?? "",
+        };
+        return applyComputed(next, mod?.computed);
+      });
+      setAutoFilling(false);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const updateForm = useCallback(
     (key: string, value: string) => {
@@ -659,7 +677,7 @@ export default function ModulePage() {
     if (moduleId === "purchasing") {
       await syncPurchasingToStock(slug);
     }
-    const orderModules = ["phone-orders", "group-booking"];
+    const orderModules = ["group-booking"];
     if (orderModules.includes(moduleId) && form.phone) {
       await syncMemberFromOrder(
         slug,
@@ -695,7 +713,6 @@ export default function ModulePage() {
     setEditForm({});
   };
 
-  const total = mod.amountKey ? sum(rows, mod.amountKey) : 0;
   const statsRows = statsRange > 0 ? filterByDateRange(rows, statsRange) : rows;
   const summableFields = getMoneyFields(mod);
 
@@ -746,21 +763,6 @@ export default function ModulePage() {
                 }}
               />
             </label>
-            {moduleId === "dish-margin" && (
-              <button
-                className="btn-ghost border border-slate-300"
-                disabled={syncing}
-                onClick={async () => {
-                  setSyncing(true);
-                  const { added, updated } = await syncMenuToMargin(slug);
-                  setSyncing(false);
-                  setTick((t) => t + 1);
-                  alert(`从菜单导入完成：新增 ${added} 道菜，更新 ${updated} 道菜售价`);
-                }}
-              >
-                {syncing ? "同步中…" : "从菜单导入"}
-              </button>
-            )}
           </div>
         )}
       </header>
@@ -871,38 +873,8 @@ export default function ModulePage() {
       {open && enabled && (
         <section className="card mb-6 p-5">
           <div className="mb-3 text-sm font-semibold text-ink">新增记录</div>
-          {moduleId === "daily-close" && (
-            <div className="mb-4">
-              <button
-                className="btn-ghost border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                disabled={autoFilling}
-                onClick={async () => {
-                  const date = form.date || new Date().toISOString().slice(0, 10);
-                  setAutoFilling(true);
-                  try {
-                    const result = await computeDailyClose(slug, date);
-                    setForm((prev) => {
-                      const next = {
-                        ...prev,
-                        date,
-                        dineIn: result.dineIn !== "0" ? result.dineIn : prev.dineIn ?? "",
-                        delivery: result.delivery !== "0" ? result.delivery : prev.delivery ?? "",
-                        expenses: result.expenses !== "0" ? result.expenses : prev.expenses ?? "",
-                        tips: result.tips !== "0" ? result.tips : prev.tips ?? "",
-                      };
-                      return applyComputed(next, mod?.computed);
-                    });
-                  } finally {
-                    setAutoFilling(false);
-                  }
-                }}
-              >
-                {autoFilling ? "汇算中…" : "自动汇算（从订单 + 采购拉取）"}
-              </button>
-              <p className="mt-1.5 text-xs text-ink-faint">
-                根据所选日期，自动汇总：在线订单 + 电话/微信订单 + 团餐 → 堂食，外卖平台实收 → 外卖，采购金额 → 当日支出，小费汇总 → 小费
-              </p>
-            </div>
+          {moduleId === "daily-close" && autoFilling && (
+            <div className="mb-4 text-xs text-ink-faint">汇算中…</div>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             {mod.fields
@@ -1230,7 +1202,7 @@ function FieldInput({
 
 /** Per-module analytics blocks that the generic stats/alerts can't express. */
 function ModuleInsights({ moduleId, rows, slug }: { moduleId: string; rows: RecordRow[]; slug: string }) {
-  if (moduleId === "dish-margin") return <DishMarginRanking rows={rows} />;
+  if (moduleId === "dish-margin") return <DishSalesRanking rows={rows} />;
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
   if (moduleId === "members") return <TierSettings slug={slug} />;
@@ -1324,20 +1296,17 @@ function TierSettings({ slug }: { slug: string }) {
   );
 }
 
-/** 菜品毛利排行：贡献毛利 =（售价−成本）× 月销量；毛利率 =（售价−成本）/售价。 */
-function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
+function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
   const ranked = useMemo(() => {
     return rows
       .map((r) => {
         const price = parseFloat(r.price) || 0;
-        const cost = parseFloat(r.cost) || 0;
         const sold = parseFloat(r.soldMonth) || 0;
-        const profit = (price - cost) * sold;
-        const margin = price > 0 ? (price - cost) / price : 0;
-        return { dish: r.dish || "—", price, cost, sold, profit, margin };
+        const revenue = price * sold;
+        return { dish: r.dish || "—", price, sold, revenue };
       })
-      .filter((d) => d.price > 0 || d.sold > 0)
-      .sort((a, b) => b.profit - a.profit);
+      .filter((d) => d.sold > 0)
+      .sort((a, b) => b.sold - a.sold);
   }, [rows]);
 
   if (ranked.length < 2) return null;
@@ -1346,37 +1315,35 @@ function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">毛利排行</div>
+      <div className="mb-3 text-sm font-semibold text-ink">销量排行</div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 明星菜（贡献毛利最高）</div>
+          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 最受欢迎</div>
           {top.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{money(d.profit)} · {Math.round(d.margin * 100)}%</span>
+              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
             </div>
           ))}
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 拖后腿（贡献毛利最低）</div>
+          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 销量最低</div>
           {bottom.length ? bottom.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-amber-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{money(d.profit)} · {Math.round(d.margin * 100)}%</span>
+              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
             </div>
           )) : <div className="text-xs text-amber-700/60">菜品太少，暂无</div>}
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] text-xs">
+        <table className="w-full min-w-[320px] text-xs">
           <thead>
             <tr className="border-b border-slate-200 text-left text-ink-faint">
               <th className="py-1.5 pr-3 font-medium">菜名</th>
               <th className="py-1.5 px-3 font-medium text-right">售价</th>
-              <th className="py-1.5 px-3 font-medium text-right">成本</th>
-              <th className="py-1.5 px-3 font-medium text-right">毛利率</th>
               <th className="py-1.5 px-3 font-medium text-right">月销</th>
-              <th className="py-1.5 pl-3 font-medium text-right">贡献毛利</th>
+              <th className="py-1.5 pl-3 font-medium text-right">销售额</th>
             </tr>
           </thead>
           <tbody>
@@ -1384,10 +1351,8 @@ function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
               <tr key={d.dish} className="border-b border-slate-100 last:border-0">
                 <td className="py-1.5 pr-3 text-ink">{d.dish}</td>
                 <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.price)}</td>
-                <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.cost)}</td>
-                <td className={`py-1.5 px-3 text-right ${d.margin < 0.3 ? "text-amber-600" : "text-ink-soft"}`}>{Math.round(d.margin * 100)}%</td>
                 <td className="py-1.5 px-3 text-right text-ink-soft">{d.sold}</td>
-                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.profit)}</td>
+                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.revenue)}</td>
               </tr>
             ))}
           </tbody>
