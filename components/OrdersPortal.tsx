@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, type Order } from "@/lib/orders";
-import { postOrderSales, recordOrderSale } from "@/lib/store";
+import { postOrderSales, recordOrderSale, listRecords } from "@/lib/store";
 import { price as fmtPrice } from "@/lib/format";
+import { computeTax } from "@/lib/tax";
 
 const STATUS: Record<Order["status"], { label: string; cls: string }> = {
   new: { label: "新单", cls: "bg-amber-100 text-amber-700" },
@@ -31,6 +32,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [orders, setOrders] = useState<Order[]>([]);
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
+  const [posted, setPosted] = useState<Set<string>>(new Set()); // order ids already in the 销售流水 ledger
 
   const seen = useRef<Set<string>>(new Set()); // order IDs we've already shown
   const inited = useRef(false); // first successful fetch seeds `seen`, no alert
@@ -70,6 +72,10 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     try {
       const data = await listOrders(slug);
       setOrders(data);
+      // which orders are already in the sales ledger (so the button can show ✓ 已入表)
+      listRecords(slug, "sales")
+        .then((s) => setPosted(new Set(s.map((r) => r.orderId).filter(Boolean))))
+        .catch(() => {});
       const ids = data.map((o) => o.id);
       if (!inited.current) {
         // seed from the FIRST successful fetch so mount doesn't alert for existing orders
@@ -172,6 +178,19 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     load();
   };
 
+  // 一键入表 — record this order into the 销售流水 ledger (+ per-dish counts). Idempotent.
+  const addToSales = async (o: Order) => {
+    setPosted((p) => new Set(p).add(o.id)); // optimistic
+    try {
+      await Promise.all([
+        postOrderSales(slug, o.items),
+        recordOrderSale(slug, { id: o.id, total: o.total, items: o.items, source: "qr" }),
+      ]);
+    } catch (e) {
+      console.error("一键入表", e);
+    }
+  };
+
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -231,8 +250,33 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
               {o.note && <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">备注：{o.note}</div>}
 
-              <div className="mt-3 flex items-center justify-between">
-                <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
+              {/* tax detail + total — Ontario HST 13% (5% federal GST + 8% provincial) */}
+              {(() => {
+                const tx = computeTax(Number(o.total) || 0, false);
+                return (
+                  <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs tabular-nums text-ink-soft">
+                    <div className="flex justify-between"><span>税前 Subtotal</span><span>{fmtPrice(tx.subtotal)}</span></div>
+                    <div className="flex justify-between"><span>联邦税 GST 5%</span><span>{fmtPrice(tx.gst)}</span></div>
+                    <div className="flex justify-between"><span>省税 PST 8%</span><span>{fmtPrice(tx.pst)}</span></div>
+                    <div className="mt-1 flex justify-between border-t border-slate-200 pt-1 text-sm font-bold text-ink">
+                      <span>税后合计 Total</span><span>{fmtPrice(tx.total)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="mt-3 flex items-center justify-between gap-2">
+                {posted.has(o.id) ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">✓ 已入表 Added</span>
+                ) : (
+                  <button
+                    onClick={() => addToSales(o)}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-wash px-3 py-1.5 text-xs font-bold text-brand-ink transition hover:bg-brand/15"
+                    title="记入销售流水"
+                  >
+                    🧾 一键入表
+                  </button>
+                )}
                 <div className="flex gap-2">
                   {o.status !== "cancelled" && o.status !== "done" && (
                     <button onClick={() => advance(o, "cancelled")} className="text-xs text-ink-faint hover:text-red-600">取消</button>
