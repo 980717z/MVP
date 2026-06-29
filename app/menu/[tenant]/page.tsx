@@ -237,7 +237,7 @@ export default function PublicMenu() {
       <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4">
+        <div className="mx-auto flex max-w-[440px] items-center gap-3 px-5 py-4">
           {/* shopping cart — top-left; shows subtotal, opens the order sheet */}
           {(count > 0 || placedTotal > 0) && (
             <button
@@ -279,7 +279,7 @@ export default function PublicMenu() {
         </div>
       )}
 
-      <div className="mx-auto max-w-2xl px-5 py-6">
+      <div className="mx-auto max-w-[440px] px-5 py-6">
         {loaded && dishes.length === 0 && <p className="py-20 text-center text-sm text-ink-faint">菜单还没准备好。</p>}
 
         {/* search bar — filters across all categories */}
@@ -361,7 +361,7 @@ export default function PublicMenu() {
       {/* cart sheet */}
       {open && (
         <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={() => setOpen(false)}>
-          <div className="mx-auto max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto max-h-[85vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <div className="text-lg font-bold text-ink">{t("cart")}</div>
               <button onClick={() => setOpen(false)} className="text-ink-faint">✕</button>
