@@ -16,6 +16,8 @@ export interface User {
   name: string;
   role: Role;
   access: string[]; // module ids; [] = all enabled
+  email?: string | null;
+  pending?: boolean; // invited but hasn't signed up / linked yet
 }
 
 export interface RecordRow {
@@ -83,6 +85,8 @@ export async function getTenant(slug: string): Promise<Tenant | undefined> {
     name: m.name,
     role: m.role as Role,
     access: Array.isArray(m.access) ? m.access : [],
+    email: m.email ?? null,
+    pending: !m.member_id,
   }));
 
   const records: Record<string, RecordRow[]> = {};
@@ -156,6 +160,34 @@ export async function addMember(
 export async function removeMember(id: string): Promise<void> {
   const { error } = await supabase.from("members").delete().eq("id", id);
   if (error) console.error("removeMember", error);
+}
+
+/** Invite a staff member by email — creates a pending member row (no auth account
+ *  yet). They get access once they sign up with this email (see claimInvites). */
+export async function inviteMember(
+  slug: string,
+  user: { name: string; email: string; role: Role; access: string[] },
+): Promise<{ error?: string }> {
+  const email = user.email.trim().toLowerCase();
+  const { error } = await supabase.from("members").insert({
+    tenant_slug: slug,
+    name: user.name.trim() || email,
+    email,
+    role: user.role,
+    access: user.role === "owner" ? [] : user.access,
+  });
+  if (error) return { error: error.message };
+  return {};
+}
+
+/** After login, link any pending invites for this user's email to their account. */
+export async function claimInvites(): Promise<number> {
+  const { data, error } = await supabase.rpc("claim_invites");
+  if (error) {
+    console.error("claimInvites", error);
+    return 0;
+  }
+  return (data as number) ?? 0;
 }
 
 export async function addRecord(

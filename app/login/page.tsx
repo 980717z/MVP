@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { claimInvites } from "@/lib/store";
 
 export default function Login() {
   const router = useRouter();
@@ -16,6 +17,11 @@ export default function Login() {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace("/app");
     });
+    // Invite link: /login?invite=1&email=… → prefill email, default to sign-up.
+    const params = new URLSearchParams(window.location.search);
+    const inviteEmail = params.get("email");
+    if (inviteEmail) setEmail(inviteEmail);
+    if (params.get("invite") === "1") setMode("signup");
   }, [router]);
 
   const submit = async () => {
@@ -27,11 +33,16 @@ export default function Login() {
         if (error) throw error;
         // If email confirmation is OFF, a session is returned immediately.
         const { data } = await supabase.auth.getSession();
-        if (data.session) router.replace("/app");
-        else setMsg("注册成功。如开启了邮箱验证，请查收邮件后再登录。");
+        if (data.session) {
+          await claimInvites(); // link any pending invites for this email
+          router.replace("/app");
+        } else {
+          setMsg("注册成功。如开启了邮箱验证，请查收邮件确认后再登录。");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        await claimInvites();
         router.replace("/app");
       }
     } catch (e: any) {
