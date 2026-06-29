@@ -12,6 +12,8 @@ import {
   type Tenant,
 } from "@/lib/store";
 import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategoriesInDomain, readyDomains } from "@/lib/catalog";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/useAuth";
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: "老板（全部权限）",
@@ -81,6 +83,9 @@ export default function Settings() {
     <main className="px-6 py-8 lg:px-10">
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
       <h1 className="mt-3 mb-6 text-2xl font-bold text-ink">设置</h1>
+
+      {/* ── Account & login ──────────────────────────────── */}
+      <AccountLogin />
 
       {/* ── Users ─────────────────────────────────────────── */}
       <section className="card mb-8 p-5">
@@ -214,5 +219,52 @@ export default function Settings() {
         </div>
       </section>
     </main>
+  );
+}
+
+/** Account & login: shows the current login and lets the owner change the password anytime. */
+function AccountLogin() {
+  const { email } = useAuth();
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const change = async () => {
+    if (pw.length < 6) { setMsg({ ok: false, text: "密码至少 6 位 / At least 6 characters" }); return; }
+    if (pw !== pw2) { setMsg({ ok: false, text: "两次输入不一致 / Passwords don't match" }); return; }
+    setBusy(true); setMsg(null);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) { setMsg({ ok: false, text: error.message }); return; }
+    setPw(""); setPw2("");
+    setMsg({ ok: true, text: "密码已更新 / Password updated" });
+  };
+
+  return (
+    <section className="card mb-8 p-5">
+      <h2 className="mb-1 text-lg font-semibold text-ink">账户与登录 Account &amp; login</h2>
+      <p className="mb-4 text-sm text-ink-soft">当前登录账号，可随时修改密码。Your current login — change the password anytime.</p>
+
+      <div className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+        <div className="text-xs text-ink-faint">登录用户名 Login</div>
+        <div className="font-medium text-ink">{email ?? "…"}</div>
+      </div>
+
+      <div className="grid gap-3 sm:max-w-sm">
+        <div>
+          <label className="label">新密码 New password</label>
+          <input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="至少 6 位 / min 6" />
+        </div>
+        <div>
+          <label className="label">确认新密码 Confirm</label>
+          <input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && change()} />
+        </div>
+        {msg && <div className={`text-sm ${msg.ok ? "text-brand" : "text-red-600"}`}>{msg.text}</div>}
+        <button className="btn-primary w-fit" onClick={change} disabled={busy || !pw || !pw2}>
+          {busy ? "更新中… / Saving…" : "修改密码 Change password"}
+        </button>
+      </div>
+    </section>
   );
 }
