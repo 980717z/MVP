@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef, type ReactElement } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, Fragment, type ReactElement } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -8,6 +8,7 @@ import {
   deleteRecord,
   updateRecord,
   getTenant,
+  listRecords,
   syncMemberFromOrder,
   syncMenuToMargin,
   syncPurchasingToStock,
@@ -30,10 +31,31 @@ const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElem
   "sales": SalesPortal,
 };
 
+/** "HH:MM" → minutes since midnight, or NaN if not a valid time. */
+function timeToMinutes(t: string | undefined): number {
+  if (!t) return NaN;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return NaN;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
 function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Record<string, string> {
   if (!rules) return form;
   const next = { ...form };
   for (const rule of rules) {
+    if (rule.formula === "hoursBetween") {
+      const [startKey, endKey] = rule.fields;
+      const start = timeToMinutes(next[startKey]);
+      const end = timeToMinutes(next[endKey]);
+      if (isNaN(start) || isNaN(end)) {
+        next[rule.target] = "";
+      } else {
+        let mins = end - start;
+        if (mins < 0) mins += 24 * 60; // overnight shift
+        next[rule.target] = String(Math.round((mins / 60) * 100) / 100);
+      }
+      continue;
+    }
     const vals = rule.fields.map((f) => {
       const neg = f.startsWith("-");
       const key = neg ? f.slice(1) : f;
@@ -59,9 +81,32 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Monday (YYYY-MM-DD) of the week containing dateStr. */
+function mondayOf(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "5月26日" from a YYYY-MM-DD string. */
+function fmtMonthDay(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 function getMoneyFields(mod: ModuleDef): Field[] {
   return mod.fields.filter((f) => f.type === "money" || f.type === "number");
 }
+
+/** Quick shift-time presets for the scheduling module's start/end fields.
+ *  Default times; a tenant can override them (stored in the "scheduling_presets" record). */
+const SHIFT_PRESETS: { key: string; name: string; start: string; end: string }[] = [
+  { key: "morning", name: "早班", start: "09:00", end: "17:00" },
+  { key: "afternoon", name: "午班", start: "12:00", end: "20:00" },
+  { key: "evening", name: "晚班", start: "17:00", end: "23:00" },
+];
 
 function avg(rows: any[], key: string): number {
   if (!rows.length) return 0;
@@ -194,7 +239,9 @@ export default function ModulePage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
-  const [statsRange, setStatsRange] = useState<7 | 30 | 0>(0);
+  const [statsRange, setStatsRange] = useState<7 | 30 | 0 | "custom">(0);
+  const [customStatsFrom, setCustomStatsFrom] = useState("");
+  const [customStatsTo, setCustomStatsTo] = useState("");
   const [importing, setImporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -204,6 +251,16 @@ export default function ModulePage() {
   const [filterSearch, setFilterSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [weekAnchor, setWeekAnchor] = useState(() => new Date().toISOString().slice(0, 10));
+  const [shiftPreset, setShiftPreset] = useState<string>("custom");
+  const [presetConfigId, setPresetConfigId] = useState<string | null>(null);
+  const [presetConfig, setPresetConfig] = useState<Record<string, string>>({});
+  const [editingPresets, setEditingPresets] = useState(false);
+  const [presetForm, setPresetForm] = useState<Record<string, string>>({});
+  const [expandedStaff, setExpandedStaff] = useState<Set<string>>(new Set());
+  const [copyingWeek, setCopyingWeek] = useState(false);
+  const [copyMode, setCopyMode] = useState(false);
+  const [selectedForCopy, setSelectedForCopy] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const fileRef = useRef<HTMLInputElement>(null);
@@ -211,6 +268,114 @@ export default function ModulePage() {
   useEffect(() => {
     getTenant(slug).then(setTenant);
   }, [slug, moduleId, tick]);
+
+  // Scheduling shows one week per table: keep the date-range filter locked to
+  // the Monday–Sunday span of `weekAnchor` instead of a free date-range picker.
+  useEffect(() => {
+    if (moduleId !== "scheduling") return;
+    const monday = mondayOf(weekAnchor);
+    setDateFrom(monday);
+    setDateTo(addDays(monday, 6));
+    setPage(1);
+    setExpandedStaff(new Set());
+  }, [moduleId, weekAnchor]);
+
+  useEffect(() => {
+    if (moduleId !== "scheduling") return;
+    listRecords(slug, "scheduling_presets").then((recs) => {
+      const rec = recs[0];
+      setPresetConfigId(rec?.id ?? null);
+      const cfg: Record<string, string> = {};
+      if (rec) {
+        for (const p of SHIFT_PRESETS) {
+          if (rec[`${p.key}Start`]) cfg[`${p.key}Start`] = String(rec[`${p.key}Start`]);
+          if (rec[`${p.key}End`]) cfg[`${p.key}End`] = String(rec[`${p.key}End`]);
+        }
+      }
+      setPresetConfig(cfg);
+    });
+  }, [slug, moduleId, tick]);
+
+  const effectivePresets = useMemo(
+    () =>
+      SHIFT_PRESETS.map((p) => ({
+        ...p,
+        start: presetConfig[`${p.key}Start`] || p.start,
+        end: presetConfig[`${p.key}End`] || p.end,
+      })),
+    [presetConfig],
+  );
+
+  const openPresetEditor = () => {
+    const draft: Record<string, string> = {};
+    for (const p of effectivePresets) {
+      draft[`${p.key}Start`] = p.start;
+      draft[`${p.key}End`] = p.end;
+    }
+    setPresetForm(draft);
+    setEditingPresets(true);
+  };
+
+  const savePresets = async () => {
+    if (presetConfigId) {
+      await updateRecord(presetConfigId, presetForm);
+    } else {
+      await addRecord(slug, "scheduling_presets", presetForm);
+    }
+    setEditingPresets(false);
+    setTick((t) => t + 1);
+  };
+
+  /** Enter selection mode: check every shift by default, expand all staff so each row is visible. */
+  const startCopySelection = () => {
+    if (filteredRows.length === 0) return;
+    setSelectedForCopy(new Set(filteredRows.map((r) => r.id)));
+    setExpandedStaff(new Set(staffGroups.map((g) => g.name)));
+    setCopyMode(true);
+  };
+
+  const cancelCopySelection = () => {
+    setCopyMode(false);
+    setSelectedForCopy(new Set());
+  };
+
+  const toggleSelectForCopy = (id: string) => {
+    setSelectedForCopy((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllForCopy = () => {
+    setSelectedForCopy((prev) => (prev.size === filteredRows.length ? new Set() : new Set(filteredRows.map((r) => r.id))));
+  };
+
+  /** Duplicate the checked shifts into the following week (dates +7 days). */
+  const confirmCopySelection = async () => {
+    const toCopy = filteredRows.filter((r) => selectedForCopy.has(r.id));
+    if (toCopy.length === 0 || copyingWeek) return;
+    setCopyingWeek(true);
+    try {
+      await Promise.all(
+        toCopy.map((r) => {
+          const data: Record<string, string> = {};
+          for (const f of mod.fields) {
+            data[f.key] = r[f.key] != null ? String(r[f.key]) : "";
+          }
+          if (data.date) data.date = addDays(data.date, 7);
+          return addRecord(slug, "scheduling", data);
+        }),
+      );
+    } finally {
+      setCopyingWeek(false);
+    }
+    setCopyMode(false);
+    setSelectedForCopy(new Set());
+    setTick((t) => t + 1);
+    setWeekAnchor((d) => addDays(d, 7));
+  };
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -223,6 +388,21 @@ export default function ModulePage() {
     () => tenant?.records[moduleId] ?? [],
     [tenant, moduleId]
   );
+
+  /** Distinct prior values per text field, for autocomplete (e.g. staff names already used). */
+  const textSuggestions: Record<string, string[]> = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const f of mod?.fields ?? []) {
+      if (f.type !== "text") continue;
+      const values = new Set<string>();
+      for (const r of rawRows) {
+        const v = String(r[f.key] ?? "").trim();
+        if (v) values.add(v);
+      }
+      out[f.key] = Array.from(values).sort((a, b) => a.localeCompare(b));
+    }
+    return out;
+  }, [mod, rawRows]);
 
   const rows: RecordRow[] = useMemo(() => {
     if (moduleId === "dish-margin") {
@@ -273,6 +453,75 @@ export default function ModulePage() {
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Scheduling groups the week's rows by staff — one row per person (their
+  // latest entry that week), with an arrow to expand the rest of their shifts.
+  const groupByStaff = moduleId === "scheduling";
+  const staffGroups = useMemo(() => {
+    const map = new Map<string, RecordRow[]>();
+    for (const r of filteredRows) {
+      const name = (r.staff as string)?.trim() || "—";
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(r);
+    }
+    const groups = Array.from(map.entries()).map(([name, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        const da = rowDate(a), db = rowDate(b);
+        if (da !== db) return db.localeCompare(da);
+        const sa = (a.start as string) || "", sb = (b.start as string) || "";
+        return sb.localeCompare(sa);
+      });
+      return { name, list: sorted };
+    });
+    groups.sort((a, b) => a.name.localeCompare(b.name));
+    return groups;
+  }, [filteredRows]);
+
+  const toggleStaffExpanded = (name: string) => {
+    setExpandedStaff((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const rowCells = (r: RecordRow, muted?: boolean) =>
+    editingId === r.id ? (
+      <>
+        {mod.fields.map((f) => (
+          <td key={f.key} className="px-2 py-1.5">
+            <EditCellInput field={f} value={editForm[f.key] ?? ""} onChange={(v) => setEditForm((prev) => ({ ...prev, [f.key]: v }))} />
+          </td>
+        ))}
+        <td className="px-2 py-1.5 text-right whitespace-nowrap">
+          <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
+          <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+        </td>
+      </>
+    ) : (
+      <>
+        {mod.fields.map((f) => (
+          <td key={f.key} className={`px-4 py-2.5 ${muted ? "text-ink-faint" : "text-ink-soft"}`}>
+            {renderCell(f, r[f.key])}
+          </td>
+        ))}
+        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+          <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+          <button
+            onClick={async () => {
+              if (confirm("删除这条记录？")) {
+                await deleteRecord(r.id);
+                setTick((t) => t + 1);
+              }
+            }}
+            className="text-xs text-ink-faint hover:text-red-600"
+          >
+            删除
+          </button>
+        </td>
+      </>
+    );
 
   const alerts = useMemo(() => {
     const list: { type: "warn" | "info"; text: string }[] = [];
@@ -469,6 +718,7 @@ export default function ModulePage() {
       );
     }
     setForm({});
+    setShiftPreset("custom");
     setOpen(false);
     setTick((t) => t + 1);
   };
@@ -496,7 +746,18 @@ export default function ModulePage() {
   };
 
   const total = mod.amountKey ? sum(rows, mod.amountKey) : 0;
-  const statsRows = statsRange > 0 ? filterByDateRange(rows, statsRange) : rows;
+  const statsRows =
+    statsRange === "custom"
+      ? rows.filter((r) => {
+          const d = rowDate(r);
+          if (!d) return false;
+          if (customStatsFrom && d < customStatsFrom) return false;
+          if (customStatsTo && d > customStatsTo) return false;
+          return true;
+        })
+      : statsRange > 0
+      ? filterByDateRange(rows, statsRange)
+      : rows;
   const summableFields = getMoneyFields(mod);
 
   return (
@@ -588,7 +849,7 @@ export default function ModulePage() {
 
       {/* ── Stats section ── */}
       <section className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">数据统计</span>
           <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
             {([0, 7, 30] as const).map((d) => (
@@ -600,7 +861,30 @@ export default function ModulePage() {
                 {d === 0 ? "全部" : `近${d}天`}
               </button>
             ))}
+            <button
+              onClick={() => setStatsRange("custom")}
+              className={`rounded-md px-2.5 py-1 ${statsRange === "custom" ? "bg-white font-medium shadow-sm text-ink" : "text-ink-faint"}`}
+            >
+              自定义
+            </button>
           </div>
+          {statsRange === "custom" && (
+            <div className="flex items-center gap-1.5 text-xs text-ink-faint">
+              <input
+                type="date"
+                className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+                value={customStatsFrom}
+                onChange={(e) => setCustomStatsFrom(e.target.value)}
+              />
+              <span>—</span>
+              <input
+                type="date"
+                className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+                value={customStatsTo}
+                onChange={(e) => setCustomStatsTo(e.target.value)}
+              />
+            </div>
+          )}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* record count */}
@@ -611,7 +895,10 @@ export default function ModulePage() {
           {/* KPI total */}
           {mod.amountKey && (
             <div className="card p-4">
-              <div className="text-xs text-ink-faint">{mod.amountLabel?.zh ?? "合计"}</div>
+              <div className="text-xs text-ink-faint">
+                {statsRange === "custom" ? "该时段" : statsRange === 0 ? "累计" : `近${statsRange}天`}
+                {mod.amountLabel?.zh ?? "合计"}
+              </div>
               <div className="mt-1 text-xl font-bold text-ink">
                 {mod.amountKind === "money" ? money(sum(statsRows, mod.amountKey)) : num(sum(statsRows, mod.amountKey))}
               </div>
@@ -680,55 +967,189 @@ export default function ModulePage() {
       {open && enabled && (
         <section className="card mb-6 p-5">
           <div className="mb-3 text-sm font-semibold text-ink">新增记录</div>
+
+          {moduleId === "scheduling" && (
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="label !mb-0">班次</label>
+                <button
+                  type="button"
+                  onClick={() => (editingPresets ? setEditingPresets(false) : openPresetEditor())}
+                  className="text-xs font-medium text-brand hover:text-brand-soft"
+                >
+                  {editingPresets ? "完成" : "修改默认班次"}
+                </button>
+              </div>
+
+              {editingPresets ? (
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  {SHIFT_PRESETS.map((p) => (
+                    <div key={p.key} className="flex items-center gap-2">
+                      <span className="w-12 shrink-0 text-xs font-medium text-ink-soft">{p.name}</span>
+                      <input
+                        type="time"
+                        value={presetForm[`${p.key}Start`] ?? p.start}
+                        onChange={(e) => setPresetForm((f) => ({ ...f, [`${p.key}Start`]: e.target.value }))}
+                        className="input !w-auto !py-1.5 !text-xs"
+                      />
+                      <span className="text-xs text-ink-faint">–</span>
+                      <input
+                        type="time"
+                        value={presetForm[`${p.key}End`] ?? p.end}
+                        onChange={(e) => setPresetForm((f) => ({ ...f, [`${p.key}End`]: e.target.value }))}
+                        className="input !w-auto !py-1.5 !text-xs"
+                      />
+                    </div>
+                  ))}
+                  <button type="button" onClick={savePresets} className="btn-primary !py-1.5 !text-xs">
+                    保存默认班次
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {effectivePresets.map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => {
+                        setShiftPreset(p.key);
+                        updateForm("start", p.start);
+                        updateForm("end", p.end);
+                      }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        shiftPreset === p.key ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"
+                      }`}
+                    >
+                      {p.name} {p.start}–{p.end}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShiftPreset("custom")}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      shiftPreset === "custom" ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"
+                    }`}
+                  >
+                    自定义
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             {mod.fields.map((f) => (
               <div key={f.key} className={f.half ? "" : "sm:col-span-2"}>
                 <FieldInput
                   field={f}
                   value={form[f.key] ?? ""}
-                  onChange={(v) => updateForm(f.key, v)}
+                  onChange={(v) => {
+                    updateForm(f.key, v);
+                    if (moduleId === "scheduling" && (f.key === "start" || f.key === "end")) setShiftPreset("custom");
+                  }}
                   readOnly={computedTargets.has(f.key)}
+                  suggestions={textSuggestions[f.key]}
                 />
               </div>
             ))}
           </div>
           <div className="mt-4 flex gap-2">
             <button className="btn-primary" onClick={submit}>保存</button>
-            <button className="btn-ghost" onClick={() => { setForm({}); setOpen(false); }}>取消</button>
+            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>取消</button>
           </div>
         </section>
       )}
 
       {/* date range & filter bar */}
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
-        <div className="flex items-center gap-1.5 text-ink-faint">
-          <span>日期</span>
-          <input
-            type="date"
-            className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
-            value={dateFrom}
-            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-          />
-          <span>—</span>
-          <input
-            type="date"
-            className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
-            value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-          />
-        </div>
-        {hasAnyFilter && (
-          <>
-            <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+        {moduleId === "scheduling" ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
+              onClick={() => setWeekAnchor((d) => addDays(d, -7))}
+            >
+              ‹ 上一周
+            </button>
+            <span className="min-w-[9.5rem] text-center font-medium text-ink">
+              {fmtMonthDay(dateFrom)} – {fmtMonthDay(dateTo)}
+            </span>
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
+              onClick={() => setWeekAnchor((d) => addDays(d, 7))}
+            >
+              下一周 ›
+            </button>
             <button
               className="text-brand hover:text-brand-soft"
-              onClick={() => { setColFilters({}); setDateFrom(""); setDateTo(""); setPage(1); }}
+              onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}
             >
-              清除全部筛选
+              本周
             </button>
-          </>
+            {copyMode ? (
+              <>
+                <span className="text-ink-faint">已选 {selectedForCopy.size} / {filteredRows.length} 条</span>
+                <button
+                  disabled={selectedForCopy.size === 0 || copyingWeek}
+                  onClick={confirmCopySelection}
+                  className="rounded-full border border-brand bg-brand px-3 py-1 font-semibold text-white hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {copyingWeek ? "复制中…" : `复制 ${selectedForCopy.size} 条到下一周 →`}
+                </button>
+                <button onClick={cancelCopySelection} className="text-ink-faint hover:text-ink">
+                  取消
+                </button>
+              </>
+            ) : (
+              <button
+                disabled={filteredRows.length === 0}
+                onClick={startCopySelection}
+                className="rounded-full border border-brand px-3 py-1 font-semibold text-brand hover:bg-brand-wash disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                复制到下一周 →
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-ink-faint">
+            <span>日期</span>
+            <input
+              type="date"
+              className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            />
+            <span>—</span>
+            <input
+              type="date"
+              className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            />
+          </div>
         )}
+        {moduleId === "scheduling"
+          ? Object.values(colFilters).some((s) => s.size > 0) && (
+              <>
+                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <button className="text-brand hover:text-brand-soft" onClick={() => { setColFilters({}); setPage(1); }}>
+                  清除筛选
+                </button>
+              </>
+            )
+          : hasAnyFilter && (
+              <>
+                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <button
+                  className="text-brand hover:text-brand-soft"
+                  onClick={() => { setColFilters({}); setDateFrom(""); setDateTo(""); setPage(1); }}
+                >
+                  清除全部筛选
+                </button>
+              </>
+            )}
       </div>
+
+      {moduleId === "scheduling" && <AttendanceAnomalies rows={filteredRows} />}
 
       {/* records table */}
       <section className="card overflow-hidden">
@@ -736,6 +1157,19 @@ export default function ModulePage() {
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
+                {groupByStaff && (
+                  <th className="w-8 px-2 py-2.5">
+                    {copyMode && (
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-brand"
+                        checked={filteredRows.length > 0 && selectedForCopy.size === filteredRows.length}
+                        onChange={toggleSelectAllForCopy}
+                        aria-label="全选"
+                      />
+                    )}
+                  </th>
+                )}
                 {mod.fields.map((f) => {
                   const isOpen = filterOpen === f.key;
                   const active = colFilters[f.key]?.size > 0;
@@ -834,57 +1268,63 @@ export default function ModulePage() {
               </tr>
             </thead>
             <tbody>
-              {pagedRows.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
-                  {editingId === r.id ? (
-                    <>
-                      {mod.fields.map((f) => (
-                        <td key={f.key} className="px-2 py-1.5">
-                          <EditCellInput
-                            field={f}
-                            value={editForm[f.key] ?? ""}
-                            onChange={(v) => setEditForm((prev) => ({ ...prev, [f.key]: v }))}
-                          />
-                        </td>
-                      ))}
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                        <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
-                        <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      {mod.fields.map((f) => (
-                        <td key={f.key} className="px-4 py-2.5 text-ink-soft">
-                          {renderCell(f, r[f.key])}
-                        </td>
-                      ))}
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => startEdit(r)}
-                          className="text-xs text-brand hover:text-brand-soft mr-2"
-                        >
-                          修改
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (confirm("删除这条记录？")) {
-                              await deleteRecord(r.id);
-                              setTick((t) => t + 1);
-                            }
-                          }}
-                          className="text-xs text-ink-faint hover:text-red-600"
-                        >
-                          删除
-                        </button>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
+              {groupByStaff
+                ? staffGroups.map((g) => {
+                    const [latest, ...rest] = g.list;
+                    if (!latest) return null;
+                    const isExpanded = expandedStaff.has(g.name);
+                    return (
+                      <Fragment key={g.name}>
+                        <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                          <td className="px-2 py-2.5 text-center">
+                            {copyMode ? (
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 accent-brand"
+                                checked={selectedForCopy.has(latest.id)}
+                                onChange={() => toggleSelectForCopy(latest.id)}
+                              />
+                            ) : (
+                              rest.length > 0 && (
+                                <button
+                                  onClick={() => toggleStaffExpanded(g.name)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-ink-soft hover:border-brand hover:bg-brand-wash hover:text-brand-ink"
+                                  aria-label={isExpanded ? "收起" : "展开"}
+                                >
+                                  {isExpanded ? "▾" : "▸"}
+                                </button>
+                              )
+                            )}
+                          </td>
+                          {rowCells(latest)}
+                        </tr>
+                        {isExpanded &&
+                          rest.map((r) => (
+                            <tr key={r.id} className="border-b border-slate-50 bg-slate-50/40 last:border-0 hover:bg-slate-50">
+                              <td className="px-2 py-2.5 text-center">
+                                {copyMode && (
+                                  <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 accent-brand"
+                                    checked={selectedForCopy.has(r.id)}
+                                    onChange={() => toggleSelectForCopy(r.id)}
+                                  />
+                                )}
+                              </td>
+                              {rowCells(r, true)}
+                            </tr>
+                          ))}
+                      </Fragment>
+                    );
+                  })
+                : pagedRows.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                      {rowCells(r)}
+                    </tr>
+                  ))}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={mod.fields.length + 1} className="px-4 py-10 text-center text-sm text-ink-faint">
+                  <td colSpan={mod.fields.length + 1 + (groupByStaff ? 1 : 0)} className="px-4 py-10 text-center text-sm text-ink-faint">
                     {rows.length === 0
                       ? (enabled ? "还没有记录，点「+ 新增记录」开始录入。" : "还没有记录。")
                       : "没有匹配的记录，试试调整筛选条件。"}
@@ -895,7 +1335,7 @@ export default function ModulePage() {
           </table>
         </div>
         {/* pagination */}
-        {totalPages > 1 && (
+        {!groupByStaff && totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-ink-faint">
             <span>
               第 {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredRows.length)} 条，共 {filteredRows.length} 条
@@ -943,12 +1383,15 @@ function FieldInput({
   value,
   onChange,
   readOnly,
+  suggestions,
 }: {
   field: Field;
   value: string;
   onChange: (v: string) => void;
   readOnly?: boolean;
+  suggestions?: string[];
 }) {
+  const listId = suggestions?.length ? `dl-${field.key}` : undefined;
   return (
     <div>
       <label className="label">
@@ -967,21 +1410,31 @@ function FieldInput({
           ))}
         </select>
       ) : (
-        <input
-          className={`input ${readOnly ? "bg-slate-50 text-ink-faint" : ""}`}
-          type={
-            field.type === "money" || field.type === "number"
-              ? "number"
-              : field.type === "date"
-              ? "date"
-              : field.type === "time"
-              ? "time"
-              : "text"
-          }
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          readOnly={readOnly}
-        />
+        <>
+          <input
+            className={`input ${readOnly ? "bg-slate-50 text-ink-faint" : ""}`}
+            type={
+              field.type === "money" || field.type === "number"
+                ? "number"
+                : field.type === "date"
+                ? "date"
+                : field.type === "time"
+                ? "time"
+                : "text"
+            }
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            readOnly={readOnly}
+            list={listId}
+          />
+          {listId && (
+            <datalist id={listId}>
+              {suggestions!.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          )}
+        </>
       )}
     </div>
   );
@@ -1013,6 +1466,61 @@ function renderCell(field: Field, value: any) {
   if (value === undefined || value === "" || value === null) return <span className="text-slate-300">—</span>;
   if (field.type === "money") return money(value);
   return String(value);
+}
+
+/** Weekly attendance-exception summary for the scheduling module: staff with
+ *  迟到/请假 this week (计划内的 休息/正常 不算异常). `rows` is expected to
+ *  already be scoped to the selected week. */
+function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
+  const groups = useMemo(() => {
+    const map = new Map<string, Record<string, number>>();
+    for (const r of rows) {
+      const att = (r.attendance as string) || "";
+      if (!att || att === "正常" || att === "休息") continue;
+      const name = (r.staff as string)?.trim() || "—";
+      if (!map.has(name)) map.set(name, {});
+      const counts = map.get(name)!;
+      counts[att] = (counts[att] || 0) + 1;
+    }
+    return Array.from(map.entries())
+      .map(([name, counts]) => ({ name, counts }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const totals = useMemo(() => {
+    const t: Record<string, number> = {};
+    for (const g of groups) {
+      for (const [k, v] of Object.entries(g.counts)) t[k] = (t[k] || 0) + v;
+    }
+    return t;
+  }, [groups]);
+
+  return (
+    <section className="card mb-4 p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink">本周异常出勤</h2>
+        {groups.length > 0 && (
+          <span className="text-xs text-ink-faint">{Object.entries(totals).map(([k, v]) => `${k} ${v} 次`).join(" · ")}</span>
+        )}
+      </div>
+      {groups.length === 0 ? (
+        <p className="text-sm text-ink-faint">本周出勤正常，暂无异常记录。</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {groups.map((g) => (
+            <div key={g.name} className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs">
+              <span className="font-medium text-ink">{g.name}</span>
+              {Object.entries(g.counts).map(([k, v]) => (
+                <span key={k} className="rounded-full bg-white px-2 py-0.5 font-medium text-amber-700">
+                  {k} ×{v}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 /** Per-module analytics blocks that the generic stats/alerts can't express. */

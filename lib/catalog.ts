@@ -35,7 +35,8 @@ export interface Field {
 
 export interface ComputedRule {
   target: string;
-  formula: "sum" | "subtract" | "multiply";
+  /** hoursBetween: fields is [startTimeKey, endTimeKey], target = decimal hours (handles overnight shifts). */
+  formula: "sum" | "subtract" | "multiply" | "hoursBetween";
   /** field keys; prefix with "-" to subtract that field */
   fields: string[];
 }
@@ -142,7 +143,7 @@ export const MODULES: ModuleDef[] = [
       { zh: "卖断 / 浪费提醒", en: "Sell-out & waste alerts" },
     ],
     amountKey: "leftover",
-    amountLabel: { zh: "今日报废", en: "Waste today" },
+    amountLabel: { zh: "报废", en: "Waste" },
     amountKind: "count",
   },
   // ── Storefront (前台 · 面向顾客) ──────────────────────────────────────
@@ -241,7 +242,7 @@ export const MODULES: ModuleDef[] = [
       { zh: "低库存预警", en: "Low-stock alerts" },
     ],
     amountKey: "lossQty",
-    amountLabel: { zh: "今日损耗", en: "Loss today" },
+    amountLabel: { zh: "损耗", en: "Loss" },
     amountKind: "count",
   },
   {
@@ -429,7 +430,7 @@ export const MODULES: ModuleDef[] = [
       { zh: "小费单独统计，不计入营业净收入", en: "Tips tracked separately, excluded from net revenue" },
     ],
     amountKey: "net",
-    amountLabel: { zh: "今日净收入", en: "Net today" },
+    amountLabel: { zh: "净收入", en: "Net" },
     amountKind: "money",
     computed: [
       { target: "net", formula: "subtract", fields: ["dineIn", "delivery", "-tips", "-expenses"] },
@@ -451,8 +452,7 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
       { key: "staff", label: { zh: "员工", en: "Staff" }, type: "text", half: true, required: true },
-      { key: "role", label: { zh: "岗位", en: "Role" }, type: "select", half: true,
-        options: [{ zh: "厨房", en: "Kitchen" }, { zh: "楼面", en: "Floor" }, { zh: "收银", en: "Cashier" }, { zh: "外卖", en: "Delivery" }] },
+      { key: "role", label: { zh: "岗位", en: "Role" }, type: "text", half: true },
       { key: "attendance", label: { zh: "出勤状态", en: "Attendance" }, type: "select", half: true,
         options: [{ zh: "正常", en: "Present" }, { zh: "请假", en: "Leave" }, { zh: "休息", en: "Day off" }, { zh: "迟到", en: "Late" }] },
       { key: "start", label: { zh: "上班", en: "Start" }, type: "time", half: true },
@@ -466,9 +466,12 @@ export const MODULES: ModuleDef[] = [
       { zh: "工资预估 = 工时 × 时薪", en: "Payroll estimate = hours × rate" },
     ],
     amountKey: "pay",
-    amountLabel: { zh: "今日工资", en: "Pay today" },
+    amountLabel: { zh: "工资", en: "Pay" },
     amountKind: "money",
-    computed: [{ target: "pay", formula: "multiply", fields: ["hours", "rate"] }],
+    computed: [
+      { target: "hours", formula: "hoursBetween", fields: ["start", "end"] },
+      { target: "pay", formula: "multiply", fields: ["hours", "rate"] },
+    ],
   },
 
   // ── Customers & Marketing ─────────────────────────────────────────────
