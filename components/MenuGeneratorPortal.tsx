@@ -116,6 +116,11 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     saveField(id, { image_url: up.url ?? "" });
   };
 
+  const removeImage = (id: string) => {
+    patchLocal(id, { image_url: "" });
+    saveField(id, { image_url: "" });
+  };
+
   // present categories (have dishes) in the saved custom order
   const presentCats = orderedCategories(
     Array.from(new Set(dishes.map((d) => d.category).filter(Boolean))),
@@ -294,20 +299,33 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                         ))}
                       </select>
 
-                      <label className="relative min-h-[5rem] w-full flex-1 cursor-pointer overflow-hidden rounded-lg" title="点击更换图片">
-                        {d.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={d.image_url} alt={d.name_zh} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="grid h-full w-full place-items-center bg-slate-100 text-xs text-ink-faint">＋图</div>
+                      <div className="relative min-h-[5rem] w-full flex-1 overflow-hidden rounded-lg">
+                        <label className="block h-full w-full cursor-pointer" title={d.image_url ? "点击更换图片" : "点击上传图片"}>
+                          {d.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={d.image_url} alt={d.name_zh} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="grid h-full w-full place-items-center bg-slate-100 text-xs text-ink-faint">＋图</div>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => changeImage(d.id, e.target.files?.[0] ?? null)}
+                          />
+                        </label>
+                        {d.image_url && (
+                          <button
+                            type="button"
+                            onClick={() => removeImage(d.id)}
+                            title="删除图片 Remove photo"
+                            aria-label="删除图片"
+                            className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/55 text-[11px] leading-none text-white transition hover:bg-red-600"
+                          >
+                            ✕
+                          </button>
                         )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => changeImage(d.id, e.target.files?.[0] ?? null)}
-                        />
-                      </label>
+                      </div>
                     </div>
 
                     {/* right column: 中文 · English · 价格 */}
