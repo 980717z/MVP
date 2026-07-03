@@ -1,5 +1,12 @@
 # TODOS
 
+## P1 — Clover payment routes + integration/E2E tests (bundled)
+**What:** The `/api/pay/*` routes (checkout, webhook, status, reconcile, sweep), `lib/clover.ts`, the dine-in phone-pay + tip UI, driver ETA + Resend receipt/notify emails — AND the two deferred test layers: Supabase-integration (RLS forged-insert rejection, payment-gate trigger, CAS idempotency against the real schema) + Playwright E2E (sandbox checkout flows). One test-infra + CI setup, done together.
+**Why:** Turns on 扫码配送 / takeout online payment. The togo/delivery flow is already built and SHIPPED-BUT-HIDDEN behind `NEXT_PUBLIC_PAYMENTS_LIVE`; flipping that flag after these land activates it.
+**Blocked by:** **Phase 0 Clover sandbox spike** (user creates a Clover developer sandbox account → verify CAD Hosted Checkout availability, webhook-vs-poll, tip-line tax, session TTL). Those answers reshape ~20% of the route design, so no payment code before the spike.
+**Context:** Full reviewed plan (CEO 8/10 + eng-review, 3 adversarial rounds): ~/.gstack/projects/980717z-MVP/ceo-plans/2026-07-03-qr-delivery-clover-payments.md. Schema (supabase/orders-payment.sql), pricing (lib/tax.ts + 22 unit tests), togo UI, per-table QRs are DONE.
+**Effort:** L (human ~1.5-2wk / CC ~4-6h) after the spike.
+
 ## P2 — Promo codes (优惠码) at checkout
 **What:** Code field at menu checkout applying % or $ discounts (e.g. GRAND10, 首单9折), with a codes table, validation, redemption tracking, and a discount line in the pricing math.
 **Why:** Marketing hook for the delivery launch and future campaigns (flyers, first-order incentives).
