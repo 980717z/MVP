@@ -41,7 +41,8 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
     load();
   }, [load]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const _now = new Date();
+  const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
   const cutoff = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -217,6 +218,7 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
               <table className="w-full min-w-[560px] text-[12.5px]">
                 <thead>
                   <tr className="border-b border-[#EBEAE5] text-left text-[10.5px] uppercase tracking-wide text-ink-faint">
+                    <th className="px-3 py-2.5 font-bold">{t({ zh: "日期", en: "Date", fr: "Date" })}</th>
                     <th className="px-3 py-2.5 font-bold">{t({ zh: "时间", en: "Time", fr: "Heure" })}</th>
                     <th className="px-3 py-2.5 font-bold">{t({ zh: "来源", en: "Source", fr: "Source" })}</th>
                     <th className="px-3 py-2.5 font-bold">{t({ zh: "说明", en: "Note", fr: "Note" })}</th>
@@ -232,6 +234,7 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
                     const s = SRC[(r.source as Source) || "cash"] ?? SRC.cash;
                     return (
                       <tr key={r.id} className="border-b border-[#F3F2EE] last:border-0 hover:bg-[#FBFAF8]">
+                        <td className="px-3 py-2.5 text-ink-faint">{(r.date as string) || (r.createdAt || "").slice(0, 10)}</td>
                         <td className="px-3 py-2.5 text-ink-faint">{(r.ts as string) || (r.createdAt || "").slice(11, 16)}</td>
                         <td className="px-3 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${s.cls}`}>{s.emoji} {t(s.label)}</span></td>
                         <td className="px-3 py-2.5 text-ink">{(r.desc as string) || <span className="text-slate-300">—</span>}</td>
@@ -248,7 +251,7 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-[#EBEAE5] font-extrabold text-ink">
-                    <td className="px-3 py-2.5" colSpan={3}>{t({ zh: "合计", en: "Total", fr: "Total" })} · {filtered.length}</td>
+                    <td className="px-3 py-2.5" colSpan={4}>{t({ zh: "合计", en: "Total", fr: "Total" })} · {filtered.length}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{money(totals.subtotal)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{money(totals.gst)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{money(totals.pst)}</td>

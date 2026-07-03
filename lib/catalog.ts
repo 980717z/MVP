@@ -35,7 +35,8 @@ export interface Field {
 
 export interface ComputedRule {
   target: string;
-  formula: "sum" | "subtract" | "multiply";
+  /** hoursBetween: fields is [startTimeKey, endTimeKey], target = decimal hours (handles overnight shifts). */
+  formula: "sum" | "subtract" | "multiply" | "hoursBetween";
   /** field keys; prefix with "-" to subtract that field */
   fields: string[];
 }
@@ -142,7 +143,7 @@ export const MODULES: ModuleDef[] = [
       { zh: "卖断 / 浪费提醒", en: "Sell-out & waste alerts" },
     ],
     amountKey: "leftover",
-    amountLabel: { zh: "今日报废", en: "Waste today" },
+    amountLabel: { zh: "报废", en: "Waste" },
     amountKind: "count",
   },
   // ── Storefront (前台 · 面向顾客) ──────────────────────────────────────
@@ -187,27 +188,20 @@ export const MODULES: ModuleDef[] = [
     category: "kitchen",
     icon: "📊",
     ready: true,
-    label: { zh: "菜品销量与毛利", en: "Dish Sales & Margin" },
+    label: { zh: "菜品销量", en: "Dish Sales" },
     pain: {
-      zh: "不知道哪些菜真赚钱、哪些占时间又不赚",
-      en: "No idea which dishes actually make money.",
+      zh: "不知道哪些菜卖得好、哪些卖不动",
+      en: "No idea which dishes sell well.",
     },
     fields: [
       { key: "dish", label: { zh: "菜名", en: "Dish" }, type: "text", half: true, required: true },
       { key: "price", label: { zh: "售价", en: "Price" }, type: "money", half: true, unit: true },
-      { key: "cost", label: { zh: "成本", en: "Cost" }, type: "money", half: true, unit: true },
       { key: "soldMonth", label: { zh: "月销量", en: "Sold / month" }, type: "number", suffix: "份", half: true },
-      // Auto-calculated, read-only (Ontario HST 13% = 5% federal GST + 8% provincial).
-      // Computed in app/[tenant]/m/[moduleId]/page.tsx; soldMonth auto-increments on order completion.
       { key: "revenue", label: { zh: "销售额", en: "Sales" }, type: "money", half: true },
-      { key: "gst", label: { zh: "联邦税 GST 5%", en: "Federal GST 5%" }, type: "money", half: true },
-      { key: "pst", label: { zh: "省税 PST 8%", en: "Provincial PST 8%" }, type: "money", half: true },
-      { key: "afterTax", label: { zh: "税后销售额", en: "After-tax (HST 13%)" }, type: "money", half: true },
     ],
     outputs: [
-      { zh: "毛利率排行：明星菜 / 拖后腿菜", en: "Margin ranking: stars vs. laggards" },
-      { zh: "贡献毛利 = (售价−成本) × 销量", en: "Profit contribution per dish" },
-      { zh: "税后销售额按安省 HST 13% 自动计算；完成的订单自动累加销量", en: "After-tax (Ontario HST 13%) auto-calculated; completed orders auto-add sales" },
+      { zh: "销量排行：哪些菜最受欢迎", en: "Sales ranking: most popular dishes" },
+      { zh: "完成的订单自动累加销量", en: "Completed orders auto-add sales" },
     ],
     amountKey: "revenue",
     amountLabel: { zh: "销售额（税前）", en: "Sales (pre-tax)" },
@@ -232,16 +226,19 @@ export const MODULES: ModuleDef[] = [
         options: [{ zh: "干货", en: "Dry goods" }, { zh: "蔬菜", en: "Vegetables" }, { zh: "肉类", en: "Meat" }, { zh: "海鲜", en: "Seafood" }, { zh: "冷冻", en: "Frozen" }, { zh: "调料", en: "Seasoning" }] },
       { key: "inQty", label: { zh: "进货", en: "In" }, type: "number", suffix: "kg", half: true },
       { key: "unitCost", label: { zh: "成本单价", en: "Unit cost" }, type: "money", suffix: "/kg", half: true, unit: true },
-      { key: "lossQty", label: { zh: "报废/损耗", en: "Loss" }, type: "number", suffix: "kg", half: true },
+      { key: "scrapQty", label: { zh: "报废", en: "Scrap" }, type: "number", suffix: "kg", half: true },
+      { key: "scrapValue", label: { zh: "报废价值", en: "Scrap value" }, type: "money", half: true },
+      { key: "lossQty", label: { zh: "消耗", en: "Usage" }, type: "number", suffix: "kg", half: true },
+      { key: "lossValue", label: { zh: "消耗价值", en: "Usage value" }, type: "money", half: true },
       { key: "onHand", label: { zh: "现存", en: "On hand" }, type: "number", suffix: "kg", half: true },
     ],
     outputs: [
-      { zh: "损耗率与损耗金额（报废 × 成本单价）", en: "Loss rate & dollar value" },
-      { zh: "成本单价可从采购自动带入", en: "Unit cost auto-filled from purchasing" },
+      { zh: "报废 + 损耗金额（FIFO 先进先出计价）", en: "Scrap + loss cost (FIFO)" },
+      { zh: "进货数量与成本从采购自动同步", en: "In-qty & cost auto-synced from purchasing" },
       { zh: "低库存预警", en: "Low-stock alerts" },
     ],
     amountKey: "lossQty",
-    amountLabel: { zh: "今日损耗", en: "Loss today" },
+    amountLabel: { zh: "今日消耗", en: "Usage today" },
     amountKind: "count",
   },
   {
@@ -294,35 +291,6 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
-    id: "phone-orders",
-    category: "orders",
-    icon: "📞",
-    ready: true,
-    label: { zh: "电话 / 微信订单", en: "Phone / WeChat Orders" },
-    pain: {
-      zh: "纸笔接单容易漏，常客资料没沉淀",
-      en: "Pen-and-paper orders get missed; regulars never recorded.",
-    },
-    fields: [
-      { key: "time", label: { zh: "时间", en: "Time" }, type: "time", half: true, required: true },
-      { key: "customer", label: { zh: "客户", en: "Customer" }, type: "text", half: true },
-      { key: "phone", label: { zh: "电话", en: "Phone" }, type: "text", half: true },
-      { key: "items", label: { zh: "菜品", en: "Items" }, type: "textarea" },
-      { key: "amount", label: { zh: "金额", en: "Amount" }, type: "money", half: true },
-      { key: "channel", label: { zh: "渠道", en: "Channel" }, type: "select", half: true,
-        options: [{ zh: "电话", en: "Phone" }, { zh: "微信", en: "WeChat" }] },
-      { key: "status", label: { zh: "状态", en: "Status" }, type: "select", half: true,
-        options: [{ zh: "待出餐", en: "Pending" }, { zh: "已完成", en: "Done" }, { zh: "已取消", en: "Cancelled" }] },
-    ],
-    outputs: [
-      { zh: "订单不漏单，自动建客户档案", en: "No missed orders; auto customer profiles" },
-      { zh: "汇入每日收入", en: "Rolls into daily revenue" },
-    ],
-    amountKey: "amount",
-    amountLabel: { zh: "电话单收入", en: "Phone order revenue" },
-    amountKind: "money",
-  },
-  {
     id: "delivery-agg",
     category: "orders",
     icon: "🛵",
@@ -369,6 +337,7 @@ export const MODULES: ModuleDef[] = [
       { key: "deposit", label: { zh: "订金", en: "Deposit" }, type: "money", half: true },
       { key: "total", label: { zh: "预估总额", en: "Est. total" }, type: "money", half: true },
       { key: "balance", label: { zh: "待收尾款", en: "Balance due" }, type: "money", half: true },
+      { key: "tips", label: { zh: "小费", en: "Tips" }, type: "money", half: true },
       { key: "menu", label: { zh: "菜单/要求", en: "Menu / notes" }, type: "textarea" },
     ],
     outputs: [
@@ -409,31 +378,26 @@ export const MODULES: ModuleDef[] = [
     ready: true,
     label: { zh: "每日结账与收入", en: "Daily Close & Revenue" },
     pain: {
-      zh: "堂食/外卖/现金/刷卡对不上；平台扣了多少看不清",
-      en: "Dine-in/delivery/cash/card don't reconcile.",
+      zh: "堂食/外卖对不上；平台扣了多少看不清",
+      en: "Dine-in/delivery don't reconcile.",
     },
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
       { key: "dineIn", label: { zh: "堂食", en: "Dine-in" }, type: "money", half: true },
       { key: "delivery", label: { zh: "外卖", en: "Delivery" }, type: "money", half: true },
-      { key: "cash", label: { zh: "现金", en: "Cash" }, type: "money", half: true },
-      { key: "card", label: { zh: "刷卡", en: "Card" }, type: "money", half: true },
       { key: "tips", label: { zh: "小费", en: "Tips" }, type: "money", half: true },
       { key: "expenses", label: { zh: "当日支出", en: "Expenses" }, type: "money", half: true },
-      { key: "net", label: { zh: "净收入（已扣小费）", en: "Net (tips excluded)" }, type: "money", half: true },
-      { key: "gap", label: { zh: "对账差额（现金+刷卡−堂食）", en: "Reconciliation gap" }, type: "money", half: true },
+      { key: "net", label: { zh: "净收入", en: "Net" }, type: "money", half: true },
     ],
     outputs: [
-      { zh: "每日收入汇总 + 对账差额", en: "Daily revenue + reconciliation gap" },
-      { zh: "对账差额 =（现金+刷卡）− 堂食；外卖平台另结，不进钱箱", en: "Gap = (cash+card) − dine-in; delivery settled separately" },
-      { zh: "小费单独统计，不计入营业净收入", en: "Tips tracked separately, excluded from net revenue" },
+      { zh: "每日收入汇总", en: "Daily revenue summary" },
+      { zh: "净收入 = 堂食 + 外卖 − 小费 − 当日支出", en: "Net = dine-in + delivery − tips − expenses" },
     ],
     amountKey: "net",
-    amountLabel: { zh: "今日净收入", en: "Net today" },
+    amountLabel: { zh: "净收入", en: "Net" },
     amountKind: "money",
     computed: [
       { target: "net", formula: "subtract", fields: ["dineIn", "delivery", "-tips", "-expenses"] },
-      { target: "gap", formula: "subtract", fields: ["cash", "card", "-dineIn"] },
     ],
   },
 
@@ -451,8 +415,7 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
       { key: "staff", label: { zh: "员工", en: "Staff" }, type: "text", half: true, required: true },
-      { key: "role", label: { zh: "岗位", en: "Role" }, type: "select", half: true,
-        options: [{ zh: "厨房", en: "Kitchen" }, { zh: "楼面", en: "Floor" }, { zh: "收银", en: "Cashier" }, { zh: "外卖", en: "Delivery" }] },
+      { key: "role", label: { zh: "岗位", en: "Role" }, type: "text", half: true },
       { key: "attendance", label: { zh: "出勤状态", en: "Attendance" }, type: "select", half: true,
         options: [{ zh: "正常", en: "Present" }, { zh: "请假", en: "Leave" }, { zh: "休息", en: "Day off" }, { zh: "迟到", en: "Late" }] },
       { key: "start", label: { zh: "上班", en: "Start" }, type: "time", half: true },
@@ -466,9 +429,12 @@ export const MODULES: ModuleDef[] = [
       { zh: "工资预估 = 工时 × 时薪", en: "Payroll estimate = hours × rate" },
     ],
     amountKey: "pay",
-    amountLabel: { zh: "今日工资", en: "Pay today" },
+    amountLabel: { zh: "工资", en: "Pay" },
     amountKind: "money",
-    computed: [{ target: "pay", formula: "multiply", fields: ["hours", "rate"] }],
+    computed: [
+      { target: "hours", formula: "hoursBetween", fields: ["start", "end"] },
+      { target: "pay", formula: "multiply", fields: ["hours", "rate"] },
+    ],
   },
 
   // ── Customers & Marketing ─────────────────────────────────────────────

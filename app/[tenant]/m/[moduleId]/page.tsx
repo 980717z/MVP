@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef, type ReactElement } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, Fragment, type ReactElement } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -8,15 +8,21 @@ import {
   deleteRecord,
   updateRecord,
   getTenant,
+  listRecords,
   syncMemberFromOrder,
   syncMenuToMargin,
   syncPurchasingToStock,
+  computeDailyClose,
+  autoSyncDailyClose,
+  loadTierRules,
+  saveTierRules,
+  reapplyTiers,
+  type TierRule,
   type RecordRow,
   type Tenant,
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
-import { GST_RATE, PST_RATE } from "@/lib/tax";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
@@ -30,10 +36,31 @@ const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElem
   "sales": SalesPortal,
 };
 
+/** "HH:MM" → minutes since midnight, or NaN if not a valid time. */
+function timeToMinutes(t: string | undefined): number {
+  if (!t) return NaN;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return NaN;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
 function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Record<string, string> {
   if (!rules) return form;
   const next = { ...form };
   for (const rule of rules) {
+    if (rule.formula === "hoursBetween") {
+      const [startKey, endKey] = rule.fields;
+      const start = timeToMinutes(next[startKey]);
+      const end = timeToMinutes(next[endKey]);
+      if (isNaN(start) || isNaN(end)) {
+        next[rule.target] = "";
+      } else {
+        let mins = end - start;
+        if (mins < 0) mins += 24 * 60; // overnight shift
+        next[rule.target] = String(Math.round((mins / 60) * 100) / 100);
+      }
+      continue;
+    }
     const vals = rule.fields.map((f) => {
       const neg = f.startsWith("-");
       const key = neg ? f.slice(1) : f;
@@ -59,9 +86,32 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Monday (YYYY-MM-DD) of the week containing dateStr. */
+function mondayOf(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "5月26日" from a YYYY-MM-DD string. */
+function fmtMonthDay(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 function getMoneyFields(mod: ModuleDef): Field[] {
   return mod.fields.filter((f) => f.type === "money" || f.type === "number");
 }
+
+/** Quick shift-time presets for the scheduling module's start/end fields.
+ *  Default times; a tenant can override them (stored in the "scheduling_presets" record). */
+const SHIFT_PRESETS: { key: string; name: string; start: string; end: string }[] = [
+  { key: "morning", name: "早班", start: "09:00", end: "17:00" },
+  { key: "afternoon", name: "午班", start: "12:00", end: "20:00" },
+  { key: "evening", name: "晚班", start: "17:00", end: "23:00" },
+];
 
 function avg(rows: any[], key: string): number {
   if (!rows.length) return 0;
@@ -184,6 +234,152 @@ function filterByDateRange(rows: RecordRow[], days: number): RecordRow[] {
   });
 }
 
+function renderCell(field: Field, value: any) {
+  if (value === undefined || value === "" || value === null) return <span className="text-slate-300">—</span>;
+  if (field.type === "money") return money(value);
+  return String(value);
+}
+
+function EditCellInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+  if (field.type === "select") {
+    return (
+      <select className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">—</option>
+        {field.options?.map((o) => <option key={o.zh} value={o.zh}>{o.zh}</option>)}
+      </select>
+    );
+  }
+  if (field.type === "textarea") {
+    return <input className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs" value={value} onChange={(e) => onChange(e.target.value)} />;
+  }
+  return (
+    <input
+      className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs"
+      type={field.type === "money" || field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "time" ? "time" : "text"}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+function StockGroupedRows({
+  rows,
+  fields,
+  expandedItems,
+  setExpandedItems,
+  editingId,
+  editForm,
+  setEditForm,
+  startEdit,
+  saveEdit,
+  cancelEdit,
+  deleteRecord: doDelete,
+}: {
+  rows: RecordRow[];
+  fields: Field[];
+  expandedItems: Set<string>;
+  setExpandedItems: React.Dispatch<React.SetStateAction<Set<string>>>;
+  editingId: string | null;
+  editForm: Record<string, string>;
+  setEditForm: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  startEdit: (r: RecordRow) => void;
+  saveEdit: () => void;
+  cancelEdit: () => void;
+  deleteRecord: (id: string) => Promise<void>;
+}) {
+  const groups = useMemo(() => {
+    const map = new Map<string, RecordRow[]>();
+    for (const r of rows) {
+      const item = r.item || "—";
+      const list = map.get(item) ?? [];
+      list.push(r);
+      map.set(item, list);
+    }
+    for (const [, list] of map) {
+      list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    }
+    return map;
+  }, [rows]);
+
+  const toggle = (item: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(item)) next.delete(item); else next.add(item);
+      return next;
+    });
+  };
+
+  const renderRow = (r: RecordRow, showToggle: boolean, item: string, count: number) => {
+    const isEditing = editingId === r.id;
+    return (
+      <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+        <td className="px-2 py-2.5 text-center">
+          {showToggle && count > 1 && (
+            <button
+              className="text-2xl leading-none text-ink-faint hover:text-ink transition-transform"
+              onClick={() => toggle(item)}
+              style={{ transform: expandedItems.has(item) ? "rotate(180deg)" : "rotate(0deg)" }}
+            >
+              ▾
+            </button>
+          )}
+        </td>
+        {isEditing ? (
+          <>
+            {fields.map((f) => {
+              const locked = r.purchaseId && (f.key === "inQty" || f.key === "unitCost" || f.key === "item" || f.key === "date" || f.key === "type");
+              return (
+                <td key={f.key} className="px-2 py-1.5">
+                  {locked ? (
+                    <span className="text-xs text-ink-faint">{editForm[f.key] ?? ""}</span>
+                  ) : (
+                    <EditCellInput
+                      field={f}
+                      value={editForm[f.key] ?? ""}
+                      onChange={(v) => setEditForm((prev) => ({ ...prev, [f.key]: v }))}
+                    />
+                  )}
+                </td>
+              );
+            })}
+            <td className="px-2 py-1.5 text-right whitespace-nowrap">
+              <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
+              <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+            </td>
+          </>
+        ) : (
+          <>
+            {fields.map((f) => (
+              <td key={f.key} className="px-4 py-2.5 text-ink-soft">
+                {renderCell(f, r[f.key])}
+              </td>
+            ))}
+            <td className="px-4 py-2.5 text-right whitespace-nowrap">
+              <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+              <button
+                onClick={async () => { if (confirm("删除这条记录？")) await doDelete(r.id); }}
+                className="text-xs text-ink-faint hover:text-red-600"
+              >
+                删除
+              </button>
+            </td>
+          </>
+        )}
+      </tr>
+    );
+  };
+
+  return (
+    <>
+      {Array.from(groups.entries()).map(([item, list]) => {
+        const expanded = expandedItems.has(item);
+        const visible = expanded ? list : [list[0]];
+        return visible.map((r, i) => renderRow(r, i === 0, item, list.length));
+      })}
+    </>
+  );
+}
+
 export default function ModulePage() {
   const params = useParams();
   const slug = params.tenant as string;
@@ -194,9 +390,11 @@ export default function ModulePage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
-  const [statsRange, setStatsRange] = useState<7 | 30 | 0>(0);
+  const [statsRange, setStatsRange] = useState<7 | 30 | 0 | "custom">(0);
+  const [customStatsFrom, setCustomStatsFrom] = useState("");
+  const [customStatsTo, setCustomStatsTo] = useState("");
   const [importing, setImporting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
@@ -204,13 +402,134 @@ export default function ModulePage() {
   const [filterSearch, setFilterSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [weekAnchor, setWeekAnchor] = useState(() => new Date().toISOString().slice(0, 10));
+  const [shiftPreset, setShiftPreset] = useState<string>("custom");
+  const [presetConfigId, setPresetConfigId] = useState<string | null>(null);
+  const [presetConfig, setPresetConfig] = useState<Record<string, string>>({});
+  const [editingPresets, setEditingPresets] = useState(false);
+  const [presetForm, setPresetForm] = useState<Record<string, string>>({});
+  const [expandedStaff, setExpandedStaff] = useState<Set<string>>(new Set());
+  const [copyingWeek, setCopyingWeek] = useState(false);
+  const [copyMode, setCopyMode] = useState(false);
+  const [selectedForCopy, setSelectedForCopy] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const fileRef = useRef<HTMLInputElement>(null);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     getTenant(slug).then(setTenant);
+    if (moduleId === "dish-margin") syncMenuToMargin(slug);
+    if (moduleId === "daily-close") autoSyncDailyClose(slug).then(() => getTenant(slug).then(setTenant));
   }, [slug, moduleId, tick]);
+
+  // Scheduling shows one week per table: keep the date-range filter locked to
+  // the Monday–Sunday span of `weekAnchor` instead of a free date-range picker.
+  useEffect(() => {
+    if (moduleId !== "scheduling") return;
+    const monday = mondayOf(weekAnchor);
+    setDateFrom(monday);
+    setDateTo(addDays(monday, 6));
+    setPage(1);
+    setExpandedStaff(new Set());
+  }, [moduleId, weekAnchor]);
+
+  useEffect(() => {
+    if (moduleId !== "scheduling") return;
+    listRecords(slug, "scheduling_presets").then((recs) => {
+      const rec = recs[0];
+      setPresetConfigId(rec?.id ?? null);
+      const cfg: Record<string, string> = {};
+      if (rec) {
+        for (const p of SHIFT_PRESETS) {
+          if (rec[`${p.key}Start`]) cfg[`${p.key}Start`] = String(rec[`${p.key}Start`]);
+          if (rec[`${p.key}End`]) cfg[`${p.key}End`] = String(rec[`${p.key}End`]);
+        }
+      }
+      setPresetConfig(cfg);
+    });
+  }, [slug, moduleId, tick]);
+
+  const effectivePresets = useMemo(
+    () =>
+      SHIFT_PRESETS.map((p) => ({
+        ...p,
+        start: presetConfig[`${p.key}Start`] || p.start,
+        end: presetConfig[`${p.key}End`] || p.end,
+      })),
+    [presetConfig],
+  );
+
+  const openPresetEditor = () => {
+    const draft: Record<string, string> = {};
+    for (const p of effectivePresets) {
+      draft[`${p.key}Start`] = p.start;
+      draft[`${p.key}End`] = p.end;
+    }
+    setPresetForm(draft);
+    setEditingPresets(true);
+  };
+
+  const savePresets = async () => {
+    if (presetConfigId) {
+      await updateRecord(presetConfigId, presetForm);
+    } else {
+      await addRecord(slug, "scheduling_presets", presetForm);
+    }
+    setEditingPresets(false);
+    setTick((t) => t + 1);
+  };
+
+  /** Enter selection mode: check every shift by default, expand all staff so each row is visible. */
+  const startCopySelection = () => {
+    if (filteredRows.length === 0) return;
+    setSelectedForCopy(new Set(filteredRows.map((r) => r.id)));
+    setExpandedStaff(new Set(staffGroups.map((g) => g.name)));
+    setCopyMode(true);
+  };
+
+  const cancelCopySelection = () => {
+    setCopyMode(false);
+    setSelectedForCopy(new Set());
+  };
+
+  const toggleSelectForCopy = (id: string) => {
+    setSelectedForCopy((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllForCopy = () => {
+    setSelectedForCopy((prev) => (prev.size === filteredRows.length ? new Set() : new Set(filteredRows.map((r) => r.id))));
+  };
+
+  /** Duplicate the checked shifts into the following week (dates +7 days). */
+  const confirmCopySelection = async () => {
+    const toCopy = filteredRows.filter((r) => selectedForCopy.has(r.id));
+    if (toCopy.length === 0 || copyingWeek) return;
+    setCopyingWeek(true);
+    try {
+      await Promise.all(
+        toCopy.map((r) => {
+          const data: Record<string, string> = {};
+          for (const f of mod.fields) {
+            data[f.key] = r[f.key] != null ? String(r[f.key]) : "";
+          }
+          if (data.date) data.date = addDays(data.date, 7);
+          return addRecord(slug, "scheduling", data);
+        }),
+      );
+    } finally {
+      setCopyingWeek(false);
+    }
+    setCopyMode(false);
+    setSelectedForCopy(new Set());
+    setTick((t) => t + 1);
+    setWeekAnchor((d) => addDays(d, 7));
+  };
 
   useEffect(() => {
     if (!filterOpen) return;
@@ -224,25 +543,87 @@ export default function ModulePage() {
     [tenant, moduleId]
   );
 
+  /** Distinct prior values per text field, for autocomplete (e.g. staff names already used). */
+  const textSuggestions: Record<string, string[]> = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const f of mod?.fields ?? []) {
+      if (f.type !== "text") continue;
+      const values = new Set<string>();
+      for (const r of rawRows) {
+        const v = String(r[f.key] ?? "").trim();
+        if (v) values.add(v);
+      }
+      out[f.key] = Array.from(values).sort((a, b) => a.localeCompare(b));
+    }
+    return out;
+  }, [mod, rawRows]);
+
   const rows: RecordRow[] = useMemo(() => {
     if (moduleId === "dish-margin") {
-      // Ontario sales tax: HST 13% = 5% federal (GST) + 8% provincial.
       const r2 = (n: number) => Math.round(n * 100) / 100;
       return rawRows.map((r) => {
         const revenue = r2((parseFloat(r.price) || 0) * (parseFloat(r.soldMonth) || 0));
-        const gst = r2(revenue * GST_RATE);
-        const pst = r2(revenue * PST_RATE);
+        return { ...r, revenue: String(revenue) };
+      });
+    }
+    if (moduleId === "stock-loss") {
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      // group rows by item
+      const byItem: Record<string, RecordRow[]> = {};
+      for (const r of rawRows) {
+        const item = r.item || "";
+        if (item) (byItem[item] ??= []).push(r);
+      }
+      // FIFO value per row + onHand per item
+      const valueMap = new Map<string, { scrapValue: number; lossValue: number }>();
+      const itemOnHand: Record<string, number> = {};
+      for (const [item, itemRows] of Object.entries(byItem)) {
+        const sorted = [...itemRows].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+        // build batch queue from "in" rows
+        const batches: { qty: number; cost: number }[] = [];
+        for (const r of sorted) {
+          const inQty = parseFloat(r.inQty) || 0;
+          if (inQty > 0) batches.push({ qty: inQty, cost: parseFloat(r.unitCost) || 0 });
+        }
+        // deduct scrap+loss in date order, assign FIFO cost per row
+        let bi = 0;
+        for (const r of sorted) {
+          const scrap = parseFloat(r.scrapQty) || 0;
+          const loss = parseFloat(r.lossQty) || 0;
+          let scrapVal = 0;
+          let lossVal = 0;
+          let toDeduct = scrap;
+          while (toDeduct > 0 && bi < batches.length) {
+            const take = Math.min(toDeduct, batches[bi].qty);
+            scrapVal += take * batches[bi].cost;
+            batches[bi].qty -= take;
+            toDeduct -= take;
+            if (batches[bi].qty <= 0) bi++;
+          }
+          toDeduct = loss;
+          while (toDeduct > 0 && bi < batches.length) {
+            const take = Math.min(toDeduct, batches[bi].qty);
+            lossVal += take * batches[bi].cost;
+            batches[bi].qty -= take;
+            toDeduct -= take;
+            if (batches[bi].qty <= 0) bi++;
+          }
+          valueMap.set(r.id, { scrapValue: r2(scrapVal), lossValue: r2(lossVal) });
+        }
+        const remainQty = batches.slice(bi).reduce((s, b) => s + b.qty, 0);
+        itemOnHand[item] = r2(remainQty);
+      }
+      return rawRows.map((r) => {
+        const v = valueMap.get(r.id) ?? { scrapValue: 0, lossValue: 0 };
+        const onHand = itemOnHand[r.item || ""] ?? 0;
         return {
           ...r,
-          revenue: String(revenue),
-          gst: String(gst),
-          pst: String(pst),
-          afterTax: String(r2(revenue + gst + pst)),
+          scrapValue: String(v.scrapValue),
+          lossValue: String(v.lossValue),
+          onHand: String(onHand),
         };
       });
     }
-    // `现存` is the merchant's stock-take entry. We do NOT auto-compute it from
-    // in − loss: that ignores normal kitchen usage and overstates stock forever.
     return rawRows;
   }, [rawRows, moduleId]);
 
@@ -265,8 +646,11 @@ export default function ModulePage() {
         });
       }
     }
+    if (moduleId === "daily-close") {
+      result = [...result].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    }
     return result;
-  }, [rows, colFilters, dateFrom, dateTo]);
+  }, [rows, colFilters, dateFrom, dateTo, moduleId]);
 
   const hasAnyFilter = Object.values(colFilters).some((s) => s.size > 0) || !!dateFrom || !!dateTo;
 
@@ -274,38 +658,102 @@ export default function ModulePage() {
   const safePage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  // Scheduling groups the week's rows by staff — one row per person (their
+  // latest entry that week), with an arrow to expand the rest of their shifts.
+  const groupByStaff = moduleId === "scheduling";
+  const staffGroups = useMemo(() => {
+    const map = new Map<string, RecordRow[]>();
+    for (const r of filteredRows) {
+      const name = (r.staff as string)?.trim() || "—";
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(r);
+    }
+    const groups = Array.from(map.entries()).map(([name, list]) => {
+      const sorted = [...list].sort((a, b) => {
+        const da = rowDate(a), db = rowDate(b);
+        if (da !== db) return db.localeCompare(da);
+        const sa = (a.start as string) || "", sb = (b.start as string) || "";
+        return sb.localeCompare(sa);
+      });
+      return { name, list: sorted };
+    });
+    groups.sort((a, b) => a.name.localeCompare(b.name));
+    return groups;
+  }, [filteredRows]);
+
+  const toggleStaffExpanded = (name: string) => {
+    setExpandedStaff((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const rowCells = (r: RecordRow, muted?: boolean) =>
+    editingId === r.id ? (
+      <>
+        {mod.fields.map((f) => (
+          <td key={f.key} className="px-2 py-1.5">
+            <EditCellInput field={f} value={editForm[f.key] ?? ""} onChange={(v) => setEditForm((prev) => ({ ...prev, [f.key]: v }))} />
+          </td>
+        ))}
+        <td className="px-2 py-1.5 text-right whitespace-nowrap">
+          <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
+          <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+        </td>
+      </>
+    ) : (
+      <>
+        {mod.fields.map((f) => (
+          <td key={f.key} className={`px-4 py-2.5 ${muted ? "text-ink-faint" : "text-ink-soft"}`}>
+            {renderCell(f, r[f.key])}
+          </td>
+        ))}
+        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+          <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+          <button
+            onClick={async () => {
+              if (confirm("删除这条记录？")) {
+                await deleteRecord(r.id);
+                setTick((t) => t + 1);
+              }
+            }}
+            className="text-xs text-ink-faint hover:text-red-600"
+          >
+            删除
+          </button>
+        </td>
+      </>
+    );
+
   const alerts = useMemo(() => {
     const list: { type: "warn" | "info"; text: string }[] = [];
     if (moduleId === "stock-loss") {
       const latest: Record<string, { d: string; oh: number }> = {};
-      const flow: Record<string, { in: number; loss: number }> = {};
-      let lossAmount = 0;
+      const flow: Record<string, { in: number; scrap: number }> = {};
       for (const r of rows) {
         const item = r.item || "";
         if (!item) continue;
-        // 现存取该品项最新一条盘点（按日期，退回创建时间）
         const d = r.date || (r.createdAt ? String(r.createdAt).slice(0, 10) : "");
         if (r.onHand != null && r.onHand !== "" && (!latest[item] || d >= latest[item].d)) {
           latest[item] = { d, oh: parseFloat(r.onHand) || 0 };
         }
-        const f = (flow[item] ??= { in: 0, loss: 0 });
+        const f = (flow[item] ??= { in: 0, scrap: 0 });
         f.in += parseFloat(r.inQty) || 0;
-        f.loss += parseFloat(r.lossQty) || 0;
-        lossAmount += (parseFloat(r.lossQty) || 0) * (parseFloat(r.unitCost) || 0);
+        f.scrap += parseFloat(r.scrapQty) || 0;
       }
       const totals: Record<string, number> = Object.fromEntries(
         Object.entries(latest).map(([k, v]) => [k, v.oh])
       );
-      if (lossAmount > 0) list.push({ type: "warn", text: `💸 累计损耗金额：${money(lossAmount)}（报废 × 成本单价）` });
       const low = Object.entries(totals).filter(([, v]) => v > 0 && v <= 5);
       const zero = Object.entries(totals).filter(([, v]) => v <= 0);
       if (zero.length) list.push({ type: "warn", text: `⚠️ 零库存：${zero.map(([k]) => k).join("、")}` });
       if (low.length) list.push({ type: "warn", text: `📉 低库存（≤5）：${low.map(([k, v]) => `${k}(${v})`).join("、")}` });
-      // 损耗率 = 报废 / 进货；≥10% 视为偏高，提示商家关注
-      const highLoss = Object.entries(flow)
-        .filter(([, f]) => f.in > 0 && f.loss / f.in >= 0.1)
-        .map(([k, f]) => `${k}(${Math.round((f.loss / f.in) * 100)}%)`);
-      if (highLoss.length) list.push({ type: "warn", text: `🗑️ 损耗率偏高（≥10%）：${highLoss.join("、")}` });
+      const highScrap = Object.entries(flow)
+        .filter(([, f]) => f.in > 0 && f.scrap / f.in >= 0.1)
+        .map(([k, f]) => `${k}(${Math.round((f.scrap / f.in) * 100)}%)`);
+      if (highScrap.length) list.push({ type: "warn", text: `🗑️ 报废率偏高（≥10%）：${highScrap.join("、")}` });
     }
     if (moduleId === "group-booking") {
       const today = new Date().toISOString().slice(0, 10);
@@ -358,26 +806,6 @@ export default function ModulePage() {
         });
       }
     }
-    if (moduleId === "daily-close") {
-      // 对账差额 =（现金+刷卡）− 堂食；外卖平台另结，不进钱箱。|差额|≥$1 视为对不上。
-      const off = rows.filter((r) => {
-        if (!r.cash && !r.card && !r.dineIn) return false;
-        const gap = (parseFloat(r.cash) || 0) + (parseFloat(r.card) || 0) - (parseFloat(r.dineIn) || 0);
-        return Math.abs(gap) >= 1;
-      });
-      if (off.length) {
-        list.push({
-          type: "warn",
-          text: `💵 ${off.length} 天钱箱与堂食对不上：${off
-            .slice(0, 5)
-            .map((r) => {
-              const gap = (parseFloat(r.cash) || 0) + (parseFloat(r.card) || 0) - (parseFloat(r.dineIn) || 0);
-              return `${r.date || "?"}(${gap > 0 ? "+" : ""}${Math.round(gap)})`;
-            })
-            .join("、")}`,
-        });
-      }
-    }
     if (moduleId === "prep-signature") {
       // 卖断提醒：实际售出 ≥ 备货份数（且有备货）
       const soldOut = rows.filter((r) => (parseFloat(r.prepped) || 0) > 0 && (parseFloat(r.sold) || 0) >= (parseFloat(r.prepped) || 0));
@@ -410,9 +838,9 @@ export default function ModulePage() {
     return list;
   }, [rows, moduleId]);
 
-  // 现存(onHand) 改回手填盘点，不再自动计算；dish-margin 的税额仍自动只读。
   const autoFields = useMemo(() => {
-    if (moduleId === "dish-margin") return new Set(["revenue", "gst", "pst", "afterTax"]);
+    if (moduleId === "dish-margin") return new Set(["revenue"]);
+    if (moduleId === "stock-loss") return new Set(["inQty", "unitCost", "onHand", "scrapValue", "lossValue"]);
     return new Set<string>();
   }, [moduleId]);
 
@@ -424,6 +852,42 @@ export default function ModulePage() {
     },
     [mod, autoFields]
   );
+
+  const displayFields = useMemo(() => {
+    if (!mod) return [];
+    if (moduleId === "stock-loss") {
+      const order = ["item", "date", "type", "inQty", "unitCost", "scrapQty", "scrapValue", "lossQty", "lossValue", "onHand"];
+      return [...mod.fields].sort((a, b) => {
+        const ai = order.indexOf(a.key);
+        const bi = order.indexOf(b.key);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+    }
+    return mod.fields;
+  }, [mod, moduleId]);
+
+  useEffect(() => {
+    if (!open || moduleId !== "daily-close") return;
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const date = form.date || localDate;
+    setAutoFilling(true);
+    computeDailyClose(slug, date).then((result) => {
+      setForm((prev) => {
+        const next = {
+          ...prev,
+          date,
+          dineIn: result.dineIn !== "0" ? result.dineIn : prev.dineIn ?? "",
+          delivery: result.delivery !== "0" ? result.delivery : prev.delivery ?? "",
+          expenses: result.expenses !== "0" ? result.expenses : prev.expenses ?? "",
+          tips: result.tips !== "0" ? result.tips : prev.tips ?? "",
+        };
+        return applyComputed(next, mod?.computed);
+      });
+      setAutoFilling(false);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const updateForm = useCallback(
     (key: string, value: string) => {
@@ -459,7 +923,10 @@ export default function ModulePage() {
       return;
     }
     await addRecord(slug, moduleId, form);
-    const orderModules = ["phone-orders", "group-booking"];
+    if (moduleId === "purchasing") {
+      await syncPurchasingToStock(slug);
+    }
+    const orderModules = ["group-booking"];
     if (orderModules.includes(moduleId) && form.phone) {
       await syncMemberFromOrder(
         slug,
@@ -469,6 +936,7 @@ export default function ModulePage() {
       );
     }
     setForm({});
+    setShiftPreset("custom");
     setOpen(false);
     setTick((t) => t + 1);
   };
@@ -496,7 +964,18 @@ export default function ModulePage() {
   };
 
   const total = mod.amountKey ? sum(rows, mod.amountKey) : 0;
-  const statsRows = statsRange > 0 ? filterByDateRange(rows, statsRange) : rows;
+  const statsRows =
+    statsRange === "custom"
+      ? rows.filter((r) => {
+          const d = rowDate(r);
+          if (!d) return false;
+          if (customStatsFrom && d < customStatsFrom) return false;
+          if (customStatsTo && d > customStatsTo) return false;
+          return true;
+        })
+      : statsRange > 0
+      ? filterByDateRange(rows, statsRange)
+      : rows;
   const summableFields = getMoneyFields(mod);
 
   return (
@@ -546,36 +1025,6 @@ export default function ModulePage() {
                 }}
               />
             </label>
-            {moduleId === "stock-loss" && (
-              <button
-                className="btn-ghost border border-slate-300"
-                disabled={syncing}
-                onClick={async () => {
-                  setSyncing(true);
-                  const { added, updated } = await syncPurchasingToStock(slug);
-                  setSyncing(false);
-                  setTick((t) => t + 1);
-                  alert(`从采购导入完成：新增 ${added} 条，更新 ${updated} 条`);
-                }}
-              >
-                {syncing ? "同步中…" : "从采购导入"}
-              </button>
-            )}
-            {moduleId === "dish-margin" && (
-              <button
-                className="btn-ghost border border-slate-300"
-                disabled={syncing}
-                onClick={async () => {
-                  setSyncing(true);
-                  const { added, updated } = await syncMenuToMargin(slug);
-                  setSyncing(false);
-                  setTick((t) => t + 1);
-                  alert(`从菜单导入完成：新增 ${added} 道菜，更新 ${updated} 道菜售价`);
-                }}
-              >
-                {syncing ? "同步中…" : "从菜单导入"}
-              </button>
-            )}
           </div>
         )}
       </header>
@@ -588,7 +1037,7 @@ export default function ModulePage() {
 
       {/* ── Stats section ── */}
       <section className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">数据统计</span>
           <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
             {([0, 7, 30] as const).map((d) => (
@@ -600,7 +1049,30 @@ export default function ModulePage() {
                 {d === 0 ? "全部" : `近${d}天`}
               </button>
             ))}
+            <button
+              onClick={() => setStatsRange("custom")}
+              className={`rounded-md px-2.5 py-1 ${statsRange === "custom" ? "bg-white font-medium shadow-sm text-ink" : "text-ink-faint"}`}
+            >
+              自定义
+            </button>
           </div>
+          {statsRange === "custom" && (
+            <div className="flex items-center gap-1.5 text-xs text-ink-faint">
+              <input
+                type="date"
+                className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+                value={customStatsFrom}
+                onChange={(e) => setCustomStatsFrom(e.target.value)}
+              />
+              <span>—</span>
+              <input
+                type="date"
+                className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+                value={customStatsTo}
+                onChange={(e) => setCustomStatsTo(e.target.value)}
+              />
+            </div>
+          )}
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* record count */}
@@ -611,15 +1083,24 @@ export default function ModulePage() {
           {/* KPI total */}
           {mod.amountKey && (
             <div className="card p-4">
-              <div className="text-xs text-ink-faint">{mod.amountLabel?.zh ?? "合计"}</div>
+              <div className="text-xs text-ink-faint">
+                {statsRange === "custom" ? "该时段" : statsRange === 0 ? "累计" : `近${statsRange}天`}
+                {mod.amountLabel?.zh ?? "合计"}
+              </div>
               <div className="mt-1 text-xl font-bold text-ink">
                 {mod.amountKind === "money" ? money(sum(statsRows, mod.amountKey)) : num(sum(statsRows, mod.amountKey))}
               </div>
             </div>
           )}
+          {moduleId === "stock-loss" && (
+            <div className="card p-4">
+              <div className="text-xs text-ink-faint">累计报废价值</div>
+              <div className="mt-1 text-xl font-bold text-red-600">{money(sum(statsRows, "scrapValue"))}</div>
+            </div>
+          )}
           {/* summable field stats */}
           {summableFields
-            .filter((f) => f.key !== mod.amountKey)
+            .filter((f) => f.key !== mod.amountKey && moduleId !== "stock-loss")
             .slice(0, mod.amountKey ? 2 : 3)
             .map((f) => {
               const fmt = (v: number) => (f.type === "money" ? money(v) : num(v));
@@ -662,7 +1143,7 @@ export default function ModulePage() {
       )}
 
       {/* module-specific analytics (毛利排行 / 供应商比价 / 评价类别…) */}
-      <ModuleInsights moduleId={moduleId} rows={rows} />
+      <ModuleInsights moduleId={moduleId} rows={rows} slug={slug} />
 
       {/* trend chart */}
       {mod.amountKey && rows.length >= 2 && (
@@ -680,55 +1161,194 @@ export default function ModulePage() {
       {open && enabled && (
         <section className="card mb-6 p-5">
           <div className="mb-3 text-sm font-semibold text-ink">新增记录</div>
+          {moduleId === "daily-close" && autoFilling && (
+            <div className="mb-4 text-xs text-ink-faint">汇算中…</div>
+          )}
+
+          {moduleId === "scheduling" && (
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="label !mb-0">班次</label>
+                <button
+                  type="button"
+                  onClick={() => (editingPresets ? setEditingPresets(false) : openPresetEditor())}
+                  className="text-xs font-medium text-brand hover:text-brand-soft"
+                >
+                  {editingPresets ? "完成" : "修改默认班次"}
+                </button>
+              </div>
+
+              {editingPresets ? (
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  {SHIFT_PRESETS.map((p) => (
+                    <div key={p.key} className="flex items-center gap-2">
+                      <span className="w-12 shrink-0 text-xs font-medium text-ink-soft">{p.name}</span>
+                      <input
+                        type="time"
+                        value={presetForm[`${p.key}Start`] ?? p.start}
+                        onChange={(e) => setPresetForm((f) => ({ ...f, [`${p.key}Start`]: e.target.value }))}
+                        className="input !w-auto !py-1.5 !text-xs"
+                      />
+                      <span className="text-xs text-ink-faint">–</span>
+                      <input
+                        type="time"
+                        value={presetForm[`${p.key}End`] ?? p.end}
+                        onChange={(e) => setPresetForm((f) => ({ ...f, [`${p.key}End`]: e.target.value }))}
+                        className="input !w-auto !py-1.5 !text-xs"
+                      />
+                    </div>
+                  ))}
+                  <button type="button" onClick={savePresets} className="btn-primary !py-1.5 !text-xs">
+                    保存默认班次
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {effectivePresets.map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => {
+                        setShiftPreset(p.key);
+                        updateForm("start", p.start);
+                        updateForm("end", p.end);
+                      }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        shiftPreset === p.key ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"
+                      }`}
+                    >
+                      {p.name} {p.start}–{p.end}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShiftPreset("custom")}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                      shiftPreset === "custom" ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"
+                    }`}
+                  >
+                    自定义
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
-            {mod.fields.map((f) => (
+            {mod.fields
+              .filter((f) => !(moduleId === "stock-loss" && autoFields.has(f.key)))
+              .map((f) => (
               <div key={f.key} className={f.half ? "" : "sm:col-span-2"}>
                 <FieldInput
                   field={f}
                   value={form[f.key] ?? ""}
-                  onChange={(v) => updateForm(f.key, v)}
+                  onChange={(v) => {
+                    updateForm(f.key, v);
+                    if (moduleId === "scheduling" && (f.key === "start" || f.key === "end")) setShiftPreset("custom");
+                  }}
                   readOnly={computedTargets.has(f.key)}
+                  suggestions={textSuggestions[f.key]}
                 />
               </div>
             ))}
           </div>
           <div className="mt-4 flex gap-2">
             <button className="btn-primary" onClick={submit}>保存</button>
-            <button className="btn-ghost" onClick={() => { setForm({}); setOpen(false); }}>取消</button>
+            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>取消</button>
           </div>
         </section>
       )}
 
       {/* date range & filter bar */}
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
-        <div className="flex items-center gap-1.5 text-ink-faint">
-          <span>日期</span>
-          <input
-            type="date"
-            className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
-            value={dateFrom}
-            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-          />
-          <span>—</span>
-          <input
-            type="date"
-            className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
-            value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-          />
-        </div>
-        {hasAnyFilter && (
-          <>
-            <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+        {moduleId === "scheduling" ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
+              onClick={() => setWeekAnchor((d) => addDays(d, -7))}
+            >
+              ‹ 上一周
+            </button>
+            <span className="min-w-[9.5rem] text-center font-medium text-ink">
+              {fmtMonthDay(dateFrom)} – {fmtMonthDay(dateTo)}
+            </span>
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
+              onClick={() => setWeekAnchor((d) => addDays(d, 7))}
+            >
+              下一周 ›
+            </button>
             <button
               className="text-brand hover:text-brand-soft"
-              onClick={() => { setColFilters({}); setDateFrom(""); setDateTo(""); setPage(1); }}
+              onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}
             >
-              清除全部筛选
+              本周
             </button>
-          </>
+            {copyMode ? (
+              <>
+                <span className="text-ink-faint">已选 {selectedForCopy.size} / {filteredRows.length} 条</span>
+                <button
+                  disabled={selectedForCopy.size === 0 || copyingWeek}
+                  onClick={confirmCopySelection}
+                  className="rounded-full border border-brand bg-brand px-3 py-1 font-semibold text-white hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {copyingWeek ? "复制中…" : `复制 ${selectedForCopy.size} 条到下一周 →`}
+                </button>
+                <button onClick={cancelCopySelection} className="text-ink-faint hover:text-ink">
+                  取消
+                </button>
+              </>
+            ) : (
+              <button
+                disabled={filteredRows.length === 0}
+                onClick={startCopySelection}
+                className="rounded-full border border-brand px-3 py-1 font-semibold text-brand hover:bg-brand-wash disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                复制到下一周 →
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-ink-faint">
+            <span>日期</span>
+            <input
+              type="date"
+              className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            />
+            <span>—</span>
+            <input
+              type="date"
+              className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            />
+          </div>
         )}
+        {moduleId === "scheduling"
+          ? Object.values(colFilters).some((s) => s.size > 0) && (
+              <>
+                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <button className="text-brand hover:text-brand-soft" onClick={() => { setColFilters({}); setPage(1); }}>
+                  清除筛选
+                </button>
+              </>
+            )
+          : hasAnyFilter && (
+              <>
+                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <button
+                  className="text-brand hover:text-brand-soft"
+                  onClick={() => { setColFilters({}); setDateFrom(""); setDateTo(""); setPage(1); }}
+                >
+                  清除全部筛选
+                </button>
+              </>
+            )}
       </div>
+
+      {moduleId === "scheduling" && <AttendanceAnomalies rows={filteredRows} />}
 
       {/* records table */}
       <section className="card overflow-hidden">
@@ -736,7 +1356,21 @@ export default function ModulePage() {
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
-                {mod.fields.map((f) => {
+                {moduleId === "stock-loss" && <th className="w-8 px-2 py-2.5"></th>}
+                {groupByStaff && (
+                  <th className="w-8 px-2 py-2.5">
+                    {copyMode && (
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-brand"
+                        checked={filteredRows.length > 0 && selectedForCopy.size === filteredRows.length}
+                        onChange={toggleSelectAllForCopy}
+                        aria-label="全选"
+                      />
+                    )}
+                  </th>
+                )}
+                {displayFields.map((f) => {
                   const isOpen = filterOpen === f.key;
                   const active = colFilters[f.key]?.size > 0;
                   const allVals = Array.from(new Set(rows.map((r) => r[f.key] != null ? String(r[f.key]) : "").filter((v) => v !== "")));
@@ -834,57 +1468,77 @@ export default function ModulePage() {
               </tr>
             </thead>
             <tbody>
-              {pagedRows.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
-                  {editingId === r.id ? (
-                    <>
-                      {mod.fields.map((f) => (
-                        <td key={f.key} className="px-2 py-1.5">
-                          <EditCellInput
-                            field={f}
-                            value={editForm[f.key] ?? ""}
-                            onChange={(v) => setEditForm((prev) => ({ ...prev, [f.key]: v }))}
-                          />
-                        </td>
-                      ))}
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
-                        <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
-                        <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      {mod.fields.map((f) => (
-                        <td key={f.key} className="px-4 py-2.5 text-ink-soft">
-                          {renderCell(f, r[f.key])}
-                        </td>
-                      ))}
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => startEdit(r)}
-                          className="text-xs text-brand hover:text-brand-soft mr-2"
-                        >
-                          修改
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (confirm("删除这条记录？")) {
-                              await deleteRecord(r.id);
-                              setTick((t) => t + 1);
-                            }
-                          }}
-                          className="text-xs text-ink-faint hover:text-red-600"
-                        >
-                          删除
-                        </button>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
+              {moduleId === "stock-loss" ? (
+                <StockGroupedRows
+                  rows={pagedRows}
+                  fields={displayFields}
+                  expandedItems={expandedItems}
+                  setExpandedItems={setExpandedItems}
+                  editingId={editingId}
+                  editForm={editForm}
+                  setEditForm={setEditForm}
+                  startEdit={startEdit}
+                  saveEdit={saveEdit}
+                  cancelEdit={cancelEdit}
+                  deleteRecord={async (id) => { await deleteRecord(id); setTick((t) => t + 1); }}
+                />
+              ) : groupByStaff
+                ? staffGroups.map((g) => {
+                    const [latest, ...rest] = g.list;
+                    if (!latest) return null;
+                    const isExpanded = expandedStaff.has(g.name);
+                    return (
+                      <Fragment key={g.name}>
+                        <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                          <td className="px-2 py-2.5 text-center">
+                            {copyMode ? (
+                              <input
+                                type="checkbox"
+                                className="h-3.5 w-3.5 accent-brand"
+                                checked={selectedForCopy.has(latest.id)}
+                                onChange={() => toggleSelectForCopy(latest.id)}
+                              />
+                            ) : (
+                              rest.length > 0 && (
+                                <button
+                                  onClick={() => toggleStaffExpanded(g.name)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-ink-soft hover:border-brand hover:bg-brand-wash hover:text-brand-ink"
+                                  aria-label={isExpanded ? "收起" : "展开"}
+                                >
+                                  {isExpanded ? "▾" : "▸"}
+                                </button>
+                              )
+                            )}
+                          </td>
+                          {rowCells(latest)}
+                        </tr>
+                        {isExpanded &&
+                          rest.map((r) => (
+                            <tr key={r.id} className="border-b border-slate-50 bg-slate-50/40 last:border-0 hover:bg-slate-50">
+                              <td className="px-2 py-2.5 text-center">
+                                {copyMode && (
+                                  <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 accent-brand"
+                                    checked={selectedForCopy.has(r.id)}
+                                    onChange={() => toggleSelectForCopy(r.id)}
+                                  />
+                                )}
+                              </td>
+                              {rowCells(r, true)}
+                            </tr>
+                          ))}
+                      </Fragment>
+                    );
+                  })
+                : pagedRows.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                      {rowCells(r)}
+                    </tr>
+                  ))}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={mod.fields.length + 1} className="px-4 py-10 text-center text-sm text-ink-faint">
+                  <td colSpan={mod.fields.length + 1 + (groupByStaff ? 1 : 0)} className="px-4 py-10 text-center text-sm text-ink-faint">
                     {rows.length === 0
                       ? (enabled ? "还没有记录，点「+ 新增记录」开始录入。" : "还没有记录。")
                       : "没有匹配的记录，试试调整筛选条件。"}
@@ -895,7 +1549,7 @@ export default function ModulePage() {
           </table>
         </div>
         {/* pagination */}
-        {totalPages > 1 && (
+        {!groupByStaff && totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-ink-faint">
             <span>
               第 {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredRows.length)} 条，共 {filteredRows.length} 条
@@ -943,12 +1597,15 @@ function FieldInput({
   value,
   onChange,
   readOnly,
+  suggestions,
 }: {
   field: Field;
   value: string;
   onChange: (v: string) => void;
   readOnly?: boolean;
+  suggestions?: string[];
 }) {
+  const listId = suggestions?.length ? `dl-${field.key}` : undefined;
   return (
     <div>
       <label className="label">
@@ -967,76 +1624,198 @@ function FieldInput({
           ))}
         </select>
       ) : (
-        <input
-          className={`input ${readOnly ? "bg-slate-50 text-ink-faint" : ""}`}
-          type={
-            field.type === "money" || field.type === "number"
-              ? "number"
-              : field.type === "date"
-              ? "date"
-              : field.type === "time"
-              ? "time"
-              : "text"
-          }
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          readOnly={readOnly}
-        />
+        <>
+          <input
+            className={`input ${readOnly ? "bg-slate-50 text-ink-faint" : ""}`}
+            type={
+              field.type === "money" || field.type === "number"
+                ? "number"
+                : field.type === "date"
+                ? "date"
+                : field.type === "time"
+                ? "time"
+                : "text"
+            }
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            readOnly={readOnly}
+            list={listId}
+          />
+          {listId && (
+            <datalist id={listId}>
+              {suggestions!.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function EditCellInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
-  if (field.type === "select") {
-    return (
-      <select className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">—</option>
-        {field.options?.map((o) => <option key={o.zh} value={o.zh}>{o.zh}</option>)}
-      </select>
-    );
-  }
-  if (field.type === "textarea") {
-    return <input className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs" value={value} onChange={(e) => onChange(e.target.value)} />;
-  }
+/** Weekly attendance-exception summary for the scheduling module: staff with
+ *  迟到/请假 this week (计划内的 休息/正常 不算异常). `rows` is expected to
+ *  already be scoped to the selected week. */
+function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
+  const groups = useMemo(() => {
+    const map = new Map<string, Record<string, number>>();
+    for (const r of rows) {
+      const att = (r.attendance as string) || "";
+      if (!att || att === "正常" || att === "休息") continue;
+      const name = (r.staff as string)?.trim() || "—";
+      if (!map.has(name)) map.set(name, {});
+      const counts = map.get(name)!;
+      counts[att] = (counts[att] || 0) + 1;
+    }
+    return Array.from(map.entries())
+      .map(([name, counts]) => ({ name, counts }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const totals = useMemo(() => {
+    const t: Record<string, number> = {};
+    for (const g of groups) {
+      for (const [k, v] of Object.entries(g.counts)) t[k] = (t[k] || 0) + v;
+    }
+    return t;
+  }, [groups]);
+
   return (
-    <input
-      className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs"
-      type={field.type === "money" || field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "time" ? "time" : "text"}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <section className="card mb-4 p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink">本周异常出勤</h2>
+        {groups.length > 0 && (
+          <span className="text-xs text-ink-faint">{Object.entries(totals).map(([k, v]) => `${k} ${v} 次`).join(" · ")}</span>
+        )}
+      </div>
+      {groups.length === 0 ? (
+        <p className="text-sm text-ink-faint">本周出勤正常，暂无异常记录。</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {groups.map((g) => (
+            <div key={g.name} className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs">
+              <span className="font-medium text-ink">{g.name}</span>
+              {Object.entries(g.counts).map(([k, v]) => (
+                <span key={k} className="rounded-full bg-white px-2 py-0.5 font-medium text-amber-700">
+                  {k} ×{v}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
-function renderCell(field: Field, value: any) {
-  if (value === undefined || value === "" || value === null) return <span className="text-slate-300">—</span>;
-  if (field.type === "money") return money(value);
-  return String(value);
-}
-
 /** Per-module analytics blocks that the generic stats/alerts can't express. */
-function ModuleInsights({ moduleId, rows }: { moduleId: string; rows: RecordRow[] }) {
-  if (moduleId === "dish-margin") return <DishMarginRanking rows={rows} />;
+function ModuleInsights({ moduleId, rows, slug }: { moduleId: string; rows: RecordRow[]; slug: string }) {
+  if (moduleId === "dish-margin") return <DishSalesRanking rows={rows} />;
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
+  if (moduleId === "members") return <TierSettings slug={slug} />;
   return null;
 }
 
-/** 菜品毛利排行：贡献毛利 =（售价−成本）× 月销量；毛利率 =（售价−成本）/售价。 */
-function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
+function TierSettings({ slug }: { slug: string }) {
+  const [tiers, setTiers] = useState<TierRule[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    loadTierRules(slug).then((t) => { setTiers(t); setLoaded(true); });
+  }, [slug]);
+
+  const update = (i: number, field: "name" | "minSpend", value: string) => {
+    setTiers((prev) => {
+      const next = [...prev];
+      next[i] = { ...next[i], [field]: field === "minSpend" ? parseFloat(value) || 0 : value };
+      return next;
+    });
+  };
+
+  const add = () => setTiers((prev) => [...prev, { name: "", minSpend: 0 }]);
+
+  const remove = (i: number) => setTiers((prev) => prev.filter((_, j) => j !== i));
+
+  const save = async () => {
+    const valid = tiers.filter((t) => t.name.trim());
+    if (!valid.length) return;
+    setSaving(true);
+    setMsg("");
+    await saveTierRules(slug, valid);
+    const updated = await reapplyTiers(slug);
+    setTiers(valid.sort((a, b) => a.minSpend - b.minSpend));
+    setMsg(updated > 0 ? `已保存，${updated} 位会员等级已更新` : "已保存");
+    setSaving(false);
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <section className="card mb-6 p-5">
+      <button
+        className="flex w-full items-center justify-between text-sm font-semibold text-ink"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span>会员等级规则</span>
+        <span className={`text-xl leading-none transition-transform ${expanded ? "rotate-180" : ""}`}>▾</span>
+      </button>
+      {expanded && (
+        <>
+          <p className="mt-3 mb-3 text-xs text-ink-faint">设定累计消费满多少自动升级，保存后立即生效</p>
+          <div className="space-y-2">
+            {tiers.map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
+                  placeholder="等级名称"
+                  value={t.name}
+                  onChange={(e) => update(i, "name", e.target.value)}
+                />
+                <span className="text-xs text-ink-faint">满</span>
+                <input
+                  className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm text-right outline-none focus:border-brand"
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={t.minSpend || ""}
+                  onChange={(e) => update(i, "minSpend", e.target.value)}
+                />
+                <span className="text-xs text-ink-faint">元</span>
+                {tiers.length > 1 && (
+                  <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(i)}>删除</button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button className="btn-ghost border border-slate-300 text-xs" onClick={add}>+ 新增等级</button>
+            <button className="btn-primary text-xs" onClick={save} disabled={saving}>
+              {saving ? "保存中…" : "保存并应用"}
+            </button>
+            {msg && <span className="text-xs text-emerald-600">{msg}</span>}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
   const ranked = useMemo(() => {
     return rows
       .map((r) => {
         const price = parseFloat(r.price) || 0;
-        const cost = parseFloat(r.cost) || 0;
         const sold = parseFloat(r.soldMonth) || 0;
-        const profit = (price - cost) * sold;
-        const margin = price > 0 ? (price - cost) / price : 0;
-        return { dish: r.dish || "—", price, cost, sold, profit, margin };
+        const revenue = price * sold;
+        return { dish: r.dish || "—", price, sold, revenue };
       })
-      .filter((d) => d.price > 0 || d.sold > 0)
-      .sort((a, b) => b.profit - a.profit);
+      .filter((d) => d.sold > 0)
+      .sort((a, b) => b.sold - a.sold);
   }, [rows]);
 
   if (ranked.length < 2) return null;
@@ -1045,37 +1824,35 @@ function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">毛利排行</div>
+      <div className="mb-3 text-sm font-semibold text-ink">销量排行</div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 明星菜（贡献毛利最高）</div>
+          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 最受欢迎</div>
           {top.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{money(d.profit)} · {Math.round(d.margin * 100)}%</span>
+              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
             </div>
           ))}
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 拖后腿（贡献毛利最低）</div>
+          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 销量最低</div>
           {bottom.length ? bottom.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-amber-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{money(d.profit)} · {Math.round(d.margin * 100)}%</span>
+              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
             </div>
           )) : <div className="text-xs text-amber-700/60">菜品太少，暂无</div>}
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] text-xs">
+        <table className="w-full min-w-[320px] text-xs">
           <thead>
             <tr className="border-b border-slate-200 text-left text-ink-faint">
               <th className="py-1.5 pr-3 font-medium">菜名</th>
               <th className="py-1.5 px-3 font-medium text-right">售价</th>
-              <th className="py-1.5 px-3 font-medium text-right">成本</th>
-              <th className="py-1.5 px-3 font-medium text-right">毛利率</th>
               <th className="py-1.5 px-3 font-medium text-right">月销</th>
-              <th className="py-1.5 pl-3 font-medium text-right">贡献毛利</th>
+              <th className="py-1.5 pl-3 font-medium text-right">销售额</th>
             </tr>
           </thead>
           <tbody>
@@ -1083,10 +1860,8 @@ function DishMarginRanking({ rows }: { rows: RecordRow[] }) {
               <tr key={d.dish} className="border-b border-slate-100 last:border-0">
                 <td className="py-1.5 pr-3 text-ink">{d.dish}</td>
                 <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.price)}</td>
-                <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.cost)}</td>
-                <td className={`py-1.5 px-3 text-right ${d.margin < 0.3 ? "text-amber-600" : "text-ink-soft"}`}>{Math.round(d.margin * 100)}%</td>
                 <td className="py-1.5 px-3 text-right text-ink-soft">{d.sold}</td>
-                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.profit)}</td>
+                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.revenue)}</td>
               </tr>
             ))}
           </tbody>

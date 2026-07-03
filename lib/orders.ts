@@ -94,3 +94,22 @@ export async function setOrderStatus(id: string, status: Order["status"]): Promi
   const { error } = await supabase.from("orders").update({ status }).eq("id", id);
   if (error) console.error("setOrderStatus", error);
 }
+
+export async function deleteOrder(id: string): Promise<void> {
+  const { error } = await supabase.from("orders").delete().eq("id", id);
+  if (error) console.error("deleteOrder", error);
+}
+
+export async function cancelOrderItem(id: string, itemIndex: number): Promise<void> {
+  const { data, error: fetchErr } = await supabase.from("orders").select("items,total").eq("id", id).maybeSingle();
+  if (fetchErr || !data) return;
+  const items: (OrderItem & { cancelled?: boolean })[] = data.items ?? [];
+  if (itemIndex < 0 || itemIndex >= items.length || items[itemIndex].cancelled) return;
+  items[itemIndex] = { ...items[itemIndex], cancelled: true };
+  const total = items
+    .filter((it) => !it.cancelled)
+    .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+  const r2 = Math.round(total * 100) / 100;
+  const { error } = await supabase.from("orders").update({ items, total: r2 }).eq("id", id);
+  if (error) console.error("cancelOrderItem", error);
+}
