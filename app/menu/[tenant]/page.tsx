@@ -196,16 +196,9 @@ export default function PublicMenu() {
       return;
     }
 
-    // Dine-in: kitchen fires immediately. Cloud-printer ticket is best-effort —
-    // never block the order if printing is off/unconfigured/offline. (The print
-    // route itself re-prices the order and refuses unpaid togo/delivery — E1.)
-    if (res.id) {
-      fetch("/api/print", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: res.id }),
-      }).catch(() => {});
-    }
+    // Dine-in: kitchen fires immediately. No push to a printer here — the Epson
+    // TM-T88VI PULLS via Server Direct Print (it polls /api/epson and picks up
+    // this order on its next cycle). Nothing to do client-side.
     setPlaced(true);
     setPlacedOrders((p) => [
       ...p,

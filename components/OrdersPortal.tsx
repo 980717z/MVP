@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { listOrders, setOrderStatus, cancelOrderItem, deleteOrder, type Order } from "@/lib/orders";
+import { listOrders, setOrderStatus, cancelOrderItem, deleteOrder, reprintOrder, type Order } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { price as fmtPrice } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
@@ -294,6 +294,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
                 <div className="flex gap-2">
                   <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
+                  <button
+                    onClick={async () => { await reprintOrder(o.id); load(); }}
+                    className="text-xs text-ink-faint hover:text-brand-ink"
+                    title="让打印机重新出这单"
+                  >
+                    重打
+                  </button>
                   <button
                     className="text-xs text-ink-faint hover:text-red-600"
                     onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}

@@ -42,6 +42,7 @@ export interface Order {
   address: OrderAddress | null;
   eta_minutes: number | null;
   paid_at: string | null;
+  printed_at: string | null; // Epson Server Direct Print: null = needs printing
 }
 
 /** Customer submits an order (works for anon).
@@ -132,6 +133,12 @@ export async function setOrderStatus(id: string, status: Order["status"]): Promi
 export async function deleteOrder(id: string): Promise<void> {
   const { error } = await supabase.from("orders").delete().eq("id", id);
   if (error) console.error("deleteOrder", error);
+}
+
+/** Clear printed_at so the Epson re-prints this order on its next poll. */
+export async function reprintOrder(id: string): Promise<void> {
+  const { error } = await supabase.from("orders").update({ printed_at: null }).eq("id", id);
+  if (error) console.error("reprintOrder", error);
 }
 
 export async function cancelOrderItem(id: string, itemIndex: number): Promise<void> {
