@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { addMenuItem, deleteMenuItem, getCatOrder, listMenuItems, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { displayPrice, addMenuItem, deleteMenuItem, getCatOrder, listMenuItems, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 
 const CATEGORIES = [
@@ -104,6 +104,17 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const saveField = (id: string, patch: Record<string, any>) => {
     updateMenuItem(id, patch);
   };
+
+  // ── 多规格 (size variants) editing ──────────────────────────────────────
+  const setVariants = (d: MenuItem, next: any[]) => {
+    patchLocal(d.id, { variants: next });
+    updateMenuItem(d.id, { variants: next });
+  };
+  const addVariant = (d: MenuItem) => setVariants(d, [...(d.variants ?? []), { label_zh: "", label_en: "", price: "" }]);
+  const patchVariant = (d: MenuItem, i: number, patch: Record<string, any>) =>
+    patchLocal(d.id, { variants: (d.variants ?? []).map((v: any, idx: number) => (idx === i ? { ...v, ...patch } : v)) });
+  const saveVariants = (d: MenuItem) => updateMenuItem(d.id, { variants: d.variants ?? [] });
+  const rmVariant = (d: MenuItem, i: number) => setVariants(d, (d.variants ?? []).filter((_: any, idx: number) => idx !== i));
 
   const changeImage = async (id: string, file: File | null) => {
     if (!file) return;
@@ -344,18 +355,61 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                         onChange={(e) => patchLocal(d.id, { name_en: e.target.value })}
                         onBlur={(e) => saveField(d.id, { name_en: e.target.value })}
                       />
-                      <div className="flex w-32 items-center rounded-lg border border-slate-300 px-2">
-                        <span className="text-sm text-ink-faint">$</span>
-                        <input
-                          className="w-full bg-transparent py-1.5 text-sm outline-none"
-                          type="number"
-                          step="0.01"
-                          value={d.price ?? ""}
-                          placeholder="时价"
-                          onChange={(e) => patchLocal(d.id, { price: e.target.value })}
-                          onBlur={(e) => saveField(d.id, { price: e.target.value })}
-                        />
-                      </div>
+                      {(d.variants?.length ?? 0) === 0 ? (
+                        <div className="flex items-center gap-3">
+                          <div className="flex w-32 items-center rounded-lg border border-slate-300 px-2">
+                            <span className="text-sm text-ink-faint">$</span>
+                            <input
+                              className="w-full bg-transparent py-1.5 text-sm outline-none"
+                              type="number"
+                              step="0.01"
+                              value={d.price ?? ""}
+                              placeholder="时价"
+                              onChange={(e) => patchLocal(d.id, { price: e.target.value })}
+                              onBlur={(e) => saveField(d.id, { price: e.target.value })}
+                            />
+                          </div>
+                          <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">＋ 多规格（大小/份量）</button>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
+                          <div className="mb-1.5 text-xs font-medium text-ink-soft">多规格（每个大小一个价）</div>
+                          <div className="space-y-1.5">
+                            {d.variants.map((v: any, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <input
+                                  className="w-16 rounded border border-slate-300 px-2 py-1 text-sm outline-none"
+                                  value={v.label_zh ?? ""}
+                                  placeholder="全/位"
+                                  onChange={(e) => patchVariant(d, i, { label_zh: e.target.value })}
+                                  onBlur={() => saveVariants(d)}
+                                />
+                                <input
+                                  className="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-ink-soft outline-none"
+                                  value={v.label_en ?? ""}
+                                  placeholder="Whole/Single"
+                                  onChange={(e) => patchVariant(d, i, { label_en: e.target.value })}
+                                  onBlur={() => saveVariants(d)}
+                                />
+                                <div className="flex flex-1 items-center rounded border border-slate-300 px-2">
+                                  <span className="text-sm text-ink-faint">$</span>
+                                  <input
+                                    className="w-full bg-transparent py-1 text-sm outline-none"
+                                    type="number"
+                                    step="0.01"
+                                    value={v.price ?? ""}
+                                    placeholder="0.00"
+                                    onChange={(e) => patchVariant(d, i, { price: e.target.value })}
+                                    onBlur={() => saveVariants(d)}
+                                  />
+                                </div>
+                                <button onClick={() => rmVariant(d, i)} className="flex-none px-1 text-xs text-ink-faint hover:text-red-600" title="删除这个规格">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                          <button onClick={() => addVariant(d)} className="mt-2 text-xs font-medium text-brand hover:underline">＋ 加一个规格</button>
+                        </div>
+                      )}
                     </div>
 
                     <button onClick={() => remove(d.id)} className="flex-none self-start px-1 text-xs text-ink-faint hover:text-red-600">删除</button>
@@ -408,7 +462,9 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                             {d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>}
                           </div>
                         </div>
-                        <div className="flex-none font-semibold text-ink">{fmtPrice(d.price)}</div>
+                        <div className="flex-none font-semibold text-ink">
+                          {(d.variants?.length ?? 0) > 0 ? `起 ${fmtPrice(displayPrice(d))}` : fmtPrice(d.price)}
+                        </div>
                       </div>
                     ))}
                   </div>

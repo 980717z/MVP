@@ -5,16 +5,80 @@
 
 import { supabase } from "./supabase";
 
+/** A size/portion option for a dish (多规格): 全/半, 位/小/中/大/特大, etc. */
+export interface Variant {
+  label_zh: string;
+  label_en?: string;
+  price: number;
+}
+
 export interface MenuItem {
   id: string;
   tenant_slug: string;
   name_zh: string;
   name_en: string;
   price: number | null;
+  /** When non-empty, the dish is multi-size: `price` is ignored and the diner
+   *  picks one of these. Empty/absent = single-price dish (uses `price`). */
+  variants: Variant[];
   category: string;
   image_url: string;
   sort: number;
   created_at: string;
+}
+
+/** Read/display: only complete, valid sizes (label + positive price). */
+export function normVariants(raw: any): Variant[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((v) => ({
+      label_zh: String(v?.label_zh ?? "").trim(),
+      label_en: String(v?.label_en ?? "").trim() || undefined,
+      price: Number(v?.price) || 0,
+    }))
+    .filter((v) => v.label_zh && v.price > 0);
+}
+
+/** Write: keep every row (even half-typed) so the editor doesn't lose them
+ *  mid-edit; coerce price to a number. Empty rows are filtered on read. */
+function coerceVariants(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v) => ({
+    label_zh: String(v?.label_zh ?? ""),
+    label_en: String(v?.label_en ?? ""),
+    price: v?.price === "" || v?.price == null ? 0 : Number(v.price) || 0,
+  }));
+}
+
+/** The price to show on the dish row: the min variant price ("起"), else `price`. */
+export function displayPrice(d: MenuItem): number | null {
+  if (d.variants?.length) return Math.min(...d.variants.map((v) => v.price));
+  return d.price;
+}
+
+/** Cart key: dish id for single-price, `id#variantIndex` for a chosen size. */
+export function cartKey(id: string, vi: number | null | undefined): string {
+  return vi == null ? id : `${id}#${vi}`;
+}
+export function parseCartKey(key: string): { id: string; vi: number | null } {
+  const i = key.indexOf("#");
+  return i < 0 ? { id: key, vi: null } : { id: key.slice(0, i), vi: Number(key.slice(i + 1)) };
+}
+/** Unit price for a cart entry (variant price when a size is chosen, else base). */
+export function unitPrice(d: MenuItem, vi: number | null): number {
+  if (vi != null && d.variants?.[vi]) return Number(d.variants[vi].price) || 0;
+  return Number(d.price) || 0;
+}
+/** Total for a cart, resolving each key's dish + variant. Pure — unit-tested. */
+export function cartTotal(cart: Record<string, number>, byId: Record<string, MenuItem>): number {
+  let sum = 0;
+  for (const [key, qty] of Object.entries(cart)) {
+    const { id, vi } = parseCartKey(key);
+    const d = byId[id];
+    if (!d) continue;
+    sum += unitPrice(d, vi) * qty;
+  }
+  return Math.round(sum * 100) / 100;
 }
 
 export async function listMenuItems(slug: string): Promise<MenuItem[]> {
@@ -28,12 +92,12 @@ export async function listMenuItems(slug: string): Promise<MenuItem[]> {
     console.error("listMenuItems", error);
     return [];
   }
-  return (data ?? []) as MenuItem[];
+  return (data ?? []).map((r: any) => ({ ...r, variants: normVariants(r.variants) })) as MenuItem[];
 }
 
 export async function addMenuItem(
   slug: string,
-  item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string }
+  item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string; variants?: Variant[] }
 ): Promise<{ error?: string }> {
   const price =
     item.price === "" || item.price === undefined || item.price === null
@@ -44,6 +108,7 @@ export async function addMenuItem(
     name_zh: item.name_zh,
     name_en: item.name_en ?? "",
     price,
+    variants: coerceVariants(item.variants),
     category: item.category ?? "",
     image_url: item.image_url ?? "",
   });
@@ -56,13 +121,14 @@ export async function addMenuItem(
 
 export async function updateMenuItem(
   id: string,
-  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url">>
+  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants">>
 ): Promise<{ error?: string }> {
   const clean: Record<string, any> = { ...patch };
   if ("price" in clean) {
     const p = clean.price;
     clean.price = p === "" || p === null || p === undefined ? null : Number(p);
   }
+  if ("variants" in clean) clean.variants = coerceVariants(clean.variants);
   const { error } = await supabase.from("menu_items").update(clean).eq("id", id);
   if (error) {
     console.error("updateMenuItem", error);

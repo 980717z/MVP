@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { listMenuItems, orderedCategories, type MenuItem } from "@/lib/menu";
+import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, DELIVERY_TIP_RATE } from "@/lib/tax";
@@ -46,6 +46,7 @@ export default function PublicMenu() {
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(false);
   const [activeCat, setActiveCat] = useState<string>("");
+  const [sheetDish, setSheetDish] = useState<MenuItem | null>(null); // open 多规格 size sheet
   const railRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
@@ -84,18 +85,35 @@ export default function PublicMenu() {
   }, [slug]);
 
   const byId = useMemo(() => Object.fromEntries(dishes.map((d) => [d.id, d])), [dishes]);
-  const inc = (id: string, delta: number) =>
+  const inc = (key: string, delta: number) =>
     setCart((c) => {
-      const q = Math.max(0, (c[id] ?? 0) + delta);
+      const q = Math.max(0, (c[key] ?? 0) + delta);
       const next = { ...c };
-      if (q === 0) delete next[id];
-      else next[id] = q;
+      if (q === 0) delete next[key];
+      else next[key] = q;
       return next;
     });
 
-  const cartLines = Object.entries(cart).map(([id, qty]) => ({ d: byId[id], qty })).filter((x) => x.d);
+  // Cart is keyed by dish id (single-price) or `id#variantIndex` (a chosen size).
+  const cartLines = Object.entries(cart)
+    .map(([key, qty]) => {
+      const { id, vi } = parseCartKey(key);
+      const d = byId[id];
+      if (!d) return null;
+      const variant = vi != null ? d.variants?.[vi] ?? null : null;
+      return { key, d, variant, unit: unitPrice(d, vi), qty };
+    })
+    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; unit: number; qty: number } => !!x);
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
-  const total = cartLines.reduce((a, x) => a + (Number(x.d.price) || 0) * x.qty, 0);
+  const total = cartLines.reduce((a, x) => a + x.unit * x.qty, 0);
+  // Display name with size baked in, so kitchen ticket / receipt / ledger read "红烧蟹肉翅（中）".
+  const lineName = (d: MenuItem, v: Variant | null, en = false) =>
+    en
+      ? v ? `${d.name_en || d.name_zh} (${v.label_en || v.label_zh})` : d.name_en || d.name_zh
+      : v ? `${d.name_zh}（${v.label_zh}）` : d.name_zh;
+  // qty of a dish across all its sizes (for the 选规格 button badge)
+  const dishQty = (id: string) =>
+    cartLines.reduce((a, x) => (x.d.id === id ? a + x.qty : a), 0);
 
   // Orders already placed this session (each "再点一单" round). Lets a returning
   // diner see what they've ordered plus the running total across rounds.
@@ -149,7 +167,11 @@ export default function PublicMenu() {
 
     setSubmitting(true);
     const items: OrderItem[] = cartLines.map((x) => ({
-      id: x.d.id, name_zh: x.d.name_zh, name_en: x.d.name_en, price: x.d.price, qty: x.qty,
+      id: x.d.id,
+      name_zh: lineName(x.d, x.variant),
+      name_en: lineName(x.d, x.variant, true),
+      price: x.unit,
+      qty: x.qty,
     }));
     const res = await createOrder(slug, {
       items,
@@ -187,7 +209,7 @@ export default function PublicMenu() {
     setPlaced(true);
     setPlacedOrders((p) => [
       ...p,
-      { lines: cartLines.map((x) => ({ name_zh: x.d.name_zh, name_en: x.d.name_en, price: x.d.price, qty: x.qty })), total },
+      { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total },
     ]);
     setCart({});
     setTableNo(lockedTable ?? "");
@@ -253,7 +275,9 @@ export default function PublicMenu() {
     : [];
 
   const renderDish = (d: MenuItem) => {
-    const qty = cart[d.id] ?? 0;
+    const hasVariants = (d.variants?.length ?? 0) > 0;
+    const qty = hasVariants ? dishQty(d.id) : cart[d.id] ?? 0;
+    const dp = displayPrice(d);
     return (
       <div key={d.id} className="flex items-center gap-3">
         {d.image_url && (
@@ -261,13 +285,27 @@ export default function PublicMenu() {
           <img src={d.image_url} alt={d.name_zh} className="h-14 w-14 flex-none rounded-lg object-cover" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="text-[17px] font-semibold leading-snug text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+          <div className="text-[17px] font-semibold leading-snug text-ink">
+            {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
+            {hasVariants && <span className="ml-1.5 rounded border border-jade px-1 align-middle text-[9px] font-bold text-jade">{d.variants.length} 规格</span>}
+          </div>
           {lang === "zh"
             ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
             : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
-          <div className="mt-1 text-sm font-bold text-jade">{fmtPrice(d.price) || t("market")}</div>
+          <div className="mt-1 text-sm font-bold text-jade">
+            {hasVariants && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
+            {fmtPrice(dp) || t("market")}
+          </div>
         </div>
-        {qty === 0 ? (
+        {hasVariants ? (
+          <button
+            onClick={() => setSheetDish(d)}
+            className="relative flex flex-none items-center gap-1 rounded-full border-[1.5px] border-jade bg-white px-3 py-1.5 text-sm font-medium text-jade"
+          >
+            {lang === "zh" ? "选规格" : "Size"} ›
+            {qty > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{qty}</span>}
+          </button>
+        ) : qty === 0 ? (
           <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
             ＋
           </button>
@@ -422,6 +460,51 @@ export default function PublicMenu() {
         )}
       </div>
 
+      {/* 多规格 size selector — tap 选规格 opens this */}
+      {sheetDish && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSheetDish(null)}>
+          <div className="mx-auto max-h-[78vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-slate-200" />
+            <div className="mb-1 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-lg font-bold text-ink" style={{ fontFamily: '"Noto Sans SC", sans-serif' }}>{sheetDish.name_zh}</div>
+                {sheetDish.name_en && <div className="text-xs text-ink-faint">{sheetDish.name_en}</div>}
+              </div>
+              <button onClick={() => setSheetDish(null)} className="flex-none text-ink-faint">✕</button>
+            </div>
+            <div className="mb-1 text-xs text-ink-soft">{lang === "zh" ? "选择大小" : "Choose a size"}</div>
+            <div className="divide-y divide-slate-100">
+              {sheetDish.variants.map((v, vi) => {
+                const key = cartKey(sheetDish.id, vi);
+                const q = cart[key] ?? 0;
+                return (
+                  <div key={vi} className="flex items-center gap-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[15px] font-semibold text-ink" style={{ fontFamily: '"Noto Sans SC", sans-serif' }}>
+                        {v.label_zh}{v.label_en && <span className="ml-1.5 text-xs font-normal text-ink-faint">{v.label_en}</span>}
+                      </div>
+                    </div>
+                    <span className="font-bold tabular-nums text-jade">{fmtPrice(v.price)}</span>
+                    {q === 0 ? (
+                      <button onClick={() => inc(key, 1)} className="grid h-8 w-8 flex-none place-items-center rounded-full bg-jade text-lg text-white">＋</button>
+                    ) : (
+                      <div className="flex flex-none items-center gap-2">
+                        <button onClick={() => inc(key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                        <span className="w-5 text-center font-semibold">{q}</span>
+                        <button onClick={() => inc(key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={() => setSheetDish(null)} className="mt-4 w-full rounded-lg bg-jade py-3 font-medium text-white">
+              {lang === "zh" ? "完成" : "Done"}{count > 0 ? ` · ${count} ${t("items")}` : ""}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* cart sheet */}
       {open && (
         <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={() => setOpen(false)}>
@@ -455,15 +538,15 @@ export default function PublicMenu() {
               <>
                 <div className="divide-y divide-slate-100">
                   {cartLines.map((x) => (
-                    <div key={x.d.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div key={x.key} className="flex items-center justify-between gap-3 py-2.5">
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-ink">{x.d.name_zh}</div>
-                        <div className="text-xs text-ink-faint">{fmtPrice(x.d.price) || t("market")}</div>
+                        <div className="text-sm font-medium text-ink">{lineName(x.d, x.variant, lang !== "zh")}</div>
+                        <div className="text-xs text-ink-faint">{fmtPrice(x.unit) || t("market")}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => inc(x.d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                        <button onClick={() => inc(x.key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
                         <span className="w-5 text-center font-semibold">{x.qty}</span>
-                        <button onClick={() => inc(x.d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                        <button onClick={() => inc(x.key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
                       </div>
                     </div>
                   ))}
