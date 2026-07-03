@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, cancelOrderItem, deleteOrder, type Order } from "@/lib/orders";
-import { postOrderSales, recordOrderSale, syncMemberFromOrder } from "@/lib/store";
+import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { price as fmtPrice } from "@/lib/format";
+import KitchenTicket from "@/components/KitchenTicket";
 
 const STATUS: Record<Order["status"], { label: string; cls: string }> = {
   new: { label: "新单", cls: "bg-amber-100 text-amber-700" },
@@ -29,10 +30,44 @@ function fmtPhone(p: string) {
   return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : p;
 }
 
+// A representative order so staff can preview/tune the ticket with no live orders.
+const SAMPLE_ORDER = {
+  id: "sample-a1b2c3",
+  tenant_slug: "fulai",
+  items: [
+    { id: "1", name_zh: "游水青斑火锅", name_en: "Live Green Bass Hot Pot", price: 65.99, qty: 2 },
+    { id: "2", name_zh: "大补走地鸡窝（半）", name_en: "Free Range Chicken (Half)", price: 35.99, qty: 1 },
+    { id: "3", name_zh: "白饭", name_en: "Steamed Rice", price: 1.5, qty: 3 },
+  ],
+  total: 172.47,
+  table_no: "8A",
+  phone: "5143574178",
+  note: "走地鸡不要辣，多加姜",
+  status: "new",
+  created_at: new Date().toISOString(),
+  order_type: "dine_in",
+  payment_status: "unpaid",
+  payment_method: "",
+  tip: 0,
+  subtotal: null,
+  gst: null,
+  pst: null,
+  customer_email: null,
+  address: null,
+  eta_minutes: null,
+  paid_at: null,
+} as unknown as Order;
+
 export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
+  const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
+  const [shopName, setShopName] = useState("富来小厨");
+
+  useEffect(() => {
+    getTenant(slug).then((t) => t?.name?.zh && setShopName(t.name.zh)).catch(() => {});
+  }, [slug]);
 
   const seen = useRef<Set<string>>(new Set()); // order IDs we've already shown
   const inited = useRef(false); // first successful fetch seeds `seen`, no alert
@@ -200,6 +235,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               🔔 开启提示音
             </button>
           )}
+          <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title="看看小票长什么样">🖨️ 出单样张</button>
           <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">刷新</button>
         </div>
       </header>
@@ -257,6 +293,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               <div className="mt-3 flex items-center justify-between">
                 <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
                 <div className="flex gap-2">
+                  <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
                   <button
                     className="text-xs text-ink-faint hover:text-red-600"
                     onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}
@@ -277,6 +314,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           ))}
         </div>
       )}
+
+      {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
     </main>
   );
 }
