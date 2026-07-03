@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, type MenuItem } from "@/lib/menu";
@@ -46,6 +46,7 @@ export default function PublicMenu() {
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(false);
   const [activeCat, setActiveCat] = useState<string>("");
+  const railRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
   // 外卖/自取 mode: entered via the separate QR (?m=togo). Dine-in tables use ?t=N.
@@ -207,7 +208,41 @@ export default function PublicMenu() {
     }
   }, [cats, activeCat]);
 
-  const activeGroup = cats.find((g) => g.category === activeCat) ?? cats[0];
+  const jumpToCat = (i: number) => {
+    setActiveCat(cats[i].category);
+    document.getElementById(`menu-cat-${i}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // 美团-style scroll-sync: highlight the category whose section sits at the top.
+  useEffect(() => {
+    if (query.trim()) return; // search mode shows flat results, no rail
+    const onScroll = () => {
+      let current = cats[0]?.category;
+      for (let i = 0; i < cats.length; i++) {
+        const el = document.getElementById(`menu-cat-${i}`);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top - 92 <= 1) current = cats[i].category;
+        else break;
+      }
+      if (current) setActiveCat((prev) => (prev === current ? prev : current));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [query, cats]);
+
+  // keep the active category visible inside the rail (scrolls the rail only, never the page)
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const idx = cats.findIndex((c) => c.category === activeCat);
+    const btn = idx >= 0 ? (rail.querySelector(`[data-rail="${idx}"]`) as HTMLElement | null) : null;
+    if (!btn) return;
+    const top = btn.offsetTop;
+    const bottom = top + btn.offsetHeight;
+    if (top < rail.scrollTop) rail.scrollTop = top - 8;
+    else if (bottom > rail.scrollTop + rail.clientHeight) rail.scrollTop = bottom - rail.clientHeight + 8;
+  }, [activeCat, cats]);
 
   // Search across all dishes (zh + en), case-insensitive, flat results.
   const q = query.trim().toLowerCase();
@@ -261,7 +296,7 @@ export default function PublicMenu() {
       <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4">
+        <div className="mx-auto flex max-w-[440px] items-center gap-3 px-5 py-4">
           {/* shopping cart — top-left; shows subtotal, opens the order sheet */}
           {(count > 0 || placedTotal > 0) && (
             <button
@@ -308,7 +343,7 @@ export default function PublicMenu() {
         </div>
       )}
 
-      <div className="mx-auto max-w-2xl px-5 py-6">
+      <div className="mx-auto max-w-[440px] px-5 py-6">
         {loaded && dishes.length === 0 && <p className="py-20 text-center text-sm text-ink-faint">菜单还没准备好。</p>}
 
         {/* search bar — filters across all categories */}
@@ -344,62 +379,45 @@ export default function PublicMenu() {
           </section>
         ) : (
         <>
-        {/* category tabs — centered window, folds front/back; lives with the menu */}
-        {cats.length > 1 && (() => {
-          const idx = Math.max(0, cats.findIndex((g) => g.category === activeGroup?.category));
-          const WIN = 5;
-          let start = Math.max(0, idx - Math.floor(WIN / 2));
-          const end = Math.min(cats.length, start + WIN);
-          start = Math.max(0, end - WIN);
-          const windowCats = cats.slice(start, end);
-          const jump = (i: number) => setActiveCat(cats[i].category);
-          return (
-            <nav className="mb-5 flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1.5">
-              <button
-                disabled={idx <= 0}
-                onClick={() => jump(idx - 1)}
-                className="grid h-7 w-7 flex-none place-items-center rounded-full text-ink-faint hover:bg-slate-100 disabled:opacity-25"
-                aria-label="prev"
-              >
-                ‹
-              </button>
-              <div className="flex flex-1 items-center justify-center gap-1 overflow-hidden">
-                {start > 0 && <span className="text-ink-faint">…</span>}
-                {windowCats.map((g) => {
-                  const on = g.category === activeGroup?.category;
-                  return (
-                    <button
-                      key={g.category}
-                      onClick={() => jump(cats.findIndex((c) => c.category === g.category))}
-                      className={`flex-none whitespace-nowrap rounded-full px-3 py-1 text-sm transition ${
-                        on ? "bg-jade font-medium text-white" : "text-ink-soft hover:bg-slate-100"
-                      }`}
-                    >
-                      {g.category}
-                      <span className={`ml-1 text-xs ${on ? "text-white/60" : "text-ink-faint"}`}>{g.items.length}</span>
-                    </button>
-                  );
-                })}
-                {end < cats.length && <span className="text-ink-faint">…</span>}
-              </div>
-              <button
-                disabled={idx >= cats.length - 1}
-                onClick={() => jump(idx + 1)}
-                className="grid h-7 w-7 flex-none place-items-center rounded-full text-ink-faint hover:bg-slate-100 disabled:opacity-25"
-                aria-label="next"
-              >
-                ›
-              </button>
+        <div className="flex gap-3">
+          {/* left category rail — all categories visible, tap to jump (美团 / 大众点评 style) */}
+          {cats.length > 1 && (
+            <nav
+              ref={railRef}
+              className="sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {cats.map((g, i) => {
+                const on = g.category === activeCat;
+                return (
+                  <button
+                    key={g.category}
+                    data-rail={i}
+                    onClick={() => jumpToCat(i)}
+                    className={`relative block w-full px-2.5 py-3 text-left text-[13px] leading-tight transition ${
+                      on ? "bg-jade-wash font-semibold text-jade" : "text-ink-soft hover:bg-slate-50"
+                    }`}
+                  >
+                    {on && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-jade" />}
+                    {g.category}
+                    <span className={`mt-0.5 block text-[10px] ${on ? "text-jade/70" : "text-ink-faint"}`}>{g.items.length}</span>
+                  </button>
+                );
+              })}
             </nav>
-          );
-        })()}
+          )}
 
-        {activeGroup && (
-          <section className="mb-7">
-            <h2 className="mb-3 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">{activeGroup.category}</h2>
-            <div className="space-y-3">{activeGroup.items.map(renderDish)}</div>
-          </section>
-        )}
+          {/* dish list — every category as a section; scrolling syncs the rail */}
+          <div className="min-w-0 flex-1">
+            {cats.map((g, i) => (
+              <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[76px]">
+                <h2 className="mb-3 flex items-baseline gap-2 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">
+                  {g.category}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
+                </h2>
+                <div className="space-y-3">{g.items.map(renderDish)}</div>
+              </section>
+            ))}
+          </div>
+        </div>
         </>
         )}
       </div>
@@ -407,7 +425,7 @@ export default function PublicMenu() {
       {/* cart sheet */}
       {open && (
         <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={() => setOpen(false)}>
-          <div className="mx-auto max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto max-h-[85vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <div className="text-lg font-bold text-ink">{t("cart")}</div>
               <button onClick={() => setOpen(false)} className="text-ink-faint">✕</button>

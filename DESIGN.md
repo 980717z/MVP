@@ -53,9 +53,13 @@ BentoOS platform UI (landing/dashboard/demo), which has its own pastel look.
 
 ## Layout
 - **Approach:** grid-disciplined, mobile-first single column.
-- **Max content width:** 640px (max-w-2xl), centered.
-- **Header:** sticky; 富来小厨 (serif) + Sang's Seafood (tracked) + EN/中 toggle.
-- **Category nav:** sticky folding tab bar; active tab filled jade.
+- **Max content width:** 440px (`max-w-[440px]`), centered. The menu is phone-first
+  (QR-scanned); cap to a phone-width column so it reads as the phone view on desktop too.
+- **Header:** sticky; cart pill (top-left, jade, shows subtotal) + 富来小厨 (serif) +
+  Sang's Seafood (tracked) + EN/中 toggle.
+- **Category nav:** sticky **left rail** (美团/大众点评 style) — all categories visible,
+  active = jade bar + jade wash; dish list renders every category as a section and
+  scrolling syncs the rail (tap to jump). NOT a folding tab bar.
 - **Dish row:** image (optional) · Chinese-first name block · jade price · round jade `＋` button.
 - **Tap targets:** ≥44px. **Border radius:** sm 8px · md 12px · pill/buttons 999px.
 
@@ -68,3 +72,5 @@ BentoOS platform UI (landing/dashboard/demo), which has its own pastel look.
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-06-19 | Initial design system created | /design-consultation; "clean & effortless" memorable thing; jade + Chinese-first as the two deliberate risks vs red-gold/navy category defaults |
+| 2026-06-29 | Category nav → left rail w/ scroll-sync; content capped to 440px (phone width) | Folding tab bar hid 14 of 19 categories; left rail (美团 pattern) shows all + diners know it. Phone-width cap makes desktop preview as the phone view. |
+| 2026-07-03 | Re-applied left rail + 440px after a cross-branch merge reverted them | A parallel `testing`-branch merge clobbered the menu page + this doc back to folding-tabs/640px; restored on top of the 扫码配送 changes. |
