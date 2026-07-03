@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, type MenuItem } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice } from "@/lib/format";
+import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, DELIVERY_TIP_RATE } from "@/lib/tax";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -16,9 +17,16 @@ const ORDER = [
 type Lang = "zh" | "en";
 
 const T = {
-  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…" },
-  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…" },
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…",
+    togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围 —— 仅限多伦多市中心", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付" },
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…",
+    togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone — downtown Toronto only", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now" },
 };
+
+// Flipped to "1" when the Clover checkout routes go live (Phase 0/1).
+const PAYMENTS_LIVE = process.env.NEXT_PUBLIC_PAYMENTS_LIVE === "1";
+// Client-side zone hint; the server re-validates against tenants.delivery_fsas at checkout.
+const DT_FSAS = ["M4W", "M4X", "M4Y", "M5A", "M5B", "M5C", "M5E", "M5G", "M5H", "M5J", "M5K", "M5L", "M5S", "M5T", "M5V", "M5X"];
 
 export default function PublicMenu() {
   const slug = useParams().tenant as string;
@@ -40,15 +48,27 @@ export default function PublicMenu() {
   const [activeCat, setActiveCat] = useState<string>("");
   const [query, setQuery] = useState("");
 
+  // 外卖/自取 mode: entered via the separate QR (?m=togo). Dine-in tables use ?t=N.
+  const [togoMode, setTogoMode] = useState(false);
+  const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
+  const [street, setStreet] = useState("");
+  const [unit, setUnit] = useState("");
+  const [postal, setPostal] = useState("");
+  const [addrErr, setAddrErr] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+
   const t = (k: keyof typeof T["zh"]) => T[lang][k];
 
   useEffect(() => {
     // per-table QR: /menu/<slug>?t=5 → lock to table 5
-    const tParam = new URLSearchParams(window.location.search).get("t");
+    // togo QR:      /menu/<slug>?m=togo → takeout/delivery mode (pay-first)
+    const params = new URLSearchParams(window.location.search);
+    const tParam = params.get("t");
     if (tParam) {
       setLockedTable(tParam);
       setTableNo(tParam);
     }
+    if (params.get("m") === "togo") setTogoMode(true);
     Promise.all([
       supabase.from("storefront").select("name, cat_order").eq("slug", slug).maybeSingle(),
       listMenuItems(slug),
@@ -93,6 +113,12 @@ export default function PublicMenu() {
     return [...m.values()];
   }, [placedOrders]);
 
+  // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
+  // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
+  const isDelivery = togoMode && togoType === "delivery";
+  const pricing = priceOrder(total, isDelivery ? DELIVERY_TIP_RATE : 0);
+  const shortfall = isDelivery ? deliveryShortfall(total) : 0;
+
   // upsell: when a 火锅 dish is in the cart, suggest 火锅配菜 add-ons
   const hasHotpot = cartLines.some((x) => x.d.category === "火锅");
   const hotpotSides = useMemo(() => dishes.filter((d) => d.category === "火锅配菜"), [dishes]);
@@ -105,18 +131,51 @@ export default function PublicMenu() {
       return;
     }
     setPhoneErr(false);
+
+    // Delivery: validate address + downtown zone + $30 minimum before anything else.
+    // (Client-side hint only — the checkout server re-validates authoritatively.)
+    if (isDelivery) {
+      if (!street.trim()) { setAddrErr(t("street")); return; }
+      if (!isValidPostal(postal)) { setAddrErr(t("postalBad")); return; }
+      if (!inDeliveryZone(postal, DT_FSAS)) { setAddrErr(t("zoneBad")); return; }
+      if (shortfall > 0) { setAddrErr(`${t("minShort")} $${shortfall.toFixed(2)}`); return; }
+      setAddrErr(null);
+    }
+
+    // Pay-first rule: takeout/delivery orders are only submitted once online
+    // payment is live — otherwise they'd sit invisible (pending) forever.
+    if (togoMode && !PAYMENTS_LIVE) return;
+
     setSubmitting(true);
     const items: OrderItem[] = cartLines.map((x) => ({
       id: x.d.id, name_zh: x.d.name_zh, name_en: x.d.name_en, price: x.d.price, qty: x.qty,
     }));
-    const res = await createOrder(slug, { items, total, table_no: tableNo, phone: digits, note });
+    const res = await createOrder(slug, {
+      items,
+      total,
+      table_no: togoMode ? "" : tableNo,
+      phone: digits,
+      note,
+      order_type: togoMode ? togoType : "dine_in",
+      address: isDelivery ? { street: street.trim(), unit: unit.trim() || undefined, postal: postal.trim().toUpperCase() } : undefined,
+      customer_email: togoMode ? email : undefined,
+    });
     setSubmitting(false);
     if (res.error) {
       alert("提交失败：" + res.error);
       return;
     }
-    // Fire the kitchen ticket off to the cloud printer. Best-effort: never block
-    // or fail the order if printing is off/unconfigured/offline.
+
+    if (togoMode && res.id) {
+      // Pay-first: hand off to Clover checkout; the webhook/reconcile marks the
+      // order paid, which is what releases it to the kitchen + printer.
+      window.location.href = `/api/pay/checkout?orderId=${res.id}`;
+      return;
+    }
+
+    // Dine-in: kitchen fires immediately. Cloud-printer ticket is best-effort —
+    // never block the order if printing is off/unconfigured/offline. (The print
+    // route itself re-prices the order and refuses unpaid togo/delivery — E1.)
     if (res.id) {
       fetch("/api/print", {
         method: "POST",
@@ -238,9 +297,14 @@ export default function PublicMenu() {
         </div>
       </header>
 
-      {lockedTable && (
+      {lockedTable && !togoMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
           🪑 {lang === "zh" ? `您正在为 ${lockedTable} 号桌点餐` : `Ordering for Table ${lockedTable}`}
+        </div>
+      )}
+      {togoMode && (
+        <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
+          🛵 {t("togoBadge")} · {t("payFirst")}
         </div>
       )}
 
@@ -416,14 +480,45 @@ export default function PublicMenu() {
                   </div>
                 )}
 
-                <div className="mt-4 grid gap-2">
-                  {lockedTable ? (
+                {/* togo: pickup/delivery toggle + delivery address */}
+                {togoMode && (
+                  <div className="mt-4 grid gap-2">
+                    <div className="flex rounded-lg bg-slate-100 p-1 text-sm">
+                      <button
+                        onClick={() => setTogoType("togo")}
+                        className={`flex-1 rounded-md py-2 font-medium ${togoType === "togo" ? "bg-jade text-white" : "text-ink-soft"}`}
+                      >
+                        🛍️ {t("pickup")}
+                      </button>
+                      <button
+                        onClick={() => setTogoType("delivery")}
+                        className={`flex-1 rounded-md py-2 font-medium ${togoType === "delivery" ? "bg-jade text-white" : "text-ink-soft"}`}
+                      >
+                        🛵 {t("delivery")}
+                      </button>
+                    </div>
+                    {isDelivery && (
+                      <>
+                        <input className="input" placeholder={t("street")} value={street} onChange={(e) => { setStreet(e.target.value); setAddrErr(null); }} />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input className="input" placeholder={t("unit")} value={unit} onChange={(e) => setUnit(e.target.value)} />
+                          <input className="input uppercase" placeholder={t("postal")} value={postal} onChange={(e) => { setPostal(e.target.value); setAddrErr(null); }} />
+                        </div>
+                        {addrErr && <p className="text-xs text-red-600">{addrErr}</p>}
+                      </>
+                    )}
+                    <input className="input" type="email" inputMode="email" placeholder={t("email")} value={email} onChange={(e) => setEmail(e.target.value)} />
+                  </div>
+                )}
+
+                <div className={`grid gap-2 ${togoMode ? "mt-2" : "mt-4"}`}>
+                  {!togoMode && (lockedTable ? (
                     <div className="rounded-lg border border-jade/30 bg-jade-wash px-3 py-2 text-sm font-medium text-jade">
                       🪑 {lockedTable} 号桌
                     </div>
                   ) : (
                     <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />
-                  )}
+                  ))}
                   <div>
                     <input
                       className={`input ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
@@ -439,7 +534,20 @@ export default function PublicMenu() {
                 </div>
 
                 <div className="mt-4">
-                  {placedTotal > 0 ? (
+                  {togoMode ? (
+                    /* takeout/delivery: full price breakdown — HST + mandatory delivery tip */
+                    <div className="mb-3 space-y-1 text-sm tabular-nums">
+                      <div className="flex justify-between text-ink-soft"><span>{t("subtotal")}</span><span>${pricing.subtotal.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-ink-soft"><span>{t("hst")}</span><span>${(pricing.gst + pricing.pst).toFixed(2)}</span></div>
+                      {isDelivery && (
+                        <div className="flex justify-between text-ink-soft"><span>{t("tipLine")}</span><span>${pricing.tip.toFixed(2)}</span></div>
+                      )}
+                      <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t("total")}</span><span>${pricing.grandTotal.toFixed(2)}</span></div>
+                      {isDelivery && shortfall > 0 && (
+                        <p className="text-xs font-medium text-amber-700">{t("minShort")} ${shortfall.toFixed(2)}</p>
+                      )}
+                    </div>
+                  ) : placedTotal > 0 ? (
                     <div className="mb-3 space-y-1 text-sm">
                       <div className="flex justify-between text-ink-soft"><span>{t("prevOrdered")}</span><span className="tabular-nums">${placedTotal.toFixed(2)}</span></div>
                       <div className="flex justify-between text-ink-soft"><span>{t("thisRound")}</span><span className="tabular-nums">${total.toFixed(2)}</span></div>
@@ -448,8 +556,15 @@ export default function PublicMenu() {
                   ) : (
                     <div className="mb-3 flex justify-between text-base font-bold text-ink"><span>{t("total")}</span><span className="tabular-nums">${total.toFixed(2)}</span></div>
                   )}
-                  <button onClick={submit} disabled={submitting} className="w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50">
-                    {submitting ? t("submitting") : t("submit")}
+                  {togoMode && !PAYMENTS_LIVE && (
+                    <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">⏳ {t("paySoon")}</p>
+                  )}
+                  <button
+                    onClick={submit}
+                    disabled={submitting || (togoMode && (!PAYMENTS_LIVE || (isDelivery && shortfall > 0)))}
+                    className="w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {submitting ? t("submitting") : togoMode ? `${t("goPay")} · $${pricing.grandTotal.toFixed(2)}` : t("submit")}
                   </button>
                 </div>
               </>

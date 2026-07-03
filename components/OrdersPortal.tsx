@@ -10,13 +10,15 @@ import { price as fmtPrice } from "@/lib/format";
 const STATUS: Record<Order["status"], { label: string; cls: string }> = {
   new: { label: "新单", cls: "bg-amber-100 text-amber-700" },
   preparing: { label: "备餐中", cls: "bg-blue-100 text-blue-700" },
+  delivering: { label: "配送中", cls: "bg-violet-100 text-violet-700" },
   done: { label: "已完成", cls: "bg-green-100 text-green-700" },
   cancelled: { label: "已取消", cls: "bg-slate-100 text-ink-faint" },
 };
 
 const NEXT: Partial<Record<Order["status"], { to: Order["status"]; label: string }>> = {
   new: { to: "preparing", label: "开始备餐" },
-  preparing: { to: "done", label: "标记完成" },
+  preparing: { to: "done", label: "标记完成" }, // delivery orders get 开始配送 instead (T7)
+  delivering: { to: "done", label: "已送达" },
 };
 
 const POLL_MS = 8000;

@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "./supabase";
+import type { OrderType } from "./tax";
 
 export interface OrderItem {
   id: string;
@@ -10,6 +11,13 @@ export interface OrderItem {
   name_en: string;
   price: number | null;
   qty: number;
+}
+
+export interface OrderAddress {
+  street: string;
+  unit?: string;
+  postal: string;
+  note?: string;
 }
 
 export interface Order {
@@ -20,14 +28,37 @@ export interface Order {
   table_no: string;
   phone: string;
   note: string;
-  status: "new" | "preparing" | "done" | "cancelled";
+  status: "new" | "preparing" | "delivering" | "done" | "cancelled";
   created_at: string;
+  // QR delivery + payments (supabase/orders-payment.sql)
+  order_type: OrderType;
+  payment_status: "unpaid" | "pending" | "paid" | "expired" | "refunded";
+  payment_method: "" | "server" | "online";
+  tip: number;
+  subtotal: number | null; // server-written at re-price; null until then
+  gst: number | null;
+  pst: number | null;
+  customer_email: string | null;
+  address: OrderAddress | null;
+  eta_minutes: number | null;
+  paid_at: string | null;
 }
 
-/** Customer submits an order (works for anon). */
+/** Customer submits an order (works for anon).
+ *  RLS pins new rows to status='new', payment_status='unpaid', tip=0 — payment
+ *  and money columns are only ever written by server routes. */
 export async function createOrder(
   slug: string,
-  input: { items: OrderItem[]; total: number; table_no?: string; phone?: string; note?: string }
+  input: {
+    items: OrderItem[];
+    total: number;
+    table_no?: string;
+    phone?: string;
+    note?: string;
+    order_type?: OrderType;
+    address?: OrderAddress;
+    customer_email?: string;
+  }
 ): Promise<{ id?: string; error?: string }> {
   const { data, error } = await supabase
     .from("orders")
@@ -38,6 +69,9 @@ export async function createOrder(
       table_no: input.table_no ?? "",
       phone: input.phone ?? "",
       note: input.note ?? "",
+      order_type: input.order_type ?? "dine_in",
+      address: input.address ?? null,
+      customer_email: input.customer_email?.trim() || null,
     })
     .select("id")
     .maybeSingle();
