@@ -280,7 +280,11 @@ export default function PublicMenu() {
         <div className="min-w-0 flex-1">
           <div className="text-[17px] font-semibold leading-snug text-ink">
             {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
-            {hasVariants && <span className="ml-1.5 rounded border border-jade px-1 align-middle text-[9px] font-bold text-jade">{d.variants.length} 规格</span>}
+            {hasVariants && (
+              <span className="ml-1.5 rounded border border-jade px-1 align-middle text-[9px] font-bold text-jade">
+                {d.variants.length} {lang === "zh" ? "规格" : d.variants.length > 1 ? "sizes" : "size"}
+              </span>
+            )}
           </div>
           {lang === "zh"
             ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
@@ -471,8 +475,11 @@ export default function PublicMenu() {
             <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-slate-200" />
             <div className="mb-1 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-lg font-bold text-ink" style={{ fontFamily: '"Noto Sans SC", sans-serif' }}>{sheetDish.name_zh}</div>
-                {sheetDish.name_en && <div className="text-xs text-ink-faint">{sheetDish.name_en}</div>}
+                {/* language-aware: EN mode leads with the English name */}
+                <div className="text-lg font-bold text-ink" style={{ fontFamily: '"Noto Sans SC", sans-serif' }}>
+                  {lang === "zh" ? sheetDish.name_zh : sheetDish.name_en || sheetDish.name_zh}
+                </div>
+                <div className="text-xs text-ink-faint">{lang === "zh" ? sheetDish.name_en : sheetDish.name_zh}</div>
               </div>
               <button onClick={() => setSheetDish(null)} className="flex-none text-ink-faint">✕</button>
             </div>
@@ -485,7 +492,11 @@ export default function PublicMenu() {
                   <div key={vi} className="flex items-center gap-3 py-3">
                     <div className="min-w-0 flex-1">
                       <div className="text-[15px] font-semibold text-ink" style={{ fontFamily: '"Noto Sans SC", sans-serif' }}>
-                        {v.label_zh}{v.label_en && <span className="ml-1.5 text-xs font-normal text-ink-faint">{v.label_en}</span>}
+                        {lang === "zh" ? (
+                          <>{v.label_zh}{v.label_en && <span className="ml-1.5 text-xs font-normal text-ink-faint">{v.label_en}</span>}</>
+                        ) : (
+                          <>{v.label_en || v.label_zh}<span className="ml-1.5 text-xs font-normal text-ink-faint">{v.label_zh}</span></>
+                        )}
                       </div>
                     </div>
                     <span className="font-bold tabular-nums text-jade">{fmtPrice(v.price)}</span>
