@@ -20,3 +20,9 @@
 **Why:** Diners who skip the optional email field get no proactive updates.
 **Context:** Explicitly replaced by Resend email notifications (D9, 2026-07-03). Revisit only if post-launch data shows diners don't leave emails and 「饭到哪了」calls burden the kitchen. Requires Canadian sender-number registration (days of lead time) + per-message cost.
 **Effort:** M (human ~2d / CC ~45min) · **Depends on:** delivery live; email-notify adoption measured.
+
+## P1 — DB-level staff access[] enforcement (records RLS per-module)
+**What:** Extend the `records` RLS policies so a member with restricted `access[]` can only read/write records of their allowed modules (function like `can_access_module(tenant_slug, module_id)`), instead of today's tenant-wide access.
+**Why:** UI enforcement shipped (sidebar + module-page block, 2026-07-04), but a technical staff member could still query other modules' records (sales, payroll, member phones) directly via the API with their own token.
+**Blocked by:** Order completion currently posts to sales/dish-margin/members records FROM THE STAFF CLIENT — under module-scoped RLS, a limited-access staffer completing an order would have those posts rejected. Move completion side-effects server-side first (the Clover webhook work does exactly this), then tighten RLS.
+**Effort:** M (human ~1d / CC ~30min once posting is server-side).
