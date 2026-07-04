@@ -45,9 +45,25 @@ export interface Order {
   printed_at: string | null; // Epson Server Direct Print: null = needs printing
 }
 
+/** UUID v4 with a fallback for older mobile browsers. */
+function newId(): string {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {
+    /* fall through */
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 /** Customer submits an order (works for anon).
  *  RLS pins new rows to status='new', payment_status='unpaid', tip=0 — payment
- *  and money columns are only ever written by server routes. */
+ *  and money columns are only ever written by server routes.
+ *  NOTE: the id is generated CLIENT-SIDE and inserted, never read back —
+ *  anon has insert-only permission on orders, so `.select()` after insert
+ *  fails with "permission denied" (RETURNING needs SELECT). */
 export async function createOrder(
   slug: string,
   input: {
@@ -61,26 +77,24 @@ export async function createOrder(
     customer_email?: string;
   }
 ): Promise<{ id?: string; error?: string }> {
-  const { data, error } = await supabase
-    .from("orders")
-    .insert({
-      tenant_slug: slug,
-      items: input.items,
-      total: input.total,
-      table_no: input.table_no ?? "",
-      phone: input.phone ?? "",
-      note: input.note ?? "",
-      order_type: input.order_type ?? "dine_in",
-      address: input.address ?? null,
-      customer_email: input.customer_email?.trim() || null,
-    })
-    .select("id")
-    .maybeSingle();
+  const id = newId();
+  const { error } = await supabase.from("orders").insert({
+    id,
+    tenant_slug: slug,
+    items: input.items,
+    total: input.total,
+    table_no: input.table_no ?? "",
+    phone: input.phone ?? "",
+    note: input.note ?? "",
+    order_type: input.order_type ?? "dine_in",
+    address: input.address ?? null,
+    customer_email: input.customer_email?.trim() || null,
+  });
   if (error) {
     console.error("createOrder", error);
     return { error: error.message };
   }
-  return { id: data?.id };
+  return { id };
 }
 
 /** Start-of-today as an ISO timestamp in the shop's fixed timezone (Toronto),

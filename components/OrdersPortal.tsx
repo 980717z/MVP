@@ -253,7 +253,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                   <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
                   {o.table_no && <span className="text-sm font-medium text-ink">桌号 {o.table_no}</span>}
                   {o.phone && (
-                    <a href={`tel:${o.phone.replace(/\D/g, "")}`} className="text-sm text-brand hover:underline">
+                    <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">
                       📞 {fmtPhone(o.phone)}
                     </a>
                   )}

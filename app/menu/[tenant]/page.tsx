@@ -41,6 +41,7 @@ export default function PublicMenu() {
   const [tableNo, setTableNo] = useState("");
   const [lockedTable, setLockedTable] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
+  const [phoneCode, setPhoneCode] = useState("1"); // country code, +1 default
   const [phoneErr, setPhoneErr] = useState(false);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -143,11 +144,24 @@ export default function PublicMenu() {
   const hotpotSides = useMemo(() => dishes.filter((d) => d.category === "火锅配菜"), [dishes]);
 
   const submit = async () => {
-    // Required phone: strip formatting, drop a NA country-code "1", require 10 digits.
-    const digits = phone.replace(/\D/g, "").replace(/^1(\d{10})$/, "$1");
-    if (digits.length !== 10) {
-      setPhoneErr(true);
-      return;
+    // Required phone. +1 (default): strip formatting, drop a typed leading "1",
+    // require exactly 10 digits — stored bare (legacy format). Other country
+    // codes: 7-12 digits, stored as +<code><digits>.
+    let phoneToSave = "";
+    if (phoneCode === "1") {
+      const digits = phone.replace(/\D/g, "").replace(/^1(\d{10})$/, "$1");
+      if (digits.length !== 10) {
+        setPhoneErr(true);
+        return;
+      }
+      phoneToSave = digits;
+    } else {
+      const digits = phone.replace(/\D/g, "");
+      if (digits.length < 7 || digits.length > 12) {
+        setPhoneErr(true);
+        return;
+      }
+      phoneToSave = `+${phoneCode}${digits}`;
     }
     setPhoneErr(false);
 
@@ -177,7 +191,7 @@ export default function PublicMenu() {
       items,
       total,
       table_no: togoMode ? "" : tableNo,
-      phone: digits,
+      phone: phoneToSave,
       note,
       order_type: togoMode ? togoType : "dine_in",
       address: isDelivery ? { street: street.trim(), unit: unit.trim() || undefined, postal: postal.trim().toUpperCase() } : undefined,
@@ -641,15 +655,32 @@ export default function PublicMenu() {
                     <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />
                   ))}
                   <div>
-                    <input
-                      className={`input ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
-                      type="tel"
-                      inputMode="tel"
-                      placeholder={t("phone")}
-                      value={phone}
-                      onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
-                    />
-                    {phoneErr && <p className="mt-1 text-xs text-red-600">{t("phoneErr")}</p>}
+                    <div className="flex gap-2">
+                      <select
+                        className="input !w-28 flex-none"
+                        value={phoneCode}
+                        onChange={(e) => { setPhoneCode(e.target.value); if (phoneErr) setPhoneErr(false); }}
+                        aria-label={lang === "zh" ? "区号" : "Country code"}
+                      >
+                        <option value="1">🇨🇦 +1</option>
+                        <option value="86">🇨🇳 +86</option>
+                        <option value="852">🇭🇰 +852</option>
+                        <option value="886">🇹🇼 +886</option>
+                      </select>
+                      <input
+                        className={`input min-w-0 flex-1 ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
+                        type="tel"
+                        inputMode="tel"
+                        placeholder={t("phone")}
+                        value={phone}
+                        onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
+                      />
+                    </div>
+                    {phoneErr && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {phoneCode === "1" ? t("phoneErr") : lang === "zh" ? "请填写有效电话号码" : "Please enter a valid phone number"}
+                      </p>
+                    )}
                   </div>
                   <input className="input" placeholder={t("note")} value={note} onChange={(e) => setNote(e.target.value)} />
                 </div>
