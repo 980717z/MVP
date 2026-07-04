@@ -102,9 +102,9 @@ export default function PublicMenu() {
       const d = byId[id];
       if (!d) return null;
       const variant = vi != null ? d.variants?.[vi] ?? null : null;
-      const isMarket = !!d.is_market && !variant;
-      // 时价 items are never priced in the diner's cart — staff enters the
-      // actual price at completion; total shows the rest + a 时价 hint.
+      // 时价 with today's price entered → priced normally (diner saw it).
+      // 时价 with NO price → $0 in cart; staff enters the price at completion.
+      const isMarket = !!d.is_market && !variant && !(Number(d.price) > 0);
       return { key, d, variant, isMarket, unit: isMarket ? 0 : unitPrice(d, vi), qty };
     })
     .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number } => !!x);
@@ -290,9 +290,10 @@ export default function PublicMenu() {
     const hasVariants = (d.variants?.length ?? 0) > 0;
     const qty = hasVariants ? dishQty(d.id) : cart[d.id] ?? 0;
     const dp = displayPrice(d);
-    // 时价 dish: price hidden from diners (gold tag only), still orderable —
-    // staff enters the actual price before the order is completed.
+    // 时价 dish: with today's price entered → show it (gold); without → show
+    // the 时价 tag only, still orderable, staff prices it at completion.
     const isMarket = !!d.is_market && !hasVariants;
+    const marketPriced = isMarket && Number(d.price) > 0;
     return (
       <div key={d.id} className="flex items-center gap-3">
         {d.image_url && (
@@ -318,7 +319,7 @@ export default function PublicMenu() {
             : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
           <div className={`mt-1 text-sm font-bold ${isMarket ? "text-gold" : "text-jade"}`}>
             {isMarket ? (
-              t("market") /* price always hidden for 时价 — quoted by the shop */
+              marketPriced ? fmtPrice(d.price) /* today's market price, in gold */ : t("market")
             ) : (
               <>
                 {hasVariants && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
