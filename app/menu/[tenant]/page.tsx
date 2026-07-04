@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, type MenuItem, type Variant } from "@/lib/menu";
+import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, catLabel, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, DELIVERY_TIP_RATE } from "@/lib/tax";
@@ -429,7 +429,7 @@ export default function PublicMenu() {
                     }`}
                   >
                     {on && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-jade" />}
-                    {g.category}
+                    {catLabel(g.category, lang)}
                     <span className={`mt-0.5 block text-[10px] ${on ? "text-jade/70" : "text-ink-faint"}`}>{g.items.length}</span>
                   </button>
                 );
@@ -442,7 +442,7 @@ export default function PublicMenu() {
             {cats.map((g, i) => (
               <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[76px]">
                 <h2 className="mb-3 flex items-baseline gap-2 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">
-                  {g.category}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
+                  {catLabel(g.category, lang)}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
                 </h2>
                 <div className="space-y-3">{g.items.map(renderDish)}</div>
               </section>

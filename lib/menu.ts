@@ -50,6 +50,35 @@ function coerceVariants(raw: any): any[] {
   }));
 }
 
+/** English names for the standard menu categories (category values are stored
+ *  in Chinese in menu data). Unknown categories fall back to the Chinese name. */
+export const CATEGORY_EN: Record<string, string> = {
+  招牌精选: "Signatures",
+  滋补菜式: "Nourishing",
+  火锅: "Hot Pot",
+  火锅配菜: "Hot Pot Sides",
+  海鲜: "Seafood",
+  汤羹: "Soups",
+  头盘: "Appetizers",
+  蔬菜豆腐: "Veggie & Tofu",
+  猪肉牛肉: "Pork & Beef",
+  鸡鸭: "Chicken & Duck",
+  铁板煲仔: "Sizzling & Clay Pot",
+  芙蓉蛋: "Egg Foo Young",
+  炒粉面: "Fried Noodles",
+  煲仔饭: "Clay Pot Rice",
+  饭类: "Rice",
+  炒饭: "Fried Rice",
+  汤粉面: "Noodle Soup",
+  粥类: "Congee",
+  酒水饮品: "Drinks",
+};
+
+/** Category label in the requested language. */
+export function catLabel(category: string, lang: "zh" | "en"): string {
+  return lang === "en" ? CATEGORY_EN[category] ?? category : category;
+}
+
 /** The price to show on the dish row: the min variant price ("起"), else `price`. */
 export function displayPrice(d: MenuItem): number | null {
   if (d.variants?.length) return Math.min(...d.variants.map((v) => v.price));
