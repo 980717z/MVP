@@ -11,6 +11,9 @@ export interface OrderItem {
   name_en: string;
   price: number | null;
   qty: number;
+  /** 时价 dish: ordered without a visible price; staff enters the actual
+   *  price before the order can be marked 完成. */
+  market?: boolean;
 }
 
 export interface OrderAddress {
@@ -153,6 +156,20 @@ export async function deleteOrder(id: string): Promise<void> {
 export async function reprintOrder(id: string): Promise<void> {
   const { error } = await supabase.from("orders").update({ printed_at: null }).eq("id", id);
   if (error) console.error("reprintOrder", error);
+}
+
+/** Staff: persist item prices (时价 entry at completion) + the recomputed total. */
+export async function updateOrderItems(
+  id: string,
+  items: OrderItem[],
+  total: number,
+): Promise<{ error?: string }> {
+  const { error } = await supabase.from("orders").update({ items, total }).eq("id", id);
+  if (error) {
+    console.error("updateOrderItems", error);
+    return { error: error.message };
+  }
+  return {};
 }
 
 export async function cancelOrderItem(id: string, itemIndex: number): Promise<void> {

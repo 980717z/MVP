@@ -171,38 +171,6 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
         <span className="pill bg-brand-wash text-brand">{dishes.length} 道菜</span>
       </header>
 
-      {/* 今日时价 — quick daily price entry for market-priced dishes */}
-      {dishes.some((d) => d.is_market) && (
-        <div className="card mb-6 border-amber-200 p-4">
-          <div className="mb-1 flex items-center gap-2">
-            <span className="text-sm font-semibold text-ink">💰 今日时价</span>
-            <span className="text-xs text-ink-faint">每天开市填一次 —— 留空 = 菜单只显示「时价」，顾客无法下单，需询问服务员</span>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {dishes.filter((d) => d.is_market).map((d) => (
-              <div key={d.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-ink">{d.name_zh}</div>
-                  {d.name_en && <div className="truncate text-[11px] text-ink-faint">{d.name_en}</div>}
-                </div>
-                <div className="flex w-24 flex-none items-center rounded-lg border border-amber-300 bg-amber-50/50 px-2">
-                  <span className="text-sm text-amber-700">$</span>
-                  <input
-                    className="w-full bg-transparent py-1.5 text-sm font-semibold outline-none"
-                    type="number"
-                    step="0.01"
-                    value={d.price ?? ""}
-                    placeholder="时价"
-                    onChange={(e) => patchLocal(d.id, { price: e.target.value })}
-                    onBlur={(e) => saveField(d.id, { price: e.target.value })}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* category order */}
       {presentCats.length > 1 && (
         <div className="card mb-6 p-4">
@@ -324,6 +292,39 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 </button>
               </div>
 
+              {/* 今日时价 — update market-priced dishes daily; used as the default
+                  when staff confirm the actual price at order completion */}
+              {dishes.some((d) => d.is_market) && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-sm font-semibold text-ink">💰 时价更新</span>
+                    <span className="text-xs text-ink-faint">顾客菜单只显示「时价」不显示数字；这里的价格作为完成订单时的默认价，每天更新</span>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {dishes.filter((d) => d.is_market).map((d) => (
+                      <div key={d.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-ink">{d.name_zh}</div>
+                          {d.name_en && <div className="truncate text-[11px] text-ink-faint">{d.name_en}</div>}
+                        </div>
+                        <div className="flex w-24 flex-none items-center rounded-lg border border-amber-300 bg-amber-50/50 px-2">
+                          <span className="text-sm text-amber-700">$</span>
+                          <input
+                            className="w-full bg-transparent py-1.5 text-sm font-semibold outline-none"
+                            type="number"
+                            step="0.01"
+                            value={d.price ?? ""}
+                            placeholder="今日价"
+                            onChange={(e) => patchLocal(d.id, { price: e.target.value })}
+                            onBlur={(e) => saveField(d.id, { price: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* dish list — inline editable */}
               <div className="mt-4 flex items-center justify-between px-1">
                 <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
@@ -396,20 +397,27 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                       />
                       {(d.variants?.length ?? 0) === 0 ? (
                         <div className="flex items-center gap-3">
-                          <div className="flex w-32 items-center rounded-lg border border-slate-300 px-2">
-                            <span className="text-sm text-ink-faint">$</span>
-                            <input
-                              className="w-full bg-transparent py-1.5 text-sm outline-none"
-                              type="number"
-                              step="0.01"
-                              value={d.price ?? ""}
-                              placeholder="时价"
-                              onChange={(e) => patchLocal(d.id, { price: e.target.value })}
-                              onBlur={(e) => saveField(d.id, { price: e.target.value })}
-                            />
-                          </div>
-                          <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">＋ 多规格（大小/份量）</button>
-                          <label className="flex cursor-pointer items-center gap-1 text-xs text-ink-soft" title="时价菜：菜单显示金色「时价」标签，价格每天在顶部「今日时价」面板更新">
+                          {/* 时价 dishes have no fixed price — hide the field; use the 今日时价 panel below */}
+                          {!d.is_market ? (
+                            <div className="flex w-32 items-center rounded-lg border border-slate-300 px-2">
+                              <span className="text-sm text-ink-faint">$</span>
+                              <input
+                                className="w-full bg-transparent py-1.5 text-sm outline-none"
+                                type="number"
+                                step="0.01"
+                                value={d.price ?? ""}
+                                placeholder="价格"
+                                onChange={(e) => patchLocal(d.id, { price: e.target.value })}
+                                onBlur={(e) => saveField(d.id, { price: e.target.value })}
+                              />
+                            </div>
+                          ) : (
+                            <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">时价 · 顾客菜单不显示价格</span>
+                          )}
+                          {!d.is_market && (
+                            <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">＋ 多规格（大小/份量）</button>
+                          )}
+                          <label className="flex cursor-pointer items-center gap-1 text-xs text-ink-soft" title="时价菜：菜单显示金色「时价」标签、隐藏价格；顾客可下单，标记完成前店员录入当日实价">
                             <input
                               type="checkbox"
                               className="h-3.5 w-3.5 accent-amber-600"

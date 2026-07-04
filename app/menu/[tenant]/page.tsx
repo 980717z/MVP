@@ -102,9 +102,13 @@ export default function PublicMenu() {
       const d = byId[id];
       if (!d) return null;
       const variant = vi != null ? d.variants?.[vi] ?? null : null;
-      return { key, d, variant, unit: unitPrice(d, vi), qty };
+      const isMarket = !!d.is_market && !variant;
+      // 时价 items are never priced in the diner's cart — staff enters the
+      // actual price at completion; total shows the rest + a 时价 hint.
+      return { key, d, variant, isMarket, unit: isMarket ? 0 : unitPrice(d, vi), qty };
     })
-    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; unit: number; qty: number } => !!x);
+    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number } => !!x);
+  const hasMarketItems = cartLines.some((x) => x.isMarket);
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
   const total = cartLines.reduce((a, x) => a + x.unit * x.qty, 0);
   // Display name with size baked in, so kitchen ticket / receipt / ledger read "红烧蟹肉翅（中）".
@@ -184,8 +188,9 @@ export default function PublicMenu() {
       id: x.d.id,
       name_zh: lineName(x.d, x.variant),
       name_en: lineName(x.d, x.variant, true),
-      price: x.unit,
+      price: x.isMarket ? null : x.unit,
       qty: x.qty,
+      ...(x.isMarket ? { market: true } : {}),
     }));
     const res = await createOrder(slug, {
       items,
@@ -285,8 +290,9 @@ export default function PublicMenu() {
     const hasVariants = (d.variants?.length ?? 0) > 0;
     const qty = hasVariants ? dishQty(d.id) : cart[d.id] ?? 0;
     const dp = displayPrice(d);
-    // 时价 dish with no price set today → show the tag, block ordering
-    const marketUnpriced = !!d.is_market && !hasVariants && !(Number(d.price) > 0);
+    // 时价 dish: price hidden from diners (gold tag only), still orderable —
+    // staff enters the actual price before the order is completed.
+    const isMarket = !!d.is_market && !hasVariants;
     return (
       <div key={d.id} className="flex items-center gap-3">
         {d.image_url && (
@@ -310,9 +316,15 @@ export default function PublicMenu() {
           {lang === "zh"
             ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
             : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
-          <div className={`mt-1 text-sm font-bold ${marketUnpriced ? "text-gold" : "text-jade"}`}>
-            {hasVariants && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
-            {fmtPrice(dp) || t("market")}
+          <div className={`mt-1 text-sm font-bold ${isMarket ? "text-gold" : "text-jade"}`}>
+            {isMarket ? (
+              t("market") /* price always hidden for 时价 — quoted by the shop */
+            ) : (
+              <>
+                {hasVariants && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
+                {fmtPrice(dp) || t("market")}
+              </>
+            )}
           </div>
         </div>
         {hasVariants ? (
@@ -323,10 +335,6 @@ export default function PublicMenu() {
             {lang === "zh" ? "选规格" : "Size"} ›
             {qty > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{qty}</span>}
           </button>
-        ) : marketUnpriced ? (
-          <span className="flex-none rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-ink-faint" title={lang === "zh" ? "今日未定价" : "Not priced today"}>
-            {lang === "zh" ? "请询问" : "Ask staff"}
-          </span>
         ) : qty === 0 ? (
           <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
             ＋
@@ -586,7 +594,9 @@ export default function PublicMenu() {
                     <div key={x.key} className="flex items-center justify-between gap-3 py-2.5">
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-ink">{lineName(x.d, x.variant, lang !== "zh")}</div>
-                        <div className="text-xs text-ink-faint">{fmtPrice(x.unit) || t("market")}</div>
+                        <div className={`text-xs ${x.isMarket ? "font-semibold text-gold" : "text-ink-faint"}`}>
+                          {x.isMarket ? t("market") : fmtPrice(x.unit) || t("market")}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => inc(x.key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
@@ -717,7 +727,17 @@ export default function PublicMenu() {
                       <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t("grand")}</span><span className="tabular-nums">${grandTotal.toFixed(2)}</span></div>
                     </div>
                   ) : (
-                    <div className="mb-3 flex justify-between text-base font-bold text-ink"><span>{t("total")}</span><span className="tabular-nums">${total.toFixed(2)}</span></div>
+                    <div className="mb-3">
+                      <div className="flex justify-between text-base font-bold text-ink">
+                        <span>{t("total")}</span>
+                        <span className="tabular-nums">${total.toFixed(2)}{hasMarketItems && <span className="ml-1 text-xs font-semibold text-gold">+ {t("market")}</span>}</span>
+                      </div>
+                      {hasMarketItems && (
+                        <p className="mt-1 text-right text-[11px] text-ink-faint">
+                          {lang === "zh" ? "时价菜品按当日报价，结账时确认" : "Market-price items charged at today's rate, confirmed at checkout"}
+                        </p>
+                      )}
+                    </div>
                   )}
                   {togoMode && !PAYMENTS_LIVE && (
                     <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">⏳ {t("paySoon")}</p>

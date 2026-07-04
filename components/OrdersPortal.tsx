@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { listOrders, setOrderStatus, cancelOrderItem, deleteOrder, reprintOrder, type Order } from "@/lib/orders";
+import { listOrders, setOrderStatus, cancelOrderItem, deleteOrder, reprintOrder, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
+import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
 
@@ -194,10 +195,47 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   };
 
   const advance = async (o: Order, to: Order["status"]) => {
+    // 时价 gate: an order can't be completed until every market-priced item has
+    // its actual price entered (today's 时价 from the menu prefills the prompt).
+    let items = o.items;
+    if (to === "done" && o.status !== "done") {
+      const needPricing = items.filter((it) => it.market && !(Number(it.price) > 0) && !(it as any).cancelled);
+      if (needPricing.length > 0) {
+        // today's reference prices from 菜单设置 (时价更新 panel)
+        const menu = await listMenuItems(slug).catch(() => []);
+        const menuPrice = new Map(menu.map((m) => [m.id, m.price]));
+        const updated = [...items];
+        for (const it of needPricing) {
+          const def = menuPrice.get(it.id);
+          const raw = window.prompt(
+            `时价录入：「${it.name_zh}」今日单价（$）`,
+            def != null && def > 0 ? String(def) : "",
+          );
+          if (raw == null) return; // staff cancelled — abort completion
+          const p = parseFloat(raw);
+          if (!(p > 0)) {
+            alert("请输入有效价格，订单未完成。");
+            return;
+          }
+          const idx = updated.indexOf(it);
+          updated[idx] = { ...it, price: Math.round(p * 100) / 100 };
+        }
+        const newTotal = updated
+          .filter((it: any) => !it.cancelled)
+          .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+        const res = await updateOrderItems(o.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
+        if (res.error) {
+          alert("保存时价失败：" + res.error);
+          return;
+        }
+        items = updated;
+      }
+    }
+
     await setOrderStatus(o.id, to);
     // Post sales into 菜品销量与毛利 once, only on the transition into "done".
     if (to === "done" && o.status !== "done") {
-      const activeItems = o.items.filter((it: any) => !it.cancelled);
+      const activeItems = items.filter((it: any) => !it.cancelled);
       const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
       try {
         await Promise.all([
@@ -268,9 +306,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                       {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>
                     </span>
                     <span className="flex items-center gap-2">
-                      <span className={it.cancelled ? "line-through text-ink-faint" : "text-ink-soft"}>
-                        {fmtPrice((Number(it.price) || 0) * it.qty)}
-                      </span>
+                      {it.market && !(Number(it.price) > 0) ? (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700" title="完成订单前需录入当日实价">时价待录入</span>
+                      ) : (
+                        <span className={it.cancelled ? "line-through text-ink-faint" : "text-ink-soft"}>
+                          {fmtPrice((Number(it.price) || 0) * it.qty)}
+                        </span>
+                      )}
                       {!it.cancelled && o.status !== "done" && o.status !== "cancelled" && (
                         <button
                           className="text-xs text-ink-faint hover:text-red-600"
