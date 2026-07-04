@@ -446,11 +446,16 @@ export default function PublicMenu() {
             onClick={() => setOpen(true)}
             className="mx-auto flex w-full max-w-[440px] items-center justify-between rounded-full bg-jade py-3 pl-5 pr-2 text-white shadow-[0_6px_24px_rgba(17,122,101,0.35)] transition active:scale-[0.99]"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <span className="relative text-lg leading-none">
-                🛒
+            <span className="flex items-center gap-2.5 text-sm font-semibold">
+              {/* white stroke cart (emoji renders murky on the jade bg) */}
+              <span className="relative leading-none">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="9" cy="20" r="1.6" fill="white" stroke="none" />
+                  <circle cx="17.5" cy="20" r="1.6" fill="white" stroke="none" />
+                  <path d="M2.5 3.5h2.5l2.5 12h10.6l2.4-8.5H6" />
+                </svg>
                 {count > 0 && (
-                  <span className="absolute -right-2.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-white px-1 text-[10px] font-bold text-jade">
+                  <span className="absolute -right-2.5 -top-2 grid h-4 min-w-[16px] place-items-center rounded-full bg-white px-1 text-[10px] font-bold text-jade shadow">
                     {count}
                   </span>
                 )}
