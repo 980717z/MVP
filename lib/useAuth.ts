@@ -15,12 +15,22 @@ export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let claimed = false;
+    // Link any pending email-invites to this account, once per signed-in session.
+    const claim = (s: Session | null) => {
+      if (s && !claimed) {
+        claimed = true;
+        void supabase.rpc("claim_invites").then(() => {}, () => {});
+      }
+    };
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      claim(data.session);
       setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
+      claim(s);
     });
     return () => sub.subscription.unsubscribe();
   }, []);

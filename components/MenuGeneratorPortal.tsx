@@ -171,6 +171,38 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
         <span className="pill bg-brand-wash text-brand">{dishes.length} 道菜</span>
       </header>
 
+      {/* 今日时价 — quick daily price entry for market-priced dishes */}
+      {dishes.some((d) => d.is_market) && (
+        <div className="card mb-6 border-amber-200 p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-sm font-semibold text-ink">💰 今日时价</span>
+            <span className="text-xs text-ink-faint">每天开市填一次 —— 留空 = 菜单只显示「时价」，顾客无法下单，需询问服务员</span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {dishes.filter((d) => d.is_market).map((d) => (
+              <div key={d.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-ink">{d.name_zh}</div>
+                  {d.name_en && <div className="truncate text-[11px] text-ink-faint">{d.name_en}</div>}
+                </div>
+                <div className="flex w-24 flex-none items-center rounded-lg border border-amber-300 bg-amber-50/50 px-2">
+                  <span className="text-sm text-amber-700">$</span>
+                  <input
+                    className="w-full bg-transparent py-1.5 text-sm font-semibold outline-none"
+                    type="number"
+                    step="0.01"
+                    value={d.price ?? ""}
+                    placeholder="时价"
+                    onChange={(e) => patchLocal(d.id, { price: e.target.value })}
+                    onBlur={(e) => saveField(d.id, { price: e.target.value })}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* category order */}
       {presentCats.length > 1 && (
         <div className="card mb-6 p-4">
@@ -377,6 +409,18 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                             />
                           </div>
                           <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">＋ 多规格（大小/份量）</button>
+                          <label className="flex cursor-pointer items-center gap-1 text-xs text-ink-soft" title="时价菜：菜单显示金色「时价」标签，价格每天在顶部「今日时价」面板更新">
+                            <input
+                              type="checkbox"
+                              className="h-3.5 w-3.5 accent-amber-600"
+                              checked={!!d.is_market}
+                              onChange={(e) => {
+                                patchLocal(d.id, { is_market: e.target.checked });
+                                updateMenuItem(d.id, { is_market: e.target.checked });
+                              }}
+                            />
+                            时价
+                          </label>
                         </div>
                       ) : (
                         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">

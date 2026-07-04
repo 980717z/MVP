@@ -285,6 +285,8 @@ export default function PublicMenu() {
     const hasVariants = (d.variants?.length ?? 0) > 0;
     const qty = hasVariants ? dishQty(d.id) : cart[d.id] ?? 0;
     const dp = displayPrice(d);
+    // 时价 dish with no price set today → show the tag, block ordering
+    const marketUnpriced = !!d.is_market && !hasVariants && !(Number(d.price) > 0);
     return (
       <div key={d.id} className="flex items-center gap-3">
         {d.image_url && (
@@ -299,11 +301,16 @@ export default function PublicMenu() {
                 {d.variants.length} {lang === "zh" ? "规格" : d.variants.length > 1 ? "sizes" : "size"}
               </span>
             )}
+            {d.is_market && (
+              <span className="ml-1.5 rounded border border-gold px-1 align-middle text-[9px] font-bold text-gold">
+                {lang === "zh" ? "时价" : "Market"}
+              </span>
+            )}
           </div>
           {lang === "zh"
             ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
             : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
-          <div className="mt-1 text-sm font-bold text-jade">
+          <div className={`mt-1 text-sm font-bold ${marketUnpriced ? "text-gold" : "text-jade"}`}>
             {hasVariants && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
             {fmtPrice(dp) || t("market")}
           </div>
@@ -316,6 +323,10 @@ export default function PublicMenu() {
             {lang === "zh" ? "选规格" : "Size"} ›
             {qty > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{qty}</span>}
           </button>
+        ) : marketUnpriced ? (
+          <span className="flex-none rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-ink-faint" title={lang === "zh" ? "今日未定价" : "Not priced today"}>
+            {lang === "zh" ? "请询问" : "Ask staff"}
+          </span>
         ) : qty === 0 ? (
           <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
             ＋

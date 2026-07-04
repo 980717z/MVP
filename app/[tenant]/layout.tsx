@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
-import { getTenant, type Tenant } from "@/lib/store";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { getTenant, myAccess, type Tenant } from "@/lib/store";
 import { CATEGORIES, DOMAINS, MODULE_BY_ID } from "@/lib/catalog";
 import { useLang, LangToggle } from "@/app/i18n";
+import { signOut } from "@/lib/useAuth";
 
 // Back-office shell font (DESIGN-PLATFORM.md): Plus Jakarta Sans + Noto Sans SC,
 // scoped here so the jade customer menu and the landing keep their own faces.
@@ -14,11 +15,23 @@ const SHELL_FONT = '"Plus Jakarta Sans","Noto Sans SC",system-ui,-apple-system,"
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const pathname = usePathname();
+  const router = useRouter();
   const slug = params.tenant as string;
   const { lang } = useLang();
   const [tenant, setTenant] = useState<Tenant | undefined>();
   const [ready, setReady] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  // staff module access: null = unrestricted (owner / access=[])
+  const [allowed, setAllowed] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    myAccess(slug).then((a) => setAllowed(a?.allowed ?? null));
+  }, [slug]);
+
+  const handleLogout = async () => {
+    await signOut();
+    router.replace("/login");
+  };
 
   useEffect(() => {
     let alive = true;
@@ -50,8 +63,10 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 
   const tl = (b: { zh: string; en: string }) => (lang === "zh" ? b.zh : b.en);
 
+  // staff with a restricted access[] only see their allowed modules (owner sees all)
+  const visibleModules = (tenant?.enabled ?? []).filter((id) => !allowed || allowed.includes(id));
   const nav = (
-    <NavTree slug={slug} pathname={pathname} enabled={tenant?.enabled ?? []} tl={tl} lang={lang} />
+    <NavTree slug={slug} pathname={pathname} enabled={visibleModules} tl={tl} lang={lang} />
   );
 
   return (
@@ -66,6 +81,13 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
           <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
             {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
           </NavLink>
+          <button
+            onClick={handleLogout}
+            className="mt-px flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-ink-soft transition hover:bg-red-50 hover:text-red-600"
+          >
+            <span className="w-5 flex-none text-center text-[15px] leading-none">⎋</span>
+            <span className="min-w-0 truncate">{tl({ zh: "退出登录", en: "Sign out" })}</span>
+          </button>
         </div>
       </aside>
 
@@ -80,6 +102,13 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
               <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
                 ⚙️ {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
               </NavLink>
+              <button
+                onClick={handleLogout}
+                className="mt-px flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-ink-soft transition hover:bg-red-50 hover:text-red-600"
+              >
+                <span className="w-5 flex-none text-center text-[15px] leading-none">⎋</span>
+                <span className="min-w-0 truncate">{tl({ zh: "退出登录", en: "Sign out" })}</span>
+              </button>
             </div>
           </div>
         </div>

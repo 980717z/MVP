@@ -12,6 +12,7 @@ import {
   syncMemberFromOrder,
   syncMenuToMargin,
   syncPurchasingToStock,
+  myAccess,
   computeDailyClose,
   autoSyncDailyClose,
   loadTierRules,
@@ -387,6 +388,8 @@ export default function ModulePage() {
   const mod = MODULE_BY_ID[moduleId];
 
   const [tenant, setTenant] = useState<Tenant | undefined>();
+  // staff module access: undefined = loading, null = unrestricted
+  const [allowed, setAllowed] = useState<string[] | null | undefined>(undefined);
   const [form, setForm] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
@@ -419,6 +422,7 @@ export default function ModulePage() {
 
   useEffect(() => {
     getTenant(slug).then(setTenant);
+    myAccess(slug).then((a) => setAllowed(a ? a.allowed : null));
     if (moduleId === "dish-margin") syncMenuToMargin(slug);
     if (moduleId === "daily-close") autoSyncDailyClose(slug).then(() => getTenant(slug).then(setTenant));
   }, [slug, moduleId, tick]);
@@ -908,6 +912,20 @@ export default function ModulePage() {
     );
   }
   if (!tenant) return null;
+
+  // staff access[] enforcement: a member with a restricted module list can't
+  // open other modules by URL (sidebar already hides them).
+  if (allowed && !allowed.includes(moduleId)) {
+    return (
+      <main className="grid min-h-[60vh] place-items-center px-6 text-center">
+        <div>
+          <div className="text-3xl">🔒</div>
+          <p className="mt-2 text-sm text-ink-soft">你没有这个模块的访问权限，请联系店主。</p>
+          <Link href={`/${slug}`} className="btn-primary mt-4 inline-block">← 返回总览</Link>
+        </div>
+      </main>
+    );
+  }
 
   if (mod.portal && PORTALS[moduleId]) {
     const Portal = PORTALS[moduleId];

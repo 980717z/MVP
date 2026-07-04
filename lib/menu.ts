@@ -18,6 +18,9 @@ export interface MenuItem {
   name_zh: string;
   name_en: string;
   price: number | null;
+  /** Market-priced (时价): gold tag on the menu; owner sets today's price from
+   *  the 今日时价 panel. No price set → dish can't be added to the cart. */
+  is_market: boolean;
   /** When non-empty, the dish is multi-size: `price` is ignored and the diner
    *  picks one of these. Empty/absent = single-price dish (uses `price`). */
   variants: Variant[];
@@ -167,7 +170,7 @@ export async function addMenuItem(
 
 export async function updateMenuItem(
   id: string,
-  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants">>
+  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market">>
 ): Promise<{ error?: string }> {
   const clean: Record<string, any> = { ...patch };
   if ("price" in clean) {

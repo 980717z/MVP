@@ -15,6 +15,7 @@ const dish = (over: Partial<MenuItem>): MenuItem => ({
   name_zh: "大补走地鸡窝",
   name_en: "Free Range Chicken Hot Pot",
   price: null,
+  is_market: false,
   variants: [],
   category: "火锅",
   image_url: "",

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  addMember,
+  inviteMember,
   getTenant,
   removeMember,
   setEnabled,
@@ -12,6 +12,8 @@ import {
   type Tenant,
 } from "@/lib/store";
 import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategoriesInDomain, readyDomains } from "@/lib/catalog";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/useAuth";
 
 const ROLE_LABEL: Record<Role, string> = {
   owner: "老板（全部权限）",
@@ -29,10 +31,16 @@ export default function Settings() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [genBusy, setGenBusy] = useState(false);
 
-  // new-user form
+  const { email: ownerEmail } = useAuth();
+
+  // invite-staff form
   const [uName, setUName] = useState("");
+  const [uEmail, setUEmail] = useState("");
   const [uRole, setURole] = useState<Role>("staff");
   const [uAccess, setUAccess] = useState<Set<string>>(new Set());
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
 
   useEffect(() => {
     getTenant(slug).then((t) => {
@@ -63,13 +71,56 @@ export default function Settings() {
     router.push(`/${slug}`);
   };
 
-  const addUser = async () => {
-    if (!uName.trim()) return;
-    await addMember(slug, { name: uName.trim(), role: uRole, access: Array.from(uAccess) });
+  const inviteLinkFor = (email: string) =>
+    `${window.location.origin}/login?invite=1&email=${encodeURIComponent(email)}`;
+
+  const inviteUser = async () => {
+    const email = uEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setInviteMsg("请输入有效邮箱");
+      return;
+    }
+    setInviteBusy(true);
+    setInviteMsg(null);
+    setInviteLink(null);
+    const { error } = await inviteMember(slug, { name: uName.trim() || email, email, role: uRole, access: Array.from(uAccess) });
+    if (error) {
+      setInviteBusy(false);
+      setInviteMsg(`邀请失败：${error}`);
+      return;
+    }
+    const link = inviteLinkFor(email);
+    let emailed = false;
+    try {
+      // authenticated invite email (route verifies the caller owns this tenant)
+      const { data: sess } = await supabase.auth.getSession();
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sess.session?.access_token ?? ""}`,
+        },
+        body: JSON.stringify({ email, slug, inviterEmail: ownerEmail, lang: "zh" }),
+      });
+      emailed = !!(await res.json().catch(() => ({}))).emailed;
+    } catch {
+      /* link fallback below */
+    }
+    setInviteBusy(false);
+    setInviteLink(link);
+    setInviteMsg(emailed ? "已发送邀请邮件 ✓" : "邀请已创建 —— 复制链接发给对方");
     setUName("");
+    setUEmail("");
     setURole("staff");
     setUAccess(new Set());
     reload();
+  };
+
+  const copyInvite = (email: string) => {
+    const link = inviteLinkFor(email);
+    navigator.clipboard?.writeText(link).catch(() => {});
+    setInviteLink(link);
+    setInviteMsg("链接已复制 ✓");
   };
 
   const removeUser = async (id: string) => {
@@ -82,6 +133,9 @@ export default function Settings() {
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
       <h1 className="mt-3 mb-6 text-2xl font-bold text-ink">设置</h1>
 
+      {/* ── Account & login ─────────────────────────────────── */}
+      <AccountLogin />
+
       {/* ── Users ─────────────────────────────────────────── */}
       <section className="card mb-8 p-5">
         <h2 className="mb-1 text-lg font-semibold text-ink">员工账号</h2>
@@ -91,31 +145,44 @@ export default function Settings() {
 
         <div className="mb-5 divide-y divide-slate-100">
           {tenant.users.map((u) => (
-            <div key={u.id} className="flex items-center justify-between py-3">
-              <div>
-                <div className="text-sm font-medium text-ink">{u.name}</div>
-                <div className="text-xs text-ink-faint">
+            <div key={u.id} className="flex items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-medium text-ink">
+                  {u.name}
+                  {u.pending && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">待加入</span>
+                  )}
+                </div>
+                <div className="truncate text-xs text-ink-faint">
                   {ROLE_LABEL[u.role]}
+                  {u.email && <> · {u.email}</>}
                   {u.role !== "owner" && (
                     <> · 可见 {u.access.length === 0 ? "全部" : u.access.map((id) => MODULE_BY_ID[id]?.label.zh).filter(Boolean).join("、")}</>
                   )}
                 </div>
               </div>
-              {u.role !== "owner" && (
-                <button onClick={() => removeUser(u.id)} className="text-xs text-ink-faint hover:text-red-600">
-                  移除
-                </button>
-              )}
+              <div className="flex flex-none items-center gap-3">
+                {u.pending && u.email && (
+                  <button onClick={() => copyInvite(u.email!)} className="text-xs font-medium text-brand hover:underline">复制邀请链接</button>
+                )}
+                {u.role !== "owner" && (
+                  <button onClick={() => removeUser(u.id)} className="text-xs text-ink-faint hover:text-red-600">移除</button>
+                )}
+              </div>
             </div>
           ))}
         </div>
 
-        {/* add user */}
+        {/* invite staff by email */}
         <div className="rounded-xl border border-dashed border-slate-300 p-4">
-          <div className="mb-3 text-sm font-medium text-ink">+ 添加员工</div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="mb-3 text-sm font-medium text-ink">+ 邀请员工（邮箱）</div>
+          <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <label className="label">姓名</label>
+              <label className="label">邮箱（必填）</label>
+              <input className="input" type="email" value={uEmail} onChange={(e) => setUEmail(e.target.value)} placeholder="staff@example.com" />
+            </div>
+            <div>
+              <label className="label">姓名（可选）</label>
               <input className="input" value={uName} onChange={(e) => setUName(e.target.value)} placeholder="员工姓名" />
             </div>
             <div>
@@ -152,7 +219,22 @@ export default function Settings() {
               })}
             </div>
           </div>
-          <button className="btn-primary mt-4" onClick={addUser}>添加员工</button>
+          <button className="btn-primary mt-4" onClick={inviteUser} disabled={inviteBusy || !uEmail.trim()}>
+            {inviteBusy ? "发送中…" : "发送邀请"}
+          </button>
+          {inviteMsg && <div className="mt-3 text-sm text-brand">{inviteMsg}</div>}
+          {inviteLink && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+              <code className="min-w-0 flex-1 truncate text-xs text-ink-soft">{inviteLink}</code>
+              <button
+                onClick={() => navigator.clipboard?.writeText(inviteLink).catch(() => {})}
+                className="flex-none rounded-md bg-brand px-2.5 py-1 text-xs font-semibold text-white"
+              >
+                复制
+              </button>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-ink-faint">对方用此邮箱注册并设置密码后，即可登录看到本店后台（按上面勾选的模块）。</p>
         </div>
       </section>
 
@@ -214,5 +296,52 @@ export default function Settings() {
         </div>
       </section>
     </main>
+  );
+}
+
+/** Account & login: shows the current login and lets the user change the password anytime. */
+function AccountLogin() {
+  const { email } = useAuth();
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const change = async () => {
+    if (pw.length < 6) { setMsg({ ok: false, text: "密码至少 6 位" }); return; }
+    if (pw !== pw2) { setMsg({ ok: false, text: "两次输入不一致" }); return; }
+    setBusy(true); setMsg(null);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) { setMsg({ ok: false, text: error.message }); return; }
+    setPw(""); setPw2("");
+    setMsg({ ok: true, text: "密码已更新 ✓" });
+  };
+
+  return (
+    <section className="card mb-8 p-5">
+      <h2 className="mb-1 text-lg font-semibold text-ink">账户与登录</h2>
+      <p className="mb-4 text-sm text-ink-soft">当前登录账号，可随时修改密码。</p>
+
+      <div className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+        <div className="text-xs text-ink-faint">登录用户名</div>
+        <div className="font-medium text-ink">{email ?? "…"}</div>
+      </div>
+
+      <div className="grid gap-3 sm:max-w-sm">
+        <div>
+          <label className="label">新密码</label>
+          <input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="至少 6 位" />
+        </div>
+        <div>
+          <label className="label">确认新密码</label>
+          <input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && change()} />
+        </div>
+        {msg && <div className={`text-sm ${msg.ok ? "text-brand" : "text-red-600"}`}>{msg.text}</div>}
+        <button className="btn-primary w-fit" onClick={change} disabled={busy || !pw || !pw2}>
+          {busy ? "更新中…" : "修改密码"}
+        </button>
+      </div>
+    </section>
   );
 }
