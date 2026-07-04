@@ -75,10 +75,10 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-slate-900">{t({ zh: "标准版", en: "Standard", fr: "Standard" })}</span>
+                <span className="text-lg font-bold text-slate-900">{t({ zh: "创始商家计划", en: "Founding merchant", fr: "Commerçant fondateur" })}</span>
                 <Badge tone="green">{t({ zh: "使用中", en: "Active", fr: "Actif" })}</Badge>
               </div>
-              <p className="mt-1 text-sm text-slate-500">{t({ zh: "$49 / 月 · 下次扣费 2026年6月30日", en: "$49 / mo · next bill Jun 30, 2026", fr: "49 $/mois · prochaine facture 30 juin 2026" })}</p>
+              <p className="mt-1 text-sm text-slate-500">{t({ zh: "测试期免费 · 零抽成", en: "Free during beta · 0% commission", fr: "Gratuit pendant la bêta · 0% commission" })}</p>
             </div>
             <span className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600">{t({ zh: "管理", en: "Manage", fr: "Gérer" })}</span>
           </div>

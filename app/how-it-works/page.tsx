@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/useAuth";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 
 const T = {
-  navPricing: { zh: "价格", en: "Pricing", fr: "Tarifs" },
+  navPricing: { zh: "开始使用", en: "Get started", fr: "Commencer" },
   navLogin: { zh: "登录", en: "Log in", fr: "Connexion" },
   navEnter: { zh: "进入后台", en: "Dashboard", fr: "Tableau de bord" },
   badge: { zh: "贴身上门服务", en: "White-glove setup", fr: "Service complet sur place" },
@@ -58,7 +58,7 @@ const T = {
   howLabel: { zh: "原理", en: "How it works", fr: "Comment" },
   ctaTitle: { zh: "准备好搭建你的店了吗？", en: "Ready to set up your shop?", fr: "Prêt à configurer votre commerce ?" },
   ctaStart: { zh: "免费开始", en: "Get started", fr: "Commencer" },
-  ctaPricing: { zh: "查看价格", en: "See pricing", fr: "Voir les tarifs" },
+  ctaPricing: { zh: "联系我们", en: "Talk to us", fr: "Contactez-nous" },
   footer: {
     zh: "为中小商家打造的轻量管理系统",
     en: "A lightweight back-office for small businesses",
@@ -162,7 +162,7 @@ export default function HowItWorks() {
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/pricing" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+          <Link href="/get-started" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
             {t(T.navPricing)}
           </Link>
           <LangToggle />
@@ -241,12 +241,12 @@ export default function HowItWorks() {
             {t(T.ctaStart)}
             <span aria-hidden>→</span>
           </Link>
-          <Link
-            href="/pricing"
+          <a
+            href="mailto:support@bentoos.io"
             className="inline-flex items-center rounded-full border border-slate-200 bg-white px-6 py-3 text-base font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
             {t(T.ctaPricing)}
-          </Link>
+          </a>
         </div>
       </section>
 
