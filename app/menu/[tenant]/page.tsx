@@ -315,7 +315,7 @@ export default function PublicMenu() {
 
   return (
     <main
-      className="min-h-screen bg-paper pb-20"
+      className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32" : "pb-20"}`}
       style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
@@ -328,24 +328,6 @@ export default function PublicMenu() {
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-[440px] items-center gap-3 px-5 py-4">
-          {/* shopping cart — top-left; shows subtotal, opens the order sheet */}
-          {(count > 0 || placedTotal > 0) && (
-            <button
-              onClick={() => setOpen(true)}
-              aria-label={t("cart")}
-              className="flex flex-none items-center gap-2 rounded-full bg-jade px-3 py-1.5 text-white shadow-sm transition active:scale-95"
-            >
-              <span className="relative text-base leading-none">
-                🛒
-                {count > 0 && (
-                  <span className="absolute -right-2 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-white px-1 text-[10px] font-bold text-jade">
-                    {count}
-                  </span>
-                )}
-              </span>
-              <span className="text-sm font-semibold tabular-nums">${(count > 0 ? total : placedTotal).toFixed(2)}</span>
-            </button>
-          )}
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
               {name ? name.zh : "…"}
@@ -452,6 +434,35 @@ export default function PublicMenu() {
         </>
         )}
       </div>
+
+      {/* slim bottom checkout bar — one row, no dish list (美团 pattern) */}
+      {(count > 0 || placedTotal > 0) && !open && !sheetDish && (
+        <div className="fixed inset-x-0 bottom-0 z-20 px-3 pb-3">
+          <button
+            onClick={() => setOpen(true)}
+            className="mx-auto flex w-full max-w-[440px] items-center justify-between rounded-full bg-jade py-3 pl-5 pr-2 text-white shadow-[0_6px_24px_rgba(17,122,101,0.35)] transition active:scale-[0.99]"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <span className="relative text-lg leading-none">
+                🛒
+                {count > 0 && (
+                  <span className="absolute -right-2.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-white px-1 text-[10px] font-bold text-jade">
+                    {count}
+                  </span>
+                )}
+              </span>
+              <span className="tabular-nums">
+                {count > 0
+                  ? `${count} ${t("items")} · $${(togoMode ? pricing.grandTotal : total).toFixed(2)}`
+                  : `${t("prevOrdered")} $${placedTotal.toFixed(2)}`}
+              </span>
+            </span>
+            <span className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-bold">
+              {count > 0 ? (togoMode ? t("goPay") : t("submit")) : t("cart")} →
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* 多规格 size selector — tap 选规格 opens this */}
       {sheetDish && (
@@ -678,7 +689,16 @@ export default function PublicMenu() {
         </div>
       )}
 
-      <footer className="pb-8 text-center text-[11px] text-ink-faint">🍱 Powered by BentoOS</footer>
+      {/* discreet but findable: links to the BentoOS landing page */}
+      <footer className="pb-8 text-center">
+        <a
+          href="/"
+          className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] text-ink-faint transition hover:bg-white hover:text-jade"
+          title="BentoOS — 小商家的轻量后台"
+        >
+          🍱 Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
+        </a>
+      </footer>
     </main>
   );
 }
