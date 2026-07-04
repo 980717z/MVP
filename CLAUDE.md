@@ -3,6 +3,16 @@
 Next.js 16 + React 19 + Supabase, deployed on Vercel. Multi-tenant back-office for
 small merchants, plus per-restaurant customer-facing QR menus.
 
+## ⚠️ Permanent QR contract (do not break)
+Table QR codes are printed onto **physical custom signs**. Each encodes
+`https://bentoos.io/menu/<slug>?t=<tableLabel>`. These are load-bearing and must
+never change once signs are made:
+- **Tenant `slug`** (e.g. `fulai`) — never rename; it's in every printed sign's URL.
+- **Table labels** in `tenants.tables` (e.g. `1,2,2A,…,12`) — the `?t=` value must
+  keep matching a printed sign. Add new tables freely; don't rename/remove existing ones.
+- **Route `/menu/[tenant]` + the `?t=` and `?m=togo` params** — keep the URL shape stable.
+Changing any of these silently breaks already-printed signs (customers scan → wrong/dead page).
+
 ## Design System
 The customer menu for 富来小厨 / Sang's Seafood has a design system in **DESIGN.md**.
 Always read DESIGN.md before making visual or UI decisions on the menu/storefront

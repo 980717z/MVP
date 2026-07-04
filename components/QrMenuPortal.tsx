@@ -172,6 +172,23 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
 
       {mode === "tables" && (
         <div>
+          {/* permanent-code notice — important before ordering custom signs */}
+          <div className="mb-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start gap-2">
+              <span className="text-lg leading-none">📌</span>
+              <div className="text-sm text-amber-900">
+                <div className="font-bold">这些二维码是永久固定的，做牌子放心用</div>
+                <p className="mt-1 leading-relaxed">
+                  每个码指向的网址永远不变（如 <code className="rounded bg-amber-100 px-1">bentoos.io/menu/{slug}?t=8A</code>），
+                  改菜品、改价格、换图都不会影响它。<b>只要不做这两件事，牌子可以一直用：</b>
+                </p>
+                <ul className="mt-1 list-disc pl-5">
+                  <li>不要更改店铺网址标识「<b>{slug}</b>」</li>
+                  <li>不要更改桌号（{tables.join("、")}）—— 已做成牌子的桌号请保持不变</li>
+                </ul>
+              </div>
+            </div>
+          </div>
           <div className="card mb-4 p-4">
             <p className="text-sm text-ink-soft">
               每张桌一个专属二维码（共 <b className="text-ink">{tables.length}</b> 桌：{tables.join("、")}）。

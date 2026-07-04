@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { displayPrice, addMenuItem, deleteMenuItem, getCatOrder, listMenuItems, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { displayPrice, addMenuItem, deleteMenuItem, getCatOrder, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 
 const CATEGORIES = [
@@ -49,7 +49,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    listMenuItems(slug).then(setDishes);
+    listMenuItemsRaw(slug).then(setDishes);
     getCatOrder(slug).then(setCatOrder);
   }, [slug, tick]);
 
@@ -113,7 +113,14 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const addVariant = (d: MenuItem) => setVariants(d, [...(d.variants ?? []), { label_zh: "", label_en: "", price: "" }]);
   const patchVariant = (d: MenuItem, i: number, patch: Record<string, any>) =>
     patchLocal(d.id, { variants: (d.variants ?? []).map((v: any, idx: number) => (idx === i ? { ...v, ...patch } : v)) });
-  const saveVariants = (d: MenuItem) => updateMenuItem(d.id, { variants: d.variants ?? [] });
+  // Persist by reading the LATEST state (avoids saving a stale variants array
+  // captured in the row's onBlur closure — the cause of sizes not saving).
+  const saveVariants = (id: string) =>
+    setDishes((prev) => {
+      const d = prev.find((x) => x.id === id);
+      if (d) updateMenuItem(id, { variants: d.variants ?? [] });
+      return prev;
+    });
   const rmVariant = (d: MenuItem, i: number) => setVariants(d, (d.variants ?? []).filter((_: any, idx: number) => idx !== i));
 
   const changeImage = async (id: string, file: File | null) => {
@@ -382,14 +389,14 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                                   value={v.label_zh ?? ""}
                                   placeholder="全/位"
                                   onChange={(e) => patchVariant(d, i, { label_zh: e.target.value })}
-                                  onBlur={() => saveVariants(d)}
+                                  onBlur={() => saveVariants(d.id)}
                                 />
                                 <input
                                   className="w-24 rounded border border-slate-300 px-2 py-1 text-sm text-ink-soft outline-none"
                                   value={v.label_en ?? ""}
                                   placeholder="Whole/Single"
                                   onChange={(e) => patchVariant(d, i, { label_en: e.target.value })}
-                                  onBlur={() => saveVariants(d)}
+                                  onBlur={() => saveVariants(d.id)}
                                 />
                                 <div className="flex flex-1 items-center rounded border border-slate-300 px-2">
                                   <span className="text-sm text-ink-faint">$</span>
@@ -400,7 +407,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                                     value={v.price ?? ""}
                                     placeholder="0.00"
                                     onChange={(e) => patchVariant(d, i, { price: e.target.value })}
-                                    onBlur={() => saveVariants(d)}
+                                    onBlur={() => saveVariants(d.id)}
                                   />
                                 </div>
                                 <button onClick={() => rmVariant(d, i)} className="flex-none px-1 text-xs text-ink-faint hover:text-red-600" title="删除这个规格">✕</button>

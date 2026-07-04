@@ -95,6 +95,23 @@ export async function listMenuItems(slug: string): Promise<MenuItem[]> {
   return (data ?? []).map((r: any) => ({ ...r, variants: normVariants(r.variants) })) as MenuItem[];
 }
 
+/** Editor read: keep variant rows exactly as stored (even half-typed), so the
+ *  menu editor doesn't drop a size the moment you add it. The customer menu uses
+ *  the filtering listMenuItems instead. */
+export async function listMenuItemsRaw(slug: string): Promise<MenuItem[]> {
+  const { data, error } = await supabase
+    .from("menu_items")
+    .select("*")
+    .eq("tenant_slug", slug)
+    .order("sort", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("listMenuItemsRaw", error);
+    return [];
+  }
+  return (data ?? []).map((r: any) => ({ ...r, variants: Array.isArray(r.variants) ? r.variants : [] })) as MenuItem[];
+}
+
 export async function addMenuItem(
   slug: string,
   item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string; variants?: Variant[] }
