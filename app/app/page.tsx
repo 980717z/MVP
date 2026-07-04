@@ -89,7 +89,7 @@ export default function AppGate() {
             autoFocus
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && create()}
-            placeholder="如：富来小厨 / Fulai"
+            placeholder="如：老王面馆 / Golden Wok"
           />
 
           <label className="label mt-4">专属网址</label>

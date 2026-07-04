@@ -11,7 +11,7 @@ export default function Overview() {
     <>
       <PageHeader
         title={t({ zh: "概览", en: "Overview", fr: "Aperçu" })}
-        subtitle="Sang's Great Seafood · 富来小厨"
+        subtitle="Harvest Seafood House · 丰收海鲜酒家"
         range={t({ zh: "5月1日 – 5月31日", en: "May 1 – May 31", fr: "1 mai – 31 mai" })}
       />
 

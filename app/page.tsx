@@ -8,7 +8,8 @@ import HeroDemo from "@/components/HeroDemo";
 
 // ─────────────────────────────────────────────────────────────────────────
 //  BentoOS landing — fancy·interactive·trustworthy rebuild (2026-07-06).
-//  Trust = real product: the live 富来小厨 menu is embedded (not a mockup),
+//  Trust = real product: a live merchant menu is embedded (not a mockup),
+//  anonymized via ?embed=1 until we hold written authorization to name the shop.
 //  the interactive HeroDemo is the real dashboard, and every stat is true.
 //  No pricing anywhere (hidden during beta). EN/FR/中 throughout.
 // ─────────────────────────────────────────────────────────────────────────
@@ -31,13 +32,12 @@ const T = {
   liveTag: { zh: "真实在营业", en: "LIVE now", fr: "EN SERVICE" },
   liveCase: {
     kicker: { zh: "不是演示 —— 是正在营业的店", en: "Not a demo — a restaurant that's open right now", fr: "Pas une démo — un resto ouvert en ce moment" },
-    title: { zh: "富来小厨 · Sang's Seafood", en: "Sang's Seafood · 富来小厨", fr: "Sang's Seafood · 富来小厨" },
+    title: { zh: "多伦多唐人街的一家海鲜酒楼", en: "A seafood house in Toronto's Chinatown", fr: "Un resto de fruits de mer du quartier chinois de Toronto" },
     body: {
-      zh: "多伦多唐人街 343 Spadina Ave。桌上贴的二维码、后厨打出的每一张单、每天的销售和税，都跑在 BentoOS 上。左边就是他们的真菜单——你现在就可以滑一滑。",
-      en: "343 Spadina Ave, Toronto Chinatown. The QR codes on their tables, every kitchen ticket, daily sales and HST — all run on BentoOS. That's their real menu on the left. Scroll it.",
-      fr: "343 Spadina Ave, quartier chinois de Toronto. Les codes QR sur les tables, chaque ticket de cuisine, les ventes et taxes quotidiennes — tout tourne sur BentoOS. Voici leur vrai menu, à gauche. Faites-le défiler.",
+      zh: "桌上贴的二维码、后厨打出的每一张单、每天的销售和税，都跑在 BentoOS 上。左边就是他们的真菜单——你现在就可以滑一滑。",
+      en: "The QR codes on their tables, every kitchen ticket, daily sales and HST — all run on BentoOS. That's their real menu on the left. Scroll it.",
+      fr: "Les codes QR sur les tables, chaque ticket de cuisine, les ventes et taxes quotidiennes — tout tourne sur BentoOS. Voici leur vrai menu, à gauche. Faites-le défiler.",
     },
-    open: { zh: "打开完整菜单 ↗", en: "Open the full menu ↗", fr: "Ouvrir le menu complet ↗" },
     facts: [
       { zh: "300+ 道菜 · 中英双语", en: "300+ dishes · bilingual", fr: "300+ plats · bilingue" },
       { zh: "多规格（全/半 · 位/小/中/大）", en: "Sizes (whole/half · S→XL)", fr: "Formats (entier/demi · S→XL)" },
@@ -201,8 +201,8 @@ function LivePhone({ liveTag }: { liveTag: string }) {
         <div className="h-[560px] overflow-hidden rounded-[29px] bg-[#FAF7F2]">
           {load ? (
             <iframe
-              src="/menu/fulai"
-              title="富来小厨 live menu"
+              src="/menu/fulai?embed=1"
+              title="live restaurant menu"
               className="h-full w-full border-0"
               loading="lazy"
               sandbox="allow-scripts allow-same-origin"
@@ -346,14 +346,6 @@ export default function Landing() {
                     </li>
                   ))}
                 </ul>
-                <a
-                  href="/menu/fulai"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-7 inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
-                >
-                  {t(T.liveCase.open)}
-                </a>
               </Reveal>
             </div>
           </div>
@@ -402,7 +394,7 @@ export default function Landing() {
               <p className="mt-1 text-xs leading-relaxed text-slate-500">{t(T.bento.print.b)}</p>
               {/* mini ticket */}
               <div className="mt-4 flex-1 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 font-mono text-[10px] leading-relaxed text-slate-700">
-                <div className="text-center font-bold">富来小厨</div>
+                <div className="text-center font-bold">唐人街小馆</div>
                 <div className="my-1 border-t border-dashed border-slate-300" />
                 <div className="text-center text-sm font-extrabold">堂食 · 桌 8A</div>
                 <div className="my-1 border-t border-dashed border-slate-300" />

@@ -38,7 +38,7 @@ const T = {
     fr: "Donnez-nous quelques informations — nous préparons votre back-office et vous recontactons rapidement.",
   },
   bizName: { zh: "店铺名称", en: "Business name", fr: "Nom du commerce" },
-  bizNamePh: { zh: "例如：富来小厨", en: "e.g. Sang's Great Seafood", fr: "ex. : Sang's Great Seafood" },
+  bizNamePh: { zh: "例如：老王面馆", en: "e.g. Golden Wok Kitchen", fr: "ex. : Golden Wok Kitchen" },
   bizType: { zh: "店铺类型", en: "Business type", fr: "Type de commerce" },
   email: { zh: "邮箱", en: "Email", fr: "Courriel" },
   phone: { zh: "电话（选填）", en: "Phone (optional)", fr: "Téléphone (facultatif)" },

@@ -64,7 +64,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
   const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
-  const [shopName, setShopName] = useState("富来小厨");
+  // starts as the slug, replaced by the tenant's real name once fetched —
+  // never default to one merchant's name inside another merchant's portal
+  const [shopName, setShopName] = useState(slug);
 
   useEffect(() => {
     getTenant(slug).then((t) => t?.name?.zh && setShopName(t.name.zh)).catch(() => {});

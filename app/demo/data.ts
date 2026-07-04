@@ -12,7 +12,8 @@ export const NAV = [
   { href: "/demo/settings", label: { zh: "设置", en: "Settings", fr: "Paramètres" }, icon: "⚙️" },
 ];
 
+// Fictional demo shop — never a real merchant's name (no written authorization).
 export const SHOP = {
-  name: "Sang's Great Seafood · 富来小厨",
-  address: { zh: "多伦多 士巴丹拿大道 343 号", en: "343 Spadina Ave, Toronto, ON", fr: "343, av. Spadina, Toronto (ON)" },
+  name: "Harvest Seafood House · 丰收海鲜酒家",
+  address: { zh: "多伦多 唐人街", en: "Chinatown, Toronto, ON", fr: "Quartier chinois, Toronto (ON)" },
 };

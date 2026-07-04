@@ -53,6 +53,9 @@ export default function PublicMenu() {
 
   // 外卖/自取 mode: entered via the separate QR (?m=togo). Dine-in tables use ?t=N.
   const [togoMode, setTogoMode] = useState(false);
+  // ?embed=1 (landing showcase): hide the shop's name until we have written
+  // authorization to feature it. Purely additive — printed QR params untouched.
+  const [embed, setEmbed] = useState(false);
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
   const [street, setStreet] = useState("");
   const [unit, setUnit] = useState("");
@@ -72,6 +75,7 @@ export default function PublicMenu() {
       setTableNo(tParam);
     }
     if (params.get("m") === "togo") setTogoMode(true);
+    if (params.get("embed") === "1") setEmbed(true);
     Promise.all([
       supabase.from("storefront").select("name, cat_order").eq("slug", slug).maybeSingle(),
       listMenuItems(slug),
@@ -380,9 +384,9 @@ export default function PublicMenu() {
         <div className="mx-auto flex max-w-[440px] items-center gap-3 px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
-              {name ? name.zh : "…"}
+              {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? name.zh : "…"}
             </div>
-            {name?.en && name.en !== name.zh && (
+            {!embed && name?.en && name.en !== name.zh && (
               <div className="text-[11px] uppercase tracking-[0.15em] text-ink-faint">{name.en}</div>
             )}
           </div>
