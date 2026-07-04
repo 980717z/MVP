@@ -117,6 +117,19 @@ since we pre-compute HST as its own line).
 
 ---
 
+## Q4b — iframe tokenization + wallets (primary path per 2026-07-05 decision)
+
+Decision update: **iframe/SDK tokenization is the primary integration**, not HCO
+(synchronous charge result removes the webhook unknown; no redirect on mobile).
+Verify in sandbox:
+1. `clover.js` iframe card tokenization works for a **CA** merchant; token → server
+   charge via Ecommerce API returns synchronous success/decline.
+2. **Apple Pay / Google Pay**: does the CA ecommerce charge endpoint accept wallet
+   tokens? What's the Apple Pay domain-registration flow in the Clover dashboard
+   (apple-developer-merchantid-domain-association hosting on bentoos.io)?
+3. Tip + tax as separate amounts on the charge (same as Q3, via API fields).
+HCO (Q1) is now the FALLBACK — still record its answer for completeness.
+
 ## Q4 — Session TTL vs our 30-min order expiry
 
 - From the Q1 response, RECORD any `expirationTime` / TTL on the checkout session.
