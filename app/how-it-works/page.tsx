@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/useAuth";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 
 const T = {
-  navPricing: { zh: "开始使用", en: "Get started", fr: "Commencer" },
+  navPricing: { zh: "价格", en: "Pricing", fr: "Tarifs" },
   navLogin: { zh: "登录", en: "Log in", fr: "Connexion" },
   navEnter: { zh: "进入后台", en: "Dashboard", fr: "Tableau de bord" },
   badge: { zh: "贴身上门服务", en: "White-glove setup", fr: "Service complet sur place" },
@@ -162,7 +162,7 @@ export default function HowItWorks() {
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/get-started" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
+          <Link href="/pricing" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
             {t(T.navPricing)}
           </Link>
           <LangToggle />

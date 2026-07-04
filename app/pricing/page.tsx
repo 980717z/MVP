@@ -5,9 +5,10 @@ import { useAuth } from "@/lib/useAuth";
 import { useLang, LangToggle } from "@/app/i18n";
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Beta period: public pricing is intentionally HIDDEN. This page keeps the
-//  /pricing URL alive (bookmarks, old links) but shows no dollar amounts —
-//  it pitches the beta and routes people to /get-started or email.
+//  Public pricing is intentionally HIDDEN: BentoOS sells personalized OS
+//  solutions, quoted per shop. This page keeps the /pricing URL alive
+//  (bookmarks, old links) but shows no dollar amounts — it explains the
+//  personalized model and routes people to email or /get-started.
 // ─────────────────────────────────────────────────────────────────────────
 
 const T = {
@@ -15,24 +16,24 @@ const T = {
     login: { zh: "登录", en: "Log in", fr: "Connexion" },
     enter: { zh: "进入后台", en: "Dashboard", fr: "Tableau de bord" },
   },
-  badge: { zh: "创始商家计划 · 名额有限", en: "Founding merchant program · limited spots", fr: "Programme commerçants fondateurs · places limitées" },
+  badge: { zh: "量身定制 · 按店报价", en: "Personalized · quoted per shop", fr: "Sur mesure · tarif par commerce" },
   title: {
-    lead: { zh: "测试期免费，", en: "Free during beta. ", fr: "Gratuit pendant la bêta. " },
-    hi: { zh: "收入全归你", en: "Keep 100% of your revenue", fr: "Gardez 100% de vos revenus" },
+    lead: { zh: "你的店独一无二，", en: "Your shop is one of a kind. ", fr: "Votre commerce est unique. " },
+    hi: { zh: "你的 OS 也是", en: "So is your OS", fr: "Votre OS aussi" },
   },
   sub: {
-    zh: "BentoOS 正在与创始商家一起打磨产品。测试期内全部功能免费使用，零抽成、无合同、无需专用设备。正式定价公布前，创始商家将获得永久优惠。",
-    en: "BentoOS is being polished with a small group of founding merchants. Everything is free during beta — no commission, no contract, no hardware. Founding shops lock in preferred terms before public pricing launches.",
-    fr: "BentoOS se perfectionne avec un petit groupe de commerçants fondateurs. Tout est gratuit pendant la bêta — sans commission, sans contrat, sans matériel. Les commerces fondateurs obtiennent des conditions préférentielles à vie.",
+    zh: "BentoOS 不卖千篇一律的套餐。我们按你的店拼装模块 —— 扫码点餐、厨房出票、对账、会员 —— 再给出一个匹配你规模的报价。零抽成、无合同、无需专用设备。",
+    en: "BentoOS doesn't sell one-size-fits-all plans. We assemble your OS from the modules you actually need — QR ordering, kitchen tickets, reconciliation, members — and quote a price that fits your size. No commission, no contract, no hardware.",
+    fr: "BentoOS ne vend pas de forfaits uniformes. Nous assemblons votre OS à partir des modules dont vous avez besoin — commande QR, tickets cuisine, rapprochement, membres — avec un tarif adapté à votre taille. Sans commission, sans contrat, sans matériel.",
   },
   points: [
     {
       icon: "🍱",
-      title: { zh: "全部模块", en: "Every module", fr: "Tous les modules" },
+      title: { zh: "按需拼装", en: "Built from modules", fr: "Assemblé sur mesure" },
       body: {
-        zh: "扫码点餐、厨房出票、菜单管理、对账、会员 —— 测试期全部开放。",
-        en: "QR ordering, kitchen tickets, menu management, reconciliation, members — all open during beta.",
-        fr: "Commande QR, tickets cuisine, gestion du menu, rapprochement, membres — tout est ouvert pendant la bêta.",
+        zh: "只为你用得上的模块付费 —— 一家奶茶店和一家海鲜酒楼，不该是同一个价。",
+        en: "Pay only for the modules you use — a bubble-tea stand and a seafood house shouldn't cost the same.",
+        fr: "Payez seulement les modules que vous utilisez — un comptoir à thé et un restaurant de fruits de mer ne devraient pas coûter pareil.",
       },
     },
     {
@@ -54,17 +55,17 @@ const T = {
       },
     },
   ],
-  ctaTitle: { zh: "想成为创始商家？", en: "Want to be a founding merchant?", fr: "Envie de devenir commerçant fondateur ?" },
-  ctaStart: { zh: "免费开始", en: "Get started free", fr: "Commencer gratuitement" },
-  ctaTalk: { zh: "联系我们", en: "Talk to us", fr: "Contactez-nous" },
+  ctaTitle: { zh: "想知道你的店需要多少？", en: "Curious what it'd cost for your shop?", fr: "Curieux du tarif pour votre commerce ?" },
+  ctaStart: { zh: "开始使用", en: "Get started", fr: "Commencer" },
+  ctaTalk: { zh: "联系我们获取报价", en: "Contact us for pricing", fr: "Contactez-nous pour un tarif" },
   faqTitle: { zh: "常见问题", en: "Questions", fr: "Questions" },
   faq: [
     {
-      q: { zh: "测试期结束后会收费吗？", en: "Will it cost money after beta?", fr: "Y aura-t-il un coût après la bêta ?" },
+      q: { zh: "报价是怎么定的？", en: "How is the price decided?", fr: "Comment le tarif est-il fixé ?" },
       a: {
-        zh: "会有一个简单透明的订阅价，公布前会提前通知你。创始商家锁定永久优惠，且永远零抽成。",
-        en: "There will be a simple, transparent subscription. You'll be told well before it starts, founding shops keep preferred terms forever, and orders are never charged a commission.",
-        fr: "Il y aura un abonnement simple et transparent. Vous serez prévenu à l'avance, les commerces fondateurs gardent leurs conditions à vie, et jamais de commission sur les commandes.",
+        zh: "看两件事：你需要哪些模块，以及店的规模。给出的是一个简单的固定月费 —— 不按订单抽成，没有隐藏费用。一次对话就能给你确切数字。",
+        en: "Two things: which modules you need, and the size of your shop. You get one simple flat monthly price — no per-order commission, no hidden fees. One conversation gets you an exact number.",
+        fr: "Deux choses : les modules dont vous avez besoin et la taille de votre commerce. Vous obtenez un tarif mensuel fixe et simple — sans commission par commande, sans frais cachés. Une conversation suffit pour un chiffre exact.",
       },
     },
     {
@@ -131,19 +132,19 @@ export default function Pricing() {
         <p className="mx-auto mt-5 max-w-xl text-pretty text-base text-slate-600 sm:text-lg">{t(T.sub)}</p>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href={href}
+          <a
+            href="mailto:support@bentoos.io?subject=BentoOS%20pricing"
             className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-3 text-base font-medium text-white shadow-lg shadow-emerald-500/25 transition hover:from-emerald-600 hover:to-emerald-700"
           >
-            {t(T.ctaStart)}
+            {t(T.ctaTalk)}
             <span aria-hidden>→</span>
-          </Link>
-          <a
-            href="mailto:support@bentoos.io"
+          </a>
+          <Link
+            href={href}
             className="inline-flex items-center rounded-full border border-slate-200 bg-white px-6 py-3 text-base font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
-            {t(T.ctaTalk)}
-          </a>
+            {t(T.ctaStart)}
+          </Link>
         </div>
       </section>
 
@@ -168,6 +169,18 @@ export default function Pricing() {
               <p className="mt-1 text-sm text-slate-600">{t(item.a)}</p>
             </div>
           ))}
+        </div>
+
+        {/* closing CTA */}
+        <div className="mt-12 text-center">
+          <h3 className="text-lg font-bold tracking-tight text-slate-900">{t(T.ctaTitle)}</h3>
+          <a
+            href="mailto:support@bentoos.io?subject=BentoOS%20pricing"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-3 text-base font-medium text-white shadow-lg shadow-emerald-500/25 transition hover:from-emerald-600 hover:to-emerald-700"
+          >
+            {t(T.ctaTalk)}
+            <span aria-hidden>→</span>
+          </a>
         </div>
       </section>
 

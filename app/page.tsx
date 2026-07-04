@@ -14,7 +14,7 @@ import HeroDemo from "@/components/HeroDemo";
 // ─────────────────────────────────────────────────────────────────────────
 
 const T = {
-  nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, how: { zh: "怎么用", en: "How it works", fr: "Fonctionnement" } },
+  nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, how: { zh: "怎么用", en: "How it works", fr: "Fonctionnement" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" } },
   badge: { zh: "多伦多真实门店正在使用", en: "Live in a real Toronto restaurant", fr: "En service dans un vrai resto de Toronto" },
   slogan: {
     lead: { zh: "一个后台，管好", en: "One dashboard for your ", fr: "Un tableau de bord pour " },
@@ -98,7 +98,7 @@ const T = {
   },
   ctaBand: {
     title: { zh: "把你的店也装进 BentoOS", en: "Put your shop on BentoOS", fr: "Mettez votre commerce sur BentoOS" },
-    body: { zh: "内测期间免费体验，名额有限。留下联系方式，我们上门帮你搭好。", en: "Free during beta, limited spots. Leave your details and we'll set everything up with you.", fr: "Gratuit pendant le bêta, places limitées. Laissez vos coordonnées." },
+    body: { zh: "每家店的需求不一样，我们按你的店量身配置，并给出专属报价。联系我们聊聊。", en: "Every shop is different — we tailor your OS to how you run, with pricing to match. Talk to us.", fr: "Chaque commerce est différent — nous configurons votre OS sur mesure, avec un tarif adapté. Parlons-en." },
   },
   footer: { zh: "为中小商家打造的轻量管理系统", en: "A lightweight back-office for small businesses", fr: "Un back-office léger pour les petits commerces" },
 };
@@ -245,7 +245,7 @@ export default function Landing() {
         <div className="blob absolute top-[42rem] left-1/2 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-amber-100/40 blur-3xl" />
       </div>
 
-      {/* nav — no pricing link (hidden during beta) */}
+      {/* nav — /pricing shows the personalized-quote story, no dollar amounts */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
@@ -254,6 +254,9 @@ export default function Landing() {
         <div className="flex items-center gap-3">
           <Link href="/how-it-works" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-900 sm:block">
             {t(T.nav.how)}
+          </Link>
+          <Link href="/pricing" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-900 sm:block">
+            {t(T.nav.pricing)}
           </Link>
           <LangToggle />
           <Link href={session ? "/app" : "/login"} className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
