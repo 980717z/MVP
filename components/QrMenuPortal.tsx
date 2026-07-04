@@ -53,7 +53,7 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
     const dataUrl = await QRCode.toDataURL(url, { width: SIZE, margin: 2, errorCorrectionLevel: "M" });
     const img = new Image();
     img.src = dataUrl;
-    await new Promise((r) => (img.onload = r));
+    await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("image decode failed")); });
     const pad = 56;
     const labelH = 150;
     const canvas = document.createElement("canvas");

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { listOrders, setOrderStatus, cancelOrderItem, deleteOrder, reprintOrder, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
@@ -194,60 +194,79 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     load();
   };
 
+  // orders with an advance() in flight — blocks double-tap double-posting
+  const advancing = useRef<Set<string>>(new Set());
+
   const advance = async (o: Order, to: Order["status"]) => {
-    // 时价 gate: an order can't be completed until every market-priced item has
-    // its actual price entered (today's 时价 from the menu prefills the prompt).
-    let items = o.items;
-    if (to === "done" && o.status !== "done") {
-      const needPricing = items.filter((it) => it.market && !(Number(it.price) > 0) && !(it as any).cancelled);
-      if (needPricing.length > 0) {
-        // today's reference prices from 菜单设置 (时价更新 panel)
-        const menu = await listMenuItems(slug).catch(() => []);
-        const menuPrice = new Map(menu.map((m) => [m.id, m.price]));
-        const updated = [...items];
-        for (const it of needPricing) {
-          const def = menuPrice.get(it.id);
-          const raw = window.prompt(
-            `时价录入：「${it.name_zh}」今日单价（$）`,
-            def != null && def > 0 ? String(def) : "",
-          );
-          if (raw == null) return; // staff cancelled — abort completion
-          const p = parseFloat(raw);
-          if (!(p > 0)) {
-            alert("请输入有效价格，订单未完成。");
+    if (advancing.current.has(o.id)) return;
+    advancing.current.add(o.id);
+    try {
+      // 时价 gate: an order can't be completed until every market-priced item has
+      // its actual price entered (today's 时价 from the menu prefills the prompt).
+      let items = o.items;
+      if (to === "done" && o.status !== "done") {
+        const needPricing = items.filter((it) => it.market && !(Number(it.price) > 0) && !(it as any).cancelled);
+        if (needPricing.length > 0) {
+          // today's reference prices from 菜单设置 (时价更新 panel)
+          const menu = await listMenuItems(slug).catch(() => []);
+          const menuPrice = new Map(menu.map((m) => [m.id, m.price]));
+          const updated = [...items];
+          for (const it of needPricing) {
+            const def = menuPrice.get(it.id);
+            const raw = window.prompt(
+              `时价录入：「${it.name_zh}」今日单价（$）`,
+              def != null && def > 0 ? String(def) : "",
+            );
+            if (raw == null) return; // staff cancelled — abort completion
+            const p = parseFloat(raw);
+            if (!(p > 0)) {
+              alert("请输入有效价格，订单未完成。");
+              return;
+            }
+            const idx = updated.indexOf(it);
+            updated[idx] = { ...it, price: Math.round(p * 100) / 100 };
+          }
+          const newTotal = updated
+            .filter((it: any) => !it.cancelled)
+            .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+          const res = await updateOrderItems(o.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
+          if (res.error) {
+            alert("保存时价失败：" + res.error);
             return;
           }
-          const idx = updated.indexOf(it);
-          updated[idx] = { ...it, price: Math.round(p * 100) / 100 };
+          items = updated;
         }
-        const newTotal = updated
-          .filter((it: any) => !it.cancelled)
-          .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
-        const res = await updateOrderItems(o.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
-        if (res.error) {
-          alert("保存时价失败：" + res.error);
+      }
+
+      if (to === "done") {
+        // CAS: exactly ONE device/tap wins the done-transition, so ledger,
+        // dish counts and member spend post exactly once.
+        const { claimed, error } = await claimOrderDone(o.id);
+        if (error) {
+          alert("状态更新失败，请重试：" + error);
           return;
         }
-        items = updated;
+        if (claimed) {
+          const activeItems = items.filter((it: any) => !it.cancelled);
+          const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+          try {
+            await Promise.all([
+              postOrderSales(slug, activeItems),
+              recordOrderSale(slug, { id: o.id, total: activeTotal, items: activeItems, source: "qr" }),
+              o.phone ? syncMemberFromOrder(slug, o.phone, "", activeTotal) : Promise.resolve(),
+            ]);
+          } catch (e) {
+            console.error("post order sale", e);
+          }
+        }
+      } else {
+        const { error } = await setOrderStatus(o.id, to);
+        if (error) alert("状态更新失败，请重试：" + error);
       }
+      load();
+    } finally {
+      advancing.current.delete(o.id);
     }
-
-    await setOrderStatus(o.id, to);
-    // Post sales into 菜品销量与毛利 once, only on the transition into "done".
-    if (to === "done" && o.status !== "done") {
-      const activeItems = items.filter((it: any) => !it.cancelled);
-      const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
-      try {
-        await Promise.all([
-          postOrderSales(slug, activeItems),
-          recordOrderSale(slug, { id: o.id, total: activeTotal, items: activeItems, source: "qr" }),
-          o.phone ? syncMemberFromOrder(slug, o.phone, "", activeTotal) : Promise.resolve(),
-        ]);
-      } catch (e) {
-        console.error("post order sale", e);
-      }
-    }
-    load();
   };
 
   const fmtTime = (iso: string) => {

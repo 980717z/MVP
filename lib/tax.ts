@@ -22,10 +22,11 @@ export interface TaxBreakdown {
  *                     false (default) if tax is added on top.
  */
 export function computeTax(amount: number, taxIncluded = false): TaxBreakdown {
-  const subtotal = taxIncluded ? amount / (1 + HST_RATE) : amount;
-  const gst = subtotal * GST_RATE;
-  const pst = subtotal * PST_RATE;
-  return { subtotal: r2(subtotal), gst: r2(gst), pst: r2(pst), total: r2(subtotal + gst + pst) };
+  const subtotal = r2(taxIncluded ? amount / (1 + HST_RATE) : amount);
+  const gst = r2(subtotal * GST_RATE);
+  const pst = r2(subtotal * PST_RATE);
+  // total = sum of the ROUNDED lines, so the displayed breakdown always adds up
+  return { subtotal, gst, pst, total: r2(subtotal + gst + pst) };
 }
 
 // ── QR ordering: order types, delivery pricing, zone validation ────────────

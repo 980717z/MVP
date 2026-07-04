@@ -172,7 +172,7 @@ export default function PublicMenu() {
     // Delivery: validate address + downtown zone + $30 minimum before anything else.
     // (Client-side hint only — the checkout server re-validates authoritatively.)
     if (isDelivery) {
-      if (!street.trim()) { setAddrErr(t("street")); return; }
+      if (!street.trim()) { setAddrErr(lang === "zh" ? "请填写街道地址" : "Please enter a street address"); return; }
       if (!isValidPostal(postal)) { setAddrErr(t("postalBad")); return; }
       if (!inDeliveryZone(postal, DT_FSAS)) { setAddrErr(t("zoneBad")); return; }
       if (shortfall > 0) { setAddrErr(`${t("minShort")} $${shortfall.toFixed(2)}`); return; }
@@ -182,6 +182,11 @@ export default function PublicMenu() {
     // Pay-first rule: takeout/delivery orders are only submitted once online
     // payment is live — otherwise they'd sit invisible (pending) forever.
     if (togoMode && !PAYMENTS_LIVE) return;
+    // 时价 items can't be pre-paid online (price unknown at checkout) — dine-in only.
+    if (togoMode && hasMarketItems) {
+      setAddrErr(lang === "zh" ? "时价菜品暂不支持外卖/自取在线支付，请移除后再下单" : "Market-price items can't be pre-paid online — please remove them for takeout/delivery");
+      return;
+    }
 
     setSubmitting(true);
     const items: OrderItem[] = cartLines.map((x) => ({
@@ -294,6 +299,9 @@ export default function PublicMenu() {
     // the 时价 tag only, still orderable, staff prices it at completion.
     const isMarket = !!d.is_market && !hasVariants;
     const marketPriced = isMarket && Number(d.price) > 0;
+    // NOT market, no variants, no price = owner hasn't priced it yet — don't
+    // let it into the cart at $0 (there's no completion gate for these).
+    const unpriced = !hasVariants && !d.is_market && !(Number(d.price) > 0);
     return (
       <div key={d.id} className="flex items-center gap-3">
         {d.image_url && (
@@ -336,6 +344,10 @@ export default function PublicMenu() {
             {lang === "zh" ? "选规格" : "Size"} ›
             {qty > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{qty}</span>}
           </button>
+        ) : unpriced ? (
+          <span className="flex-none rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-ink-faint" title={lang === "zh" ? "未定价" : "Not priced"}>
+            {lang === "zh" ? "请询问" : "Ask staff"}
+          </span>
         ) : qty === 0 ? (
           <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
             ＋
@@ -395,7 +407,9 @@ export default function PublicMenu() {
       )}
 
       <div className="mx-auto max-w-[440px] px-5 py-6">
-        {loaded && dishes.length === 0 && <p className="py-20 text-center text-sm text-ink-faint">菜单还没准备好。</p>}
+        {loaded && dishes.length === 0 && (
+          <p className="py-20 text-center text-sm text-ink-faint">{lang === "zh" ? "菜单还没准备好。" : "The menu isn't ready yet."}</p>
+        )}
 
         {/* search bar — filters across all categories */}
         {dishes.length > 0 && (
@@ -616,11 +630,13 @@ export default function PublicMenu() {
                     </div>
                     <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       {hotpotSides.map((d) => {
-                        const q = cart[d.id] ?? 0;
+                        // multi-size sides open the size sheet (adding by bare id would sell at $0)
+                        const hasV = (d.variants?.length ?? 0) > 0;
+                        const q = hasV ? dishQty(d.id) : cart[d.id] ?? 0;
                         return (
                           <button
                             key={d.id}
-                            onClick={() => inc(d.id, 1)}
+                            onClick={() => (hasV ? setSheetDish(d) : inc(d.id, 1))}
                             className={`flex-none rounded-lg border px-3 py-2 text-left transition ${
                               q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white hover:border-slate-300"
                             }`}
@@ -629,7 +645,9 @@ export default function PublicMenu() {
                               {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
                               {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
                             </div>
-                            <div className="text-xs text-ink-faint">{fmtPrice(d.price) || t("market")} ＋</div>
+                            <div className="text-xs text-ink-faint">
+                              {hasV ? `${lang === "zh" ? "起" : "from"} ${fmtPrice(displayPrice(d))} ›` : `${fmtPrice(d.price) || t("market")} ＋`}
+                            </div>
                           </button>
                         );
                       })}
@@ -742,6 +760,9 @@ export default function PublicMenu() {
                   )}
                   {togoMode && !PAYMENTS_LIVE && (
                     <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">⏳ {t("paySoon")}</p>
+                  )}
+                  {togoMode && !isDelivery && addrErr && (
+                    <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
                   )}
                   <button
                     onClick={submit}

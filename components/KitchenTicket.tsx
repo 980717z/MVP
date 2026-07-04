@@ -61,7 +61,9 @@ export default function KitchenTicket({ order, shopName, onClose }: { order: Ord
   const mul = SCALES[scaleIdx].mul;
   const type = orderTypeLine(order);
   const isDelivery = (order as any).order_type === "delivery";
-  const count = order.items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
+  // cancelled items never show on the ticket
+  const items = order.items.filter((it: any) => !it.cancelled);
+  const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
   // px sizes scale with the dial. 80mm ≈ 302px @96dpi; we render a touch wider for on-screen legibility.
   const s = (base: number) => Math.round(base * mul);
@@ -126,7 +128,7 @@ export default function KitchenTicket({ order, shopName, onClose }: { order: Ord
 
         {/* items — qty is huge and unmissable */}
         <div className="my-2 border-t-2 border-black pt-1">
-          {order.items.map((it, i) => (
+          {items.map((it, i) => (
             <div key={i} className="flex items-start gap-2 border-b border-dotted border-slate-300 py-2 last:border-0">
               <span className="flex-none font-extrabold leading-none" style={{ fontSize: s(30), minWidth: s(40) }}>
                 ×{it.qty}

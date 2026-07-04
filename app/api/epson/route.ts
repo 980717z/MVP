@@ -23,7 +23,16 @@ export const runtime = "nodejs";
 const XML_HEADERS = { "Content-Type": "text/xml; charset=utf-8", "Cache-Control": "no-store" };
 
 async function handle(req: Request): Promise<Response> {
-  const slug = new URL(req.url).searchParams.get("slug");
+  const url = new URL(req.url);
+  const slug = url.searchParams.get("slug");
+  // Shared secret: the printer's configured URL carries ?key=… (docs/epson-print.md).
+  // Without it, anyone knowing the public slug could poll this endpoint, steal
+  // kitchen tickets (incl. customer phone/address) AND mark them printed so the
+  // real printer never sees them. Requires EPSON_PRINT_KEY in the environment.
+  const secret = process.env.EPSON_PRINT_KEY;
+  if (secret && url.searchParams.get("key") !== secret) {
+    return new Response(eposEmpty(), { status: 401, headers: XML_HEADERS });
+  }
   const db = supabaseAdmin();
   if (!slug || !db) return new Response(eposEmpty(), { headers: XML_HEADERS });
 
@@ -37,15 +46,18 @@ async function handle(req: Request): Promise<Response> {
     if (tenant && tenant.print_enabled === false) return new Response(eposEmpty(), { headers: XML_HEADERS });
     const shopName = (tenant?.name as any)?.zh || (tenant?.name as any)?.en || slug;
 
-    // oldest few unprinted, non-cancelled orders; pick the first print-eligible one
+    // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query
+    // itself (dine-in always; togo/delivery only when paid) — filtering after a
+    // limit() would let 10 stale unpaid togo orders block dine-in printing forever.
     const { data, error } = await db
       .from("orders")
       .select("*")
       .eq("tenant_slug", slug)
       .is("printed_at", null)
       .neq("status", "cancelled")
+      .or("order_type.eq.dine_in,payment_status.eq.paid")
       .order("created_at", { ascending: true })
-      .limit(10);
+      .limit(1);
     if (error) {
       // Most likely the `printed_at` column isn't migrated yet — fail quiet so the
       // printer just gets "nothing to print" instead of erroring.
@@ -53,9 +65,7 @@ async function handle(req: Request): Promise<Response> {
       return new Response(eposEmpty(), { headers: XML_HEADERS });
     }
 
-    const order = (data as Order[] | null)?.find(
-      (o) => (o as any).order_type === "dine_in" || (o as any).payment_status === "paid",
-    );
+    const order = (data as Order[] | null)?.[0];
     if (!order) return new Response(eposEmpty(), { headers: XML_HEADERS });
 
     // Optimistically mark printed. The `.is('printed_at', null)` guard makes this a

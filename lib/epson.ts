@@ -60,7 +60,9 @@ export function buildEposXml(o: Order, shopName: string): string {
     const d = new Date(o.created_at);
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   })();
-  const count = o.items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
+  // never print cancelled items — a reprint after 取消 must not cook the dish
+  const items = o.items.filter((it: any) => !it.cancelled);
+  const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
   const b: string[] = [];
   // zh-hans enables the multibyte (Simplified Chinese) font on the TM-T88VI.
@@ -75,7 +77,7 @@ export function buildEposXml(o: Order, shopName: string): string {
   if (t.addr) b.push(line(`地址 ${t.addr}`, { em: true }));
   b.push(line(DBL));
   // items — qty huge
-  for (const it of o.items) {
+  for (const it of items) {
     b.push(line(`x${it.qty}  ${it.name_zh}`, { w: 2, h: 2, em: true }));
   }
   b.push(line(RULE));

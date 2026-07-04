@@ -142,9 +142,30 @@ export async function listOrders(slug: string): Promise<Order[]> {
   return (data ?? []) as Order[];
 }
 
-export async function setOrderStatus(id: string, status: Order["status"]): Promise<void> {
+export async function setOrderStatus(id: string, status: Order["status"]): Promise<{ error?: string }> {
   const { error } = await supabase.from("orders").update({ status }).eq("id", id);
-  if (error) console.error("setOrderStatus", error);
+  if (error) {
+    console.error("setOrderStatus", error);
+    return { error: error.message };
+  }
+  return {};
+}
+
+/** CAS-claim the transition INTO "done": only one caller wins, so sales/member
+ *  posting runs exactly once even on double-tap or two staff devices. */
+export async function claimOrderDone(id: string): Promise<{ claimed: boolean; error?: string }> {
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ status: "done" })
+    .eq("id", id)
+    .neq("status", "done")
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("claimOrderDone", error);
+    return { claimed: false, error: error.message };
+  }
+  return { claimed: !!data };
 }
 
 export async function deleteOrder(id: string): Promise<void> {

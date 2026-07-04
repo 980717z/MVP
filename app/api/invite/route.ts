@@ -57,7 +57,7 @@ export async function POST(req: Request) {
 
   const shop = (tenant.name as any)?.zh || (tenant.name as any)?.en || slug;
   const zh = (d.lang ?? "").startsWith("zh");
-  const inviter = (d.inviterEmail ?? auth.user?.email ?? "").slice(0, 200);
+  const inviter = (auth.user?.email ?? "").slice(0, 200); // always the verified caller — never client-supplied
   const subject = zh ? `邀请你加入 ${shop} 的 BentoOS 后台` : `You're invited to ${shop} on BentoOS`;
   const cta = zh ? "设置密码并登录" : "Set your password & sign in";
   const intro = zh

@@ -21,7 +21,9 @@ Until this runs, the endpoint just returns "nothing to print" (no errors).
 - Log in (default user `epson`, password on the label or `epson`).
 - Go to **Configuration → Server Direct Print** (or "Web Service Settings"):
   - **Enable**: ON
-  - **URL 1**: `https://bentoos.io/api/epson?slug=fulai`
+  - **URL 1**: `https://bentoos.io/api/epson?slug=fulai&key=<EPSON_PRINT_KEY>`
+    (set EPSON_PRINT_KEY in Vercel env — any long random string; it stops strangers
+    from polling the endpoint and stealing tickets)
   - **Interval**: 5 seconds (3–10 is fine)
   - **ID / Name**: anything (e.g. `kitchen`)
 - Save + reboot the printer.

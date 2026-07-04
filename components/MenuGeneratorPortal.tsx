@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { displayPrice, addMenuItem, deleteMenuItem, getCatOrder, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 
 const CATEGORIES = [
@@ -522,7 +522,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                           </div>
                         </div>
                         <div className="flex-none font-semibold text-ink">
-                          {(d.variants?.length ?? 0) > 0 ? `起 ${fmtPrice(displayPrice(d))}` : fmtPrice(d.price)}
+                          {normVariants(d.variants).length > 0 ? `起 ${fmtPrice(displayPrice({ ...d, variants: normVariants(d.variants) }))}` : fmtPrice(d.price)}
                         </div>
                       </div>
                     ))}
