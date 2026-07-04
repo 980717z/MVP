@@ -46,6 +46,62 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const [zipping, setZipping] = useState(false);
+  // Generate a high-res (print-quality) labelled QR PNG for one URL.
+  const makeQrPng = async (QRCode: any, url: string, label: string): Promise<Blob> => {
+    const SIZE = 1024;
+    const dataUrl = await QRCode.toDataURL(url, { width: SIZE, margin: 2, errorCorrectionLevel: "M" });
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((r) => (img.onload = r));
+    const pad = 56;
+    const labelH = 150;
+    const canvas = document.createElement("canvas");
+    canvas.width = SIZE + pad * 2;
+    canvas.height = SIZE + pad + labelH;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, pad, pad, SIZE, SIZE);
+    ctx.fillStyle = "#111111";
+    ctx.textAlign = "center";
+    ctx.font = "700 76px 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif";
+    ctx.fillText(label, canvas.width / 2, SIZE + pad + 90);
+    return await new Promise<Blob>((res) => canvas.toBlob((b) => res(b as Blob), "image/png"));
+  };
+
+  // One-click: bundle every table QR (+ the togo QR) into a ZIP for the sign vendor.
+  const downloadAll = async () => {
+    if (!origin) return;
+    setZipping(true);
+    try {
+      const [{ default: JSZip }, QRCodeMod] = await Promise.all([import("jszip"), import("qrcode")]);
+      const QRCode = (QRCodeMod as any).default ?? QRCodeMod;
+      const zip = new JSZip();
+      for (const tName of tables) {
+        zip.file(`${tName}号桌.png`, await makeQrPng(QRCode, tableUrl(tName), `${tName}号桌`));
+      }
+      zip.file(`外卖配送.png`, await makeQrPng(QRCode, togoUrl, "外卖 / 配送"));
+      // a plain text list of which URL each sign points to, for the vendor's reference
+      const manifest = [
+        ...tables.map((tName) => `${tName}号桌\t${tableUrl(tName)}`),
+        `外卖/配送\t${togoUrl}`,
+      ].join("\n");
+      zip.file("对照表.txt", `${slug} 二维码对照表\n\n${manifest}\n`);
+      const blob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${slug}-二维码-${tables.length + 1}张.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      console.error("downloadAll", e);
+      alert("下载失败，请重试");
+    } finally {
+      setZipping(false);
+    }
+  };
+
   return (
     <main className="px-6 py-8 lg:px-10">
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
@@ -139,9 +195,14 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
               </div>
             ))}
           </div>
-          <div className="mt-4 flex items-center gap-3 print:hidden">
-            <button onClick={() => window.print()} className="btn-primary">🖨️ 打印整页</button>
-            <p className="text-xs text-ink-faint">桌号列表可在数据库 tenants.tables 修改（后续会加设置界面）。</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3 print:hidden">
+            <button onClick={downloadAll} disabled={zipping} className="btn-primary disabled:opacity-60">
+              {zipping ? "生成中…" : "⬇️ 一键下载全部二维码（高清 ZIP）"}
+            </button>
+            <button onClick={() => window.print()} className="btn-ghost border border-slate-300">🖨️ 打印整页</button>
+            <p className="w-full text-xs text-ink-faint sm:w-auto">
+              下载的是高清带桌号的 PNG（每张 1024px）+ 一份网址对照表，打包成 ZIP，直接发给做牌子的商家即可。桌号列表可在数据库 tenants.tables 修改。
+            </p>
           </div>
         </div>
       )}
