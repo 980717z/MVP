@@ -38,6 +38,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [catOrder, setCatOrder] = useState<string[]>([]);
   const [orderOpen, setOrderOpen] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [search, setSearch] = useState(""); // filter the 365-dish list
 
   // new-dish form
   const [zh, setZh] = useState("");
@@ -150,6 +151,17 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     category: c,
     items: dishes.filter((d) => d.category === c),
   }));
+
+  // back-office search: filter by zh/en name (365 dishes is a lot to scroll)
+  const sq = search.trim().toLowerCase();
+  const visibleDishes = sq
+    ? dishes.filter((d) => d.name_zh.toLowerCase().includes(sq) || (d.name_en || "").toLowerCase().includes(sq))
+    : dishes;
+
+  const toggleSoldOut = (d: MenuItem, next: boolean) => {
+    patchLocal(d.id, { sold_out: next });
+    updateMenuItem(d.id, { sold_out: next });
+  };
 
   const reorderCat = (from: number, to: number) => {
     if (from === to) return;
@@ -330,11 +342,27 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
                   全部菜品（点任意字段直接修改）
                 </div>
-                <div className="text-xs text-ink-faint">{dishes.length} 道</div>
+                <div className="text-xs text-ink-faint">
+                  {sq ? `${visibleDishes.length} / ${dishes.length}` : dishes.length} 道
+                </div>
               </div>
+              {/* search box — find a dish among hundreds */}
+              <div className="relative mt-2">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
+                <input
+                  className="input w-full !pl-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="搜索菜名（中文或英文）"
+                  type="search"
+                />
+              </div>
+              {sq && visibleDishes.length === 0 && (
+                <p className="mt-4 text-center text-sm text-ink-faint">没有找到「{search}」</p>
+              )}
               <div className="mt-2 space-y-2">
-                {dishes.map((d) => (
-                  <div key={d.id} className="card flex gap-4 p-3">
+                {visibleDishes.map((d) => (
+                  <div key={d.id} className={`card flex gap-4 p-3 transition ${d.sold_out ? "bg-red-50/40 ring-1 ring-red-200" : ""}`}>
                     {/* left column: category (top) · image (fills) */}
                     <div className="flex w-32 flex-none flex-col gap-2">
                       <select
@@ -379,8 +407,20 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                       </div>
                     </div>
 
-                    {/* right column: 中文 · English · 价格 */}
+                    {/* right column: 沽清 · 中文 · English · 价格 */}
                     <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => toggleSoldOut(d, !d.sold_out)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                            d.sold_out ? "bg-red-600 text-white" : "bg-slate-100 text-ink-soft hover:bg-slate-200"
+                          }`}
+                          title="沽清：顾客菜单显示售罄、不能下单；有货了再点一下恢复"
+                        >
+                          {d.sold_out ? "● 沽清中 · 点击恢复" : "标记沽清"}
+                        </button>
+                      </div>
                       <input
                         className="input w-full !py-2 text-base font-medium"
                         value={d.name_zh}

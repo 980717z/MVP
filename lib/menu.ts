@@ -28,6 +28,8 @@ export interface MenuItem {
   image_url: string;
   sort: number;
   created_at: string;
+  /** Temporarily out of stock (沽清): shown greyed + not orderable on the menu. */
+  sold_out?: boolean;
 }
 
 /** Read/display: only complete, valid sizes (label + positive price). */
@@ -177,7 +179,7 @@ export async function addMenuItem(
 
 export async function updateMenuItem(
   id: string,
-  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market">>
+  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market" | "sold_out">>
 ): Promise<{ error?: string }> {
   const clean: Record<string, any> = { ...patch };
   if ("price" in clean) {

@@ -398,11 +398,12 @@ export default function PublicMenu() {
     // NOT market, no variants, no price = owner hasn't priced it yet — don't
     // let it into the cart at $0 (there's no completion gate for these).
     const unpriced = !hasVariants && !d.is_market && !(Number(d.price) > 0);
+    const sold = !!d.sold_out; // 沽清：灰显、不可下单
     return (
-      <div key={d.id} className="flex items-center gap-3">
+      <div key={d.id} className={`flex items-center gap-3 ${sold ? "opacity-45" : ""}`}>
         {d.image_url && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={d.image_url} alt={d.name_zh} className="h-14 w-14 flex-none rounded-lg object-cover" />
+          <img src={d.image_url} alt={d.name_zh} className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`} />
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[17px] font-semibold leading-snug text-ink">
@@ -434,7 +435,11 @@ export default function PublicMenu() {
             )}
           </div>
         </div>
-        {hasVariants ? (
+        {sold ? (
+          <span className="flex-none rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-ink-faint">
+            {lang === "zh" ? "沽清" : "Sold out"}
+          </span>
+        ) : hasVariants ? (
           <button
             onClick={() => setSheetDish(d)}
             className="relative flex flex-none items-center gap-1 rounded-full border-[1.5px] border-jade bg-white px-3 py-1.5 text-sm font-medium text-jade"
