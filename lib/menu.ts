@@ -88,6 +88,13 @@ export function displayPrice(d: MenuItem): number | null {
   return d.price;
 }
 
+/** Variants at ONE price = a "choose one" dish（如 菠菜/唐生菜 二选一），
+ *  not sizes: show the plain price (no 起) and a 选择 button (not 选规格). */
+export function isChoiceDish(d: MenuItem): boolean {
+  const vs = d.variants ?? [];
+  return vs.length > 1 && new Set(vs.map((v) => Number(v.price))).size === 1;
+}
+
 /** Cart key: dish id for single-price, `id#variantIndex` for a chosen size. */
 export function cartKey(id: string, vi: number | null | undefined): string {
   return vi == null ? id : `${id}#${vi}`;

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, catLabel, type MenuItem, type Variant } from "@/lib/menu";
+import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
@@ -387,6 +387,8 @@ export default function PublicMenu() {
 
   const renderDish = (d: MenuItem) => {
     const hasVariants = (d.variants?.length ?? 0) > 0;
+    // 同价多选（菠菜/唐生菜 二选一）：显示原价+「选择」；不同价（例/小/中/大）：起+「选规格」
+    const choice = isChoiceDish(d);
     const qty = hasVariants ? dishQty(d.id) : cart[d.id] ?? 0;
     const dp = displayPrice(d);
     // 时价 dish: with today's price entered → show it (gold); without → show
@@ -407,7 +409,9 @@ export default function PublicMenu() {
             {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
             {hasVariants && (
               <span className="ml-1.5 rounded border border-jade px-1 align-middle text-[9px] font-bold text-jade">
-                {d.variants.length} {lang === "zh" ? "规格" : d.variants.length > 1 ? "sizes" : "size"}
+                {choice
+                  ? lang === "zh" ? `${d.variants.length} 选 1` : "pick 1"
+                  : `${d.variants.length} ${lang === "zh" ? "规格" : d.variants.length > 1 ? "sizes" : "size"}`}
               </span>
             )}
             {d.is_market && (
@@ -424,7 +428,7 @@ export default function PublicMenu() {
               marketPriced ? fmtPrice(d.price) /* today's market price, in gold */ : t("market")
             ) : (
               <>
-                {hasVariants && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
+                {hasVariants && !choice && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
                 {fmtPrice(dp) || t("market")}
               </>
             )}
@@ -435,7 +439,7 @@ export default function PublicMenu() {
             onClick={() => setSheetDish(d)}
             className="relative flex flex-none items-center gap-1 rounded-full border-[1.5px] border-jade bg-white px-3 py-1.5 text-sm font-medium text-jade"
           >
-            {lang === "zh" ? "选规格" : "Size"} ›
+            {choice ? (lang === "zh" ? "选择" : "Choose") : lang === "zh" ? "选规格" : "Size"} ›
             {qty > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{qty}</span>}
           </button>
         ) : unpriced ? (
@@ -680,7 +684,11 @@ export default function PublicMenu() {
               </div>
               <button onClick={() => setSheetDish(null)} className="flex-none text-ink-faint">✕</button>
             </div>
-            <div className="mb-1 text-xs text-ink-soft">{lang === "zh" ? "选择大小" : "Choose a size"}</div>
+            <div className="mb-1 text-xs text-ink-soft">
+              {isChoiceDish(sheetDish)
+                ? lang === "zh" ? "请选择" : "Choose one"
+                : lang === "zh" ? "选择大小" : "Choose a size"}
+            </div>
             <div className="divide-y divide-slate-100">
               {sheetDish.variants.map((v, vi) => {
                 const key = cartKey(sheetDish.id, vi);
@@ -790,7 +798,9 @@ export default function PublicMenu() {
                               {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
                             </div>
                             <div className="text-xs text-ink-faint">
-                              {hasV ? `${lang === "zh" ? "起" : "from"} ${fmtPrice(displayPrice(d))} ›` : `${fmtPrice(d.price) || t("market")} ＋`}
+                              {hasV
+                                ? `${isChoiceDish(d) ? "" : lang === "zh" ? "起 " : "from "}${fmtPrice(displayPrice(d))} ›`
+                                : `${fmtPrice(d.price) || t("market")} ＋`}
                             </div>
                           </button>
                         );

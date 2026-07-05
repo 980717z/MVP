@@ -5,6 +5,7 @@ import {
   unitPrice,
   cartTotal,
   displayPrice,
+  isChoiceDish,
   normVariants,
   type MenuItem,
 } from "./menu";
@@ -111,5 +112,25 @@ describe("normVariants — read side filters half-typed rows", () => {
   it("non-array is empty", () => {
     expect(normVariants(null)).toEqual([]);
     expect(normVariants(undefined)).toEqual([]);
+  });
+});
+
+describe("isChoiceDish — 同价多选 vs 不同价规格", () => {
+  const base = { id: "x", name_zh: "菜", name_en: "", price: null, category: "", image_url: "", is_market: false } as unknown as MenuItem;
+  it("same-price options = choice (菠菜/唐生菜)", () => {
+    expect(isChoiceDish({ ...base, variants: [
+      { label_zh: "菠菜", label_en: "Spinach", price: 8.99 },
+      { label_zh: "唐生菜", label_en: "Lettuce", price: 8.99 },
+    ] } as MenuItem)).toBe(true);
+  });
+  it("different prices = sizes, not a choice (全只/半只)", () => {
+    expect(isChoiceDish({ ...base, variants: [
+      { label_zh: "全只", label_en: "Whole", price: 39.99 },
+      { label_zh: "半只", label_en: "Half", price: 20.99 },
+    ] } as MenuItem)).toBe(false);
+  });
+  it("no variants / single variant = not a choice", () => {
+    expect(isChoiceDish({ ...base, variants: [] } as MenuItem)).toBe(false);
+    expect(isChoiceDish({ ...base, variants: [{ label_zh: "大", label_en: "L", price: 9 }] } as MenuItem)).toBe(false);
   });
 });
