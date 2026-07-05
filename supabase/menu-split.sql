@@ -101,6 +101,18 @@ select pg_temp.split_dish('汽水 / 苹果橙汁 (瓶)', '[
 select pg_temp.split_dish('茶包 (茉莉花 / 铁观音)', '[
   {"zh":"茉莉花茶包","en":"Jasmine Tea Bag"},{"zh":"铁观音茶包","en":"Tieguanyin Tea Bag"}]');
 
+-- ── 不同价 → 加选择器（不是拆分）───────────────────────────────────────────
+-- 潮式大拼盘：中 $75.99 / 大 $85.99（老板给价 2026-07-05）。去掉名字里的
+-- (大/中) 后缀，规格按小→大排（和汤羹 位/小/中/大 一致）。
+update public.menu_items
+   set name_zh = '潮式大拼盘',
+       name_en = 'Chiu Chow Combo Platter',
+       price = 85.99,
+       variants = '[
+         {"label_zh":"中","label_en":"M","price":75.99},
+         {"label_zh":"大","label_en":"L","price":85.99}]'::jsonb
+ where tenant_slug = 'fulai' and name_zh = '潮式大拼盘 (大/中)';
+
 -- ── 验证：应该没有任何"同价 variants"残留 ──────────────────────────────────
 select name_zh, jsonb_array_length(variants) as opts,
        (select count(distinct (v->>'price')) from jsonb_array_elements(variants) v) as distinct_prices
@@ -116,6 +128,4 @@ select name_zh, jsonb_array_length(variants) as opts,
 --      要普通话就改成"朗姆酒"。或你想保留 "Bar Shots" 一行不拆也行，
 --      删掉那条 split_dish 即可。
 --    · Corona 啤酒 保留了英文品牌名。
---  另：潮式大拼盘 (大/中) 仍待老板给"中"份价格（不同价 → 该做选择器，
---    不是拆分）。见 menu-choices.sql 文件尾。
 -- ===========================================================================
