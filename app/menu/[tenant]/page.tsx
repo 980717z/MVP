@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, catLabel, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
-import { price as fmtPrice } from "@/lib/format";
+import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
 
@@ -491,7 +491,7 @@ export default function PublicMenu() {
 
       {lockedTable && !togoMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          🪑 {lang === "zh" ? `您正在为 ${lockedTable} 号桌点餐` : `Ordering for Table ${lockedTable}`}
+          🪑 {lang === "zh" ? `您正在为 ${displayTable(lockedTable)} 号桌点餐` : `Ordering for Table ${displayTable(lockedTable)}`}
         </div>
       )}
       {togoMode && (
@@ -829,7 +829,7 @@ export default function PublicMenu() {
                 <div className={`grid gap-2 ${togoMode ? "mt-2" : "mt-4"}`}>
                   {!togoMode && (lockedTable ? (
                     <div className="rounded-lg border border-jade/30 bg-jade-wash px-3 py-2 text-sm font-medium text-jade">
-                      🪑 {lockedTable} 号桌
+                      🪑 {displayTable(lockedTable)} 号桌
                     </div>
                   ) : (
                     <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />

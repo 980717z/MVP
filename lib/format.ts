@@ -23,3 +23,12 @@ export function sum(rows: any[], key: string): number {
     return acc + (isNaN(v) ? 0 : v);
   }, 0);
 }
+
+/** Display form of a table label, matched to the printed physical signs:
+ *  single digits get a leading zero ("1" → "01"), everything else is
+ *  unchanged ("2A", "8B", "10"). DISPLAY ONLY — stored table_no values and
+ *  the printed QR `?t=` params stay raw (permanent-QR contract). */
+export function displayTable(label: string | null | undefined): string {
+  const s = (label ?? "").trim();
+  return /^\d$/.test(s) ? `0${s}` : s;
+}

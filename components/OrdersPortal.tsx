@@ -6,7 +6,7 @@ import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { listMenuItems } from "@/lib/menu";
-import { price as fmtPrice } from "@/lib/format";
+import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
 
 const STATUS: Record<Order["status"], { label: string; cls: string }> = {
@@ -310,7 +310,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
-                  {o.table_no && <span className="text-sm font-medium text-ink">桌号 {o.table_no}</span>}
+                  {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
                   {o.phone && (
                     <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">
                       📞 {fmtPhone(o.phone)}

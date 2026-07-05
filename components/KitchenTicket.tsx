@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Order } from "@/lib/orders";
+import { displayTable } from "@/lib/format";
 
 // Big-font kitchen ticket preview, sized to 80mm thermal paper (Epson TM-T88VI).
 // Large type by default so an older chef reads it at a glance; the 字号 dial
@@ -18,7 +19,7 @@ function orderTypeLine(o: Order): { badge: string; sub?: string } {
   const t = (o as any).order_type ?? "dine_in";
   if (t === "delivery") return { badge: "🛵 配送 DELIVERY", sub: addr(o) };
   if (t === "togo") return { badge: "🛍️ 自取 TAKEOUT" };
-  return { badge: o.table_no ? `堂食 · 桌 ${o.table_no}` : "堂食 DINE-IN" };
+  return { badge: o.table_no ? `堂食 · 桌 ${displayTable(o.table_no)}` : "堂食 DINE-IN" };
 }
 
 function addr(o: Order): string | undefined {

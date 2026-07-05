@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listMenuItems } from "@/lib/menu";
+import { displayTable } from "@/lib/format";
 import { supabase } from "@/lib/supabase";
 import DeliveryZoneEditor from "@/components/DeliveryZoneEditor";
 
@@ -80,12 +81,12 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
       const QRCode = (QRCodeMod as any).default ?? QRCodeMod;
       const zip = new JSZip();
       for (const tName of tables) {
-        zip.file(`${tName}号桌.png`, await makeQrPng(QRCode, tableUrl(tName), `${tName}号桌`));
+        zip.file(`${displayTable(tName)}号桌.png`, await makeQrPng(QRCode, tableUrl(tName), `${displayTable(tName)}号桌`));
       }
       zip.file(`外卖配送.png`, await makeQrPng(QRCode, togoUrl, "外卖 / 配送"));
       // a plain text list of which URL each sign points to, for the vendor's reference
       const manifest = [
-        ...tables.map((tName) => `${tName}号桌\t${tableUrl(tName)}`),
+        ...tables.map((tName) => `${displayTable(tName)}号桌\t${tableUrl(tName)}`),
         `外卖/配送\t${togoUrl}`,
       ].join("\n");
       zip.file("对照表.txt", `${slug} 二维码对照表\n\n${manifest}\n`);
@@ -185,14 +186,14 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
                 </p>
                 <ul className="mt-1 list-disc pl-5">
                   <li>不要更改店铺网址标识「<b>{slug}</b>」</li>
-                  <li>不要更改桌号（{tables.join("、")}）—— 已做成牌子的桌号请保持不变</li>
+                  <li>不要更改桌号（{tables.map(displayTable).join("、")}）—— 已做成牌子的桌号请保持不变</li>
                 </ul>
               </div>
             </div>
           </div>
           <div className="card mb-4 p-4">
             <p className="text-sm text-ink-soft">
-              每张桌一个专属二维码（共 <b className="text-ink">{tables.length}</b> 桌：{tables.join("、")}）。
+              每张桌一个专属二维码（共 <b className="text-ink">{tables.length}</b> 桌：{tables.map(displayTable).join("、")}）。
               顾客在几号桌扫码，订单自动标记该桌 —— 后台和结账一眼看清，无需再问。
               整页打印后剪开，贴到对应桌面。
             </p>
@@ -201,10 +202,10 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-3">
             {tables.map((t) => (
               <div key={t} className="card flex flex-col items-center p-3 text-center">
-                <div className="text-base font-bold text-ink">{t} 号桌</div>
+                <div className="text-base font-bold text-ink">{displayTable(t)} 号桌</div>
                 {origin ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrSrc(tableUrl(t), 200)} alt={`${t}号桌二维码`} className="my-2 h-32 w-32" />
+                  <img src={qrSrc(tableUrl(t), 200)} alt={`${displayTable(t)}号桌二维码`} className="my-2 h-32 w-32" />
                 ) : (
                   <div className="my-2 h-32 w-32 animate-pulse rounded bg-slate-100" />
                 )}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { getTenant, type Tenant } from "@/lib/store";
 import { MODULE_BY_ID, type ModuleDef } from "@/lib/catalog";
-import { money, num, sum } from "@/lib/format";
+import { displayTable, money, num, sum } from "@/lib/format";
 import { listOrders, type Order } from "@/lib/orders";
 import { useLang } from "@/app/i18n";
 
@@ -85,7 +85,7 @@ export default function Dashboard() {
   const hasRecords = Object.values(tenant.records).some((rows) => rows && rows.length > 0);
   const hasData = hasRecords || orders.length > 0;
 
-  const orderTitle = (o: Order) => (o.table_no ? `${tl({ zh: "桌", en: "Table" })} ${o.table_no}` : tl({ zh: "外卖", en: "Takeout" }));
+  const orderTitle = (o: Order) => (o.table_no ? `${tl({ zh: "桌", en: "Table" })} ${displayTable(o.table_no)}` : tl({ zh: "外卖", en: "Takeout" }));
   const orderItems = (o: Order) => o.items.map((it) => `${cjk ? it.name_zh : it.name_en || it.name_zh} ×${it.qty}`).join(", ");
   const ago = (iso: string) => {
     const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);

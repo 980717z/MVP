@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import type { Order } from "./orders";
+import { displayTable } from "./format";
 
 const NS = "http://www.epson-pos.com/schemas/2011/03/epos-print";
 const RULE = "--------------------------------"; // ~32 chars, fits 80mm Font A
@@ -35,7 +36,7 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
     return { badge: "配送 DELIVERY", phone: o.phone, addr: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined };
   }
   if (t === "togo") return { badge: "自取 TAKEOUT", phone: o.phone || undefined };
-  return { badge: o.table_no ? `堂食 桌 ${o.table_no}` : "堂食 DINE-IN" };
+  return { badge: o.table_no ? `堂食 桌 ${displayTable(o.table_no)}` : "堂食 DINE-IN" };
 }
 
 /** An ePOS-Print `<text>` line with size (1-8) + optional bold, ending in a newline. */
