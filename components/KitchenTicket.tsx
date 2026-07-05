@@ -24,7 +24,7 @@ function orderTypeLine(o: Order): { badge: string; sub?: string } {
 function addr(o: Order): string | undefined {
   const a = (o as any).address;
   if (!a) return undefined;
-  return [a.street, a.unit, a.postal].filter(Boolean).join(" ");
+  return [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ");
 }
 
 function fmtPhone(p: string) {

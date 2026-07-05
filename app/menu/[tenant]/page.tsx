@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, catLabel, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice } from "@/lib/format";
-import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, DELIVERY_TIP_RATE } from "@/lib/tax";
+import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
+import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -18,9 +19,11 @@ type Lang = "zh" | "en";
 
 const T = {
   zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…",
-    togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围 —— 仅限多伦多市中心", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付" },
+    togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付",
+    chooseMode: "怎么取餐？", pickupHint: "到店自取 · 无额外费用", deliveryHint: "满 $30 起送 · 10% 配送小费", addrTitle: "配送地址", postalHint: "先填邮编，马上告诉你能不能送", canDeliver: "可以配送到", noDeliver: "暂不配送到", switchPickup: "改为自取 →", zoneList: "查看全部配送范围", city: "Toronto, ON", deliverTo: "配送到", addrMissing: "请填写完整配送地址" },
   en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…",
-    togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone — downtown Toronto only", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now" },
+    togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now",
+    chooseMode: "How would you like your order?", pickupHint: "Pick up at the restaurant · no fees", deliveryHint: "$30 minimum · 10% delivery tip", addrTitle: "Delivery address", postalHint: "Postal code first — we'll check your area instantly", canDeliver: "We deliver to", noDeliver: "We don't deliver to", switchPickup: "Switch to pickup →", zoneList: "See all delivery areas", city: "Toronto, ON", deliverTo: "Deliver to", addrMissing: "Please complete the delivery address" },
 };
 
 // Flipped to "1" when the Clover checkout routes go live (Phase 0/1).
@@ -62,8 +65,37 @@ export default function PublicMenu() {
   const [postal, setPostal] = useState("");
   const [addrErr, setAddrErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  // Shop's delivery zone (postal-FSA whitelist) from the public storefront
+  // view; falls back to the downtown default until delivery-zone.sql runs.
+  const [zoneFsas, setZoneFsas] = useState<string[]>(DT_FSAS);
+  const [zoneOpen, setZoneOpen] = useState(false);
 
   const t = (k: keyof typeof T["zh"]) => T[lang][k];
+
+  // Auto-format the postal code as the customer types: "m5t2e7" → "M5T 2E7"
+  const onPostal = (raw: string) => {
+    const c = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    setPostal(c.length > 3 ? `${c.slice(0, 3)} ${c.slice(3)}` : c);
+    setAddrErr(null);
+  };
+  // Live zone check: fires as soon as the FSA (first 3 chars) is typed.
+  const fsa = postalFsa(postal);
+  const fsaTyped = /^[A-Z]\d[A-Z]$/.test(fsa);
+  const zoneStatus: "idle" | "ok" | "no" = !fsaTyped ? "idle" : zoneFsas.includes(fsa) ? "ok" : "no";
+
+  // Remember the address across visits (repeat delivery customers).
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("bentoos-addr") || "null");
+      if (saved?.street) setStreet(saved.street);
+      if (saved?.unit) setUnit(saved.unit);
+      if (saved?.postal) setPostal(saved.postal);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (street || unit || postal)
+      try { localStorage.setItem("bentoos-addr", JSON.stringify({ street, unit, postal })); } catch {}
+  }, [street, unit, postal]);
 
   useEffect(() => {
     // per-table QR: /menu/<slug>?t=5 → lock to table 5
@@ -76,6 +108,13 @@ export default function PublicMenu() {
     }
     if (params.get("m") === "togo") setTogoMode(true);
     if (params.get("embed") === "1") setEmbed(true);
+    // Separate query so a pre-migration storefront view (no delivery_fsas
+    // column) errors quietly here instead of taking the whole menu down.
+    supabase.from("storefront").select("delivery_fsas").eq("slug", slug).maybeSingle()
+      .then(({ data }) => {
+        const z = publicDeliveryFsas(data);
+        if (z) setZoneFsas(z);
+      });
     Promise.all([
       supabase.from("storefront").select("name, cat_order").eq("slug", slug).maybeSingle(),
       listMenuItems(slug),
@@ -144,6 +183,57 @@ export default function PublicMenu() {
   // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
   // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
   const isDelivery = togoMode && togoType === "delivery";
+
+  // Delivery address fields — postal FIRST with an instant in-zone check.
+  // Rendered in the up-front chooser panel AND in the checkout sheet (same
+  // state, so whatever the customer typed up top is already filled in).
+  const renderAddress = () => (
+    <div className="grid gap-2">
+      <div>
+        <div className="relative">
+          <input
+            className="input pr-9 uppercase"
+            placeholder={t("postal")}
+            autoComplete="postal-code"
+            value={postal}
+            onChange={(e) => onPostal(e.target.value)}
+          />
+          {zoneStatus !== "idle" && (
+            <span
+              className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold ${
+                zoneStatus === "ok" ? "text-jade" : "text-[#C0392B]"
+              }`}
+            >
+              {zoneStatus === "ok" ? "✓" : "✕"}
+            </span>
+          )}
+        </div>
+        {zoneStatus === "idle" && <p className="mt-1 text-[11px] text-ink-faint">{t("postalHint")}</p>}
+        {zoneStatus === "ok" && (
+          <p className="mt-1 text-xs font-medium text-jade">✓ {t("canDeliver")} {fsaLabel(fsa, lang)}</p>
+        )}
+        {zoneStatus === "no" && (
+          <p className="mt-1 text-xs font-medium text-[#C0392B]">
+            ✕ {t("noDeliver")} {fsa} · {t("zoneBad")}
+            <button onClick={() => setTogoType("togo")} className="ml-2 font-semibold underline underline-offset-2">
+              {t("switchPickup")}
+            </button>
+          </p>
+        )}
+      </div>
+      <input
+        className="input"
+        placeholder={t("street")}
+        autoComplete="street-address"
+        value={street}
+        onChange={(e) => { setStreet(e.target.value); setAddrErr(null); }}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <input className="input" placeholder={t("unit")} value={unit} onChange={(e) => setUnit(e.target.value)} />
+        <div className="input flex items-center bg-slate-50 text-ink-faint">{t("city")}</div>
+      </div>
+    </div>
+  );
   const pricing = priceOrder(total, isDelivery ? DELIVERY_TIP_RATE : 0);
   const shortfall = isDelivery ? deliveryShortfall(total) : 0;
 
@@ -178,7 +268,7 @@ export default function PublicMenu() {
     if (isDelivery) {
       if (!street.trim()) { setAddrErr(lang === "zh" ? "请填写街道地址" : "Please enter a street address"); return; }
       if (!isValidPostal(postal)) { setAddrErr(t("postalBad")); return; }
-      if (!inDeliveryZone(postal, DT_FSAS)) { setAddrErr(t("zoneBad")); return; }
+      if (!inDeliveryZone(postal, zoneFsas)) { setAddrErr(`${t("noDeliver")} ${postalFsa(postal)} · ${t("zoneBad")}`); return; }
       if (shortfall > 0) { setAddrErr(`${t("minShort")} $${shortfall.toFixed(2)}`); return; }
       setAddrErr(null);
     }
@@ -208,7 +298,7 @@ export default function PublicMenu() {
       phone: phoneToSave,
       note,
       order_type: togoMode ? togoType : "dine_in",
-      address: isDelivery ? { street: street.trim(), unit: unit.trim() || undefined, postal: postal.trim().toUpperCase() } : undefined,
+      address: isDelivery ? { street: street.trim(), unit: unit.trim() || undefined, city: "Toronto, ON", postal: postal.trim().toUpperCase() } : undefined,
       customer_email: togoMode ? email : undefined,
     });
     setSubmitting(false);
@@ -413,6 +503,56 @@ export default function PublicMenu() {
       <div className="mx-auto max-w-[440px] px-5 py-6">
         {loaded && dishes.length === 0 && (
           <p className="py-20 text-center text-sm text-ink-faint">{lang === "zh" ? "菜单还没准备好。" : "The menu isn't ready yet."}</p>
+        )}
+
+        {/* togo: pickup-vs-delivery chooser + up-front address (postal-first) */}
+        {togoMode && dishes.length > 0 && (
+          <div className="mb-6">
+            <div className="mb-2 text-sm font-semibold text-ink">{t("chooseMode")}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setTogoType("togo")}
+                className={`rounded-xl border-2 px-3 py-3 text-left transition ${
+                  !isDelivery ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className={`text-[15px] font-semibold ${!isDelivery ? "text-jade" : "text-ink"}`}>🛍️ {t("pickup")}</div>
+                <div className="mt-0.5 text-[11px] leading-snug text-ink-faint">{t("pickupHint")}</div>
+              </button>
+              <button
+                onClick={() => setTogoType("delivery")}
+                className={`rounded-xl border-2 px-3 py-3 text-left transition ${
+                  isDelivery ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className={`text-[15px] font-semibold ${isDelivery ? "text-jade" : "text-ink"}`}>🛵 {t("delivery")}</div>
+                <div className="mt-0.5 text-[11px] leading-snug text-ink-faint">{t("deliveryHint")}</div>
+              </button>
+            </div>
+
+            {isDelivery && (
+              <div className="mt-3 rounded-xl border border-[#ECE7DF] bg-white p-4">
+                <div className="mb-2 text-[13px] font-semibold text-ink">{t("addrTitle")}</div>
+                {renderAddress()}
+                <button
+                  onClick={() => setZoneOpen((o) => !o)}
+                  className="mt-3 text-xs font-medium text-jade underline-offset-2 hover:underline"
+                >
+                  {t("zoneList")} {zoneOpen ? "▴" : "▾"}
+                </button>
+                {zoneOpen && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[...zoneFsas].sort().map((f) => (
+                      <span key={f} className="rounded-full bg-jade-wash px-2.5 py-1 text-[11px] font-medium text-jade">
+                        {f}
+                        {FSA_NAMES[f] && <span className="ml-1 text-jade/70">{FSA_NAMES[f][lang]}</span>}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* search bar — filters across all categories */}
@@ -678,11 +818,7 @@ export default function PublicMenu() {
                     </div>
                     {isDelivery && (
                       <>
-                        <input className="input" placeholder={t("street")} value={street} onChange={(e) => { setStreet(e.target.value); setAddrErr(null); }} />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input className="input" placeholder={t("unit")} value={unit} onChange={(e) => setUnit(e.target.value)} />
-                          <input className="input uppercase" placeholder={t("postal")} value={postal} onChange={(e) => { setPostal(e.target.value); setAddrErr(null); }} />
-                        </div>
+                        {renderAddress()}
                         {addrErr && <p className="text-xs text-red-600">{addrErr}</p>}
                       </>
                     )}

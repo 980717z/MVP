@@ -19,6 +19,7 @@ export interface OrderItem {
 export interface OrderAddress {
   street: string;
   unit?: string;
+  city?: string; // e.g. "Toronto, ON" — printed on kitchen/delivery tickets
   postal: string;
   note?: string;
 }

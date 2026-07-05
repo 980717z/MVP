@@ -32,7 +32,7 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
   const t = (o as any).order_type ?? "dine_in";
   if (t === "delivery") {
     const a = (o as any).address;
-    return { badge: "配送 DELIVERY", phone: o.phone, addr: a ? [a.street, a.unit, a.postal].filter(Boolean).join(" ") : undefined };
+    return { badge: "配送 DELIVERY", phone: o.phone, addr: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined };
   }
   if (t === "togo") return { badge: "自取 TAKEOUT", phone: o.phone || undefined };
   return { badge: o.table_no ? `堂食 桌 ${o.table_no}` : "堂食 DINE-IN" };

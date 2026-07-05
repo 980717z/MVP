@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listMenuItems } from "@/lib/menu";
 import { supabase } from "@/lib/supabase";
+import DeliveryZoneEditor from "@/components/DeliveryZoneEditor";
 
 const qrSrc = (url: string, size = 300) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&data=${encodeURIComponent(url)}`;
@@ -266,6 +267,11 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
               </p>
             </div>
           </section>
+
+          {/* delivery zone map — spans both columns */}
+          <div className="lg:col-span-2">
+            <DeliveryZoneEditor slug={slug} />
+          </div>
         </div>
       )}
     </main>
