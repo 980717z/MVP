@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createTenant, loadTenants } from "@/lib/store";
 import { useAuth, signOut } from "@/lib/useAuth";
+import { isValidSlug } from "@/lib/qrContract";
 
 function slugify(s: string): string {
   return s
@@ -12,6 +13,14 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+// 店型 → 预选模块（templates/*.json 的浅层镜像；完整 provision 走
+// scripts/provision-sql.ts，向导深化见 TODOS「建店向导打磨」）
+const SHOP_TYPES = [
+  { id: "chinese-restaurant", icon: "🍲", label: "中餐馆", hint: "堂食桌码 + 外卖", modules: ["menu-generator", "qr-menu", "online-orders"] },
+  { id: "counter-service", icon: "🥡", label: "自取小店", hint: "无桌码 · 重会员", modules: ["menu-generator", "qr-menu", "online-orders", "members"] },
+  { id: "custom", icon: "⚙️", label: "自定义", hint: "创建后再选模块", modules: [] as string[] },
+];
 
 export default function AppGate() {
   const router = useRouter();
@@ -42,6 +51,7 @@ export default function AppGate() {
   }, [session, loading, router]);
 
   const slug = slugify(handleTouched ? handle : name);
+  const [shopType, setShopType] = useState(SHOP_TYPES[0].id);
 
   const create = async () => {
     if (!name.trim()) {
@@ -52,9 +62,18 @@ export default function AppGate() {
       setErr("专属网址需要字母或数字，请在下方填一个英文名（如 fulai）");
       return;
     }
+    // QR 合约 gate（lib/qrContract.ts）：格式 + 路由保留字，DB CHECK 同步兜底
+    const sv = isValidSlug(slug);
+    if (!sv.ok) {
+      setErr(sv.reason === "reserved"
+        ? `「${slug}」是系统保留字（会和页面路由冲突），请换一个`
+        : "专属网址需要 3-30 位小写字母、数字或短横线");
+      return;
+    }
     setBusy(true);
     setErr(null);
-    const res = await createTenant({ name: name.trim(), slug });
+    const enabled = SHOP_TYPES.find((t) => t.id === shopType)?.modules ?? [];
+    const res = await createTenant({ name: name.trim(), slug, enabled });
     if (res.slug) {
       router.replace(`/${res.slug}`);
     } else {
@@ -106,7 +125,25 @@ export default function AppGate() {
               placeholder="fulai"
             />
           </div>
-          <p className="mt-1 text-xs text-ink-faint">只能用字母、数字（建议用拼音或英文）。</p>
+          <p className="mt-1 text-xs text-ink-faint">只能用字母、数字（建议用拼音或英文）。⚠️ 做实体牌子后网址不可更改。</p>
+
+          <label className="label mt-4">店铺类型</label>
+          <div className="grid grid-cols-3 gap-2">
+            {SHOP_TYPES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setShopType(t.id)}
+                className={`rounded-xl border-2 px-2 py-2.5 text-center transition ${
+                  shopType === t.id ? "border-brand bg-brand-wash" : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="text-lg">{t.icon}</div>
+                <div className={`mt-0.5 text-xs font-semibold ${shopType === t.id ? "text-brand" : "text-ink"}`}>{t.label}</div>
+                <div className="mt-0.5 text-[10px] leading-tight text-ink-faint">{t.hint}</div>
+              </button>
+            ))}
+          </div>
 
           {err && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 

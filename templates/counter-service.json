@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "type": "counter-service",
+  "label": {
+    "zh": "自取小店（无桌码 · 重会员）",
+    "en": "Counter-service shop (no tables, members-heavy)"
+  },
+  "modules": ["menu-generator", "qr-menu", "online-orders", "members"],
+  "tables": [],
+  "categories": ["招牌", "小食", "饮品"],
+  "delivery_fsas": [],
+  "hours": "11:00-21:00",
+  "menu": [
+    { "key": "signature-1", "name_zh": "招牌烧腊饭", "name_en": "Signature BBQ Rice", "price": 15.99, "category": "招牌" },
+    { "key": "signature-2", "name_zh": "例汤", "name_en": "Soup of the Day", "category": "招牌", "is_market": true },
+    { "key": "snack-1", "name_zh": "炸云吞 (6件)", "name_en": "Fried Wontons (6)", "price": 6.99, "category": "小食" },
+    {
+      "key": "drink-1",
+      "name_zh": "港式奶茶",
+      "name_en": "HK Milk Tea",
+      "category": "饮品",
+      "variants": [
+        { "label_zh": "中杯", "label_en": "M", "price": 4.5 },
+        { "label_zh": "大杯", "label_en": "L", "price": 5.5 }
+      ]
+    }
+  ]
+}

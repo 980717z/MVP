@@ -8,6 +8,7 @@
 import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
 import { computeTax } from "./tax";
+import { isValidSlug } from "./qrContract";
 
 export type Role = "owner" | "manager" | "staff";
 
@@ -661,11 +662,16 @@ export async function autoSyncDailyClose(slug: string): Promise<void> {
 // ── helpers ──────────────────────────────────────────────────────────────
 
 export async function newTenantSlug(name: string): Promise<string> {
-  const base =
+  let base =
     name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "shop";
+  // QR 合约规则（lib/qrContract.ts + supabase/qr-lock.sql）：
+  // 太短补长、太长截断、撞路由保留字加后缀 —— DB CHECK 会拒绝不合规 slug。
+  if (base.length < 3) base = `${base}-shop`.slice(0, 30).replace(/^-|-$/g, "");
+  base = base.slice(0, 30).replace(/-$/g, "");
+  if (!isValidSlug(base).ok) base = `${base.slice(0, 25)}-shop`;
   const { data } = await supabase.from("tenants").select("slug");
   const existing = new Set((data ?? []).map((t) => t.slug));
   if (!existing.has(base)) return base;

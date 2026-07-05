@@ -99,10 +99,10 @@ Repo: 980717z/MVP
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | issues_resolved | 6 expansions accepted (1 renamed), 8 review findings accepted, 2 superseded by outside voice |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex timed out; Claude subagent ran instead |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | not yet run for this plan |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 5 issues, 0 critical gaps — all accepted into plan |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | UI scope shrank to one wizard step; not required |
 
-- **OUTSIDE VOICE:** Claude adversarial subagent (fresh context, repo-verified) found 8 problems; ALL 8 accepted, 2 of which superseded earlier decisions (E4 unlock UI cut; 1B wizard cut to shop-type step).
-- **CROSS-MODEL:** codex unavailable (timeout); single outside voice, repo-grounded.
+- **OUTSIDE VOICE:** Claude adversarial subagent (fresh context, repo-verified) found 8 problems; ALL 8 accepted, 2 of which superseded earlier decisions (E4 unlock UI cut; 1B wizard cut to shop-type step). Eng round then corrected 2 of ITS details: unlock gate is `current_user = 'postgres'` (service-role also has null auth.uid()); full unique index instead of partial (PostgREST can't target partial indexes).
+- **ENG AMENDMENTS:** protected-field whitelist is ONLY slug+tables+DELETE (delivery_fsas/hours must stay editable when locked — the zone map editor writes tenants); SECURITY DEFINER audit fn pins `search_path=public`; guard tests must import zero env-dependent modules (build gate runs on Vercel).
 - **UNRESOLVED:** 0
-- **VERDICT:** CEO CLEARED — eng review recommended before implementation (`/plan-eng-review`).
+- **VERDICT:** CEO + ENG CLEARED — ready to implement.

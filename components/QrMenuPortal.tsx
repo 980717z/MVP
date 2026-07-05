@@ -6,6 +6,7 @@ import type { ModuleDef } from "@/lib/catalog";
 import { listMenuItems } from "@/lib/menu";
 import { displayTable } from "@/lib/format";
 import { supabase } from "@/lib/supabase";
+import { menuUrl, qrLockErrorMessage, tableUrl as qrTableUrl, togoUrl as qrTogoUrl } from "@/lib/qrContract";
 import DeliveryZoneEditor from "@/components/DeliveryZoneEditor";
 
 const qrSrc = (url: string, size = 300) =>
@@ -22,6 +23,9 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<Mode>("tables");
   const [tables, setTables] = useState<string[]>(FALLBACK_TABLES);
+  // 永久 QR 合约锁（supabase/qr-lock.sql）：锁定后 slug/桌号由 DB 触发器保护
+  const [lockedAt, setLockedAt] = useState<string | null>(null);
+  const [locking, setLocking] = useState(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -29,18 +33,33 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
     // Named table list lives on the tenant row (supabase/orders-payment.sql)
     supabase
       .from("tenants")
-      .select("tables")
+      .select("tables, qr_locked_at")
       .eq("slug", slug)
       .maybeSingle()
       .then(({ data }) => {
         const t = data?.tables;
         if (Array.isArray(t) && t.length > 0) setTables(t.map(String));
+        setLockedAt((data as any)?.qr_locked_at ?? null);
       });
   }, [slug]);
 
-  const baseUrl = `${origin}/menu/${slug}`;
-  const tableUrl = (t: string) => `${baseUrl}?t=${encodeURIComponent(t)}`;
-  const togoUrl = `${baseUrl}?m=togo`;
+  // 锁定是一次有意识的决定；解锁只能在 Supabase SQL 编辑器（DB 触发器强制）。
+  const lockNow = async () => {
+    if (!window.confirm("锁定后：店铺网址标识和已有桌号将不可修改（可新增桌号），店铺不可删除。\n解锁只能在 Supabase 后台操作。\n\n牌子已经印好了吗？确认锁定？")) return;
+    setLocking(true);
+    const { error } = await supabase.from("tenants").update({ qr_locked_at: new Date().toISOString() }).eq("slug", slug);
+    setLocking(false);
+    if (error) {
+      alert(qrLockErrorMessage(error.message, "zh") ?? `锁定失败：${error.message}`);
+      return;
+    }
+    setLockedAt(new Date().toISOString());
+  };
+
+  // URL 形状统一走 lib/qrContract（守卫测试锁死 —— 这些印在物理牌子上）
+  const baseUrl = menuUrl(origin, slug);
+  const tableUrl = (t: string) => qrTableUrl(origin, slug, t);
+  const togoUrl = qrTogoUrl(origin, slug);
 
   const copy = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -188,6 +207,20 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
                   <li>不要更改店铺网址标识「<b>{slug}</b>」</li>
                   <li>不要更改桌号（{tables.map(displayTable).join("、")}）—— 已做成牌子的桌号请保持不变</li>
                 </ul>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {lockedAt ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                      🔒 已锁定 —— 网址与桌号受数据库保护（可新增桌号；解锁需在 Supabase 操作）
+                    </span>
+                  ) : (
+                    <>
+                      <button onClick={lockNow} disabled={locking} className="rounded-full bg-amber-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50">
+                        {locking ? "锁定中…" : "🔒 牌子已印好，锁定保护"}
+                      </button>
+                      <span className="text-xs text-amber-800/80">锁定后上面两条由数据库强制执行，不再只靠自觉</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
