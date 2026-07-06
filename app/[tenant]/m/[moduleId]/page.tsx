@@ -28,6 +28,8 @@ import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
 import SalesPortal from "@/components/SalesPortal";
+import FoodSafetyPortal from "@/components/FoodSafetyPortal";
+import SuggestInput from "@/components/SuggestInput";
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
 const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElement> = {
@@ -35,6 +37,7 @@ const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElem
   "qr-menu": QrMenuPortal,
   "online-orders": OrdersPortal,
   "sales": SalesPortal,
+  "food-safety": FoodSafetyPortal,
 };
 
 /** "HH:MM" → minutes since midnight, or NaN if not a valid time. */
@@ -263,9 +266,14 @@ function EditCellInput({ field, value, onChange }: { field: Field; value: string
   );
 }
 
-function StockGroupedRows({
+/** Groups rows by `groupKey` (newest date first within each group), showing
+ *  only the latest record per group with a ▾ toggle to reveal the rest —
+ *  used by stock-loss (grouped by item) and equipment (grouped by equipment). */
+function GroupedRows({
   rows,
   fields,
+  groupKey,
+  compactDates,
   expandedItems,
   setExpandedItems,
   editingId,
@@ -278,6 +286,9 @@ function StockGroupedRows({
 }: {
   rows: RecordRow[];
   fields: Field[];
+  groupKey: string;
+  /** Show date-type fields as "7月15日" instead of the raw YYYY-MM-DD. */
+  compactDates?: boolean;
   expandedItems: Set<string>;
   setExpandedItems: React.Dispatch<React.SetStateAction<Set<string>>>;
   editingId: string | null;
@@ -291,26 +302,31 @@ function StockGroupedRows({
   const groups = useMemo(() => {
     const map = new Map<string, RecordRow[]>();
     for (const r of rows) {
-      const item = r.item || "—";
-      const list = map.get(item) ?? [];
+      const group = r[groupKey] || "—";
+      const list = map.get(group) ?? [];
       list.push(r);
-      map.set(item, list);
+      map.set(group, list);
     }
     for (const [, list] of map) {
       list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     }
     return map;
-  }, [rows]);
+  }, [rows, groupKey]);
 
-  const toggle = (item: string) => {
+  const toggle = (group: string) => {
     setExpandedItems((prev) => {
       const next = new Set(prev);
-      if (next.has(item)) next.delete(item); else next.add(item);
+      if (next.has(group)) next.delete(group); else next.add(group);
       return next;
     });
   };
 
-  const renderRow = (r: RecordRow, showToggle: boolean, item: string, count: number) => {
+  const renderCellCompact = (f: Field, value: any) => {
+    if (compactDates && f.type === "date" && value) return fmtMonthDay(String(value));
+    return renderCell(f, value);
+  };
+
+  const renderRow = (r: RecordRow, showToggle: boolean, group: string, count: number) => {
     const isEditing = editingId === r.id;
     return (
       <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
@@ -318,8 +334,8 @@ function StockGroupedRows({
           {showToggle && count > 1 && (
             <button
               className="text-2xl leading-none text-ink-faint hover:text-ink transition-transform"
-              onClick={() => toggle(item)}
-              style={{ transform: expandedItems.has(item) ? "rotate(180deg)" : "rotate(0deg)" }}
+              onClick={() => toggle(group)}
+              style={{ transform: expandedItems.has(group) ? "rotate(180deg)" : "rotate(0deg)" }}
             >
               ▾
             </button>
@@ -352,7 +368,7 @@ function StockGroupedRows({
           <>
             {fields.map((f) => (
               <td key={f.key} className="px-4 py-2.5 text-ink-soft">
-                {renderCell(f, r[f.key])}
+                {renderCellCompact(f, r[f.key])}
               </td>
             ))}
             <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -372,10 +388,10 @@ function StockGroupedRows({
 
   return (
     <>
-      {Array.from(groups.entries()).map(([item, list]) => {
-        const expanded = expandedItems.has(item);
+      {Array.from(groups.entries()).map(([group, list]) => {
+        const expanded = expandedItems.has(group);
         const visible = expanded ? list : [list[0]];
-        return visible.map((r, i) => renderRow(r, i === 0, item, list.length));
+        return visible.map((r, i) => renderRow(r, i === 0, group, list.length));
       })}
     </>
   );
@@ -562,6 +578,67 @@ export default function ModulePage() {
     return out;
   }, [mod, rawRows]);
 
+  /** 设备维护 → 设备: presets + whatever's been typed before, minus anything the
+   *  merchant explicitly removed from the dropdown (stored in equipment-options-config). */
+  const equipmentOptionConfig = tenant?.records["equipment-options-config"]?.[0];
+  const hiddenEquipmentOptions: string[] = Array.isArray(equipmentOptionConfig?.hidden) ? equipmentOptionConfig!.hidden : [];
+  const equipmentSuggestions = useMemo(() => {
+    if (moduleId !== "equipment") return [];
+    const seeds = ["冰箱", "冷柜", "海鲜池", "炉灶", "其他"];
+    const used = rawRows.map((r) => (r.equipment || "").trim()).filter(Boolean);
+    return Array.from(new Set([...seeds, ...used])).filter((v) => !hiddenEquipmentOptions.includes(v));
+  }, [moduleId, rawRows, hiddenEquipmentOptions]);
+
+  const removeEquipmentSuggestion = async (val: string) => {
+    const next = Array.from(new Set([...hiddenEquipmentOptions, val]));
+    if (equipmentOptionConfig?.id) {
+      await updateRecord(equipmentOptionConfig.id, { hidden: next });
+    } else {
+      await addRecord(slug, "equipment-options-config", { hidden: next });
+    }
+    setTick((t) => t + 1);
+  };
+
+  /** 设备维护 → 维修方: whatever's been typed before, minus anything the merchant
+   *  explicitly removed from the dropdown (stored in equipment-vendor-config). */
+  const vendorConfig = tenant?.records["equipment-vendor-config"]?.[0];
+  const hiddenVendors: string[] = Array.isArray(vendorConfig?.hidden) ? vendorConfig!.hidden : [];
+  const vendorSuggestions = useMemo(() => {
+    if (moduleId !== "equipment") return [];
+    const used = rawRows.map((r) => (r.vendor || "").trim()).filter(Boolean);
+    return Array.from(new Set(used)).filter((v) => !hiddenVendors.includes(v));
+  }, [moduleId, rawRows, hiddenVendors]);
+
+  const removeVendorSuggestion = async (val: string) => {
+    const next = Array.from(new Set([...hiddenVendors, val]));
+    if (vendorConfig?.id) {
+      await updateRecord(vendorConfig.id, { hidden: next });
+    } else {
+      await addRecord(slug, "equipment-vendor-config", { hidden: next });
+    }
+    setTick((t) => t + 1);
+  };
+
+  /** 设备维护 → 问题/保养: whatever's been typed before, minus anything the merchant
+   *  explicitly removed from the dropdown (stored in equipment-issue-config). */
+  const issueConfig = tenant?.records["equipment-issue-config"]?.[0];
+  const hiddenIssues: string[] = Array.isArray(issueConfig?.hidden) ? issueConfig!.hidden : [];
+  const issueSuggestions = useMemo(() => {
+    if (moduleId !== "equipment") return [];
+    const used = rawRows.map((r) => (r.issue || "").trim()).filter(Boolean);
+    return Array.from(new Set(used)).filter((v) => !hiddenIssues.includes(v));
+  }, [moduleId, rawRows, hiddenIssues]);
+
+  const removeIssueSuggestion = async (val: string) => {
+    const next = Array.from(new Set([...hiddenIssues, val]));
+    if (issueConfig?.id) {
+      await updateRecord(issueConfig.id, { hidden: next });
+    } else {
+      await addRecord(slug, "equipment-issue-config", { hidden: next });
+    }
+    setTick((t) => t + 1);
+  };
+
   const rows: RecordRow[] = useMemo(() => {
     if (moduleId === "dish-margin") {
       const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -665,6 +742,9 @@ export default function ModulePage() {
   // Scheduling groups the week's rows by staff — one row per person (their
   // latest entry that week), with an arrow to expand the rest of their shifts.
   const groupByStaff = moduleId === "scheduling";
+  // Equipment groups the history by device — one row per device (the latest
+  // service), with an arrow to expand the rest of its maintenance history.
+  const groupByEquipment = moduleId === "equipment";
   const staffGroups = useMemo(() => {
     const map = new Map<string, RecordRow[]>();
     for (const r of filteredRows) {
@@ -785,10 +865,6 @@ export default function ModulePage() {
       const unreplied = rows.filter((r) => r.replied !== "是" && parseFloat(r.rating) <= 3);
       if (unreplied.length) list.push({ type: "warn", text: `💬 ${unreplied.length} 条低分评价未回复` });
     }
-    if (moduleId === "food-safety") {
-      const failed = rows.filter((r) => r.ok === "否");
-      if (failed.length) list.push({ type: "warn", text: `🧊 ${failed.length} 条不合格记录需关注` });
-    }
     if (moduleId === "social") {
       const drafts = rows.filter((r) => r.status === "草稿" || r.status === "待发");
       if (drafts.length) list.push({ type: "info", text: `📣 ${drafts.length} 条内容待发布` });
@@ -867,8 +943,26 @@ export default function ModulePage() {
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
       });
     }
+    if (moduleId === "equipment") {
+      const order = ["equipment", "date", "issue", "vendor", "cost", "status", "nextService", "intervalDays"];
+      return [...mod.fields].sort((a, b) => {
+        const ai = order.indexOf(a.key);
+        const bi = order.indexOf(b.key);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+    }
     return mod.fields;
   }, [mod, moduleId]);
+
+  /** 设备维护 fields backed by a remembered/deletable suggestion list instead of the generic text input. */
+  const equipmentSuggestFields: Record<string, { suggestions: string[]; remove: (v: string) => void; placeholder: string }> =
+    moduleId === "equipment"
+      ? {
+          equipment: { suggestions: equipmentSuggestions, remove: removeEquipmentSuggestion, placeholder: "例：冰箱" },
+          vendor: { suggestions: vendorSuggestions, remove: removeVendorSuggestion, placeholder: "例：XX 维修公司" },
+          issue: { suggestions: issueSuggestions, remove: removeIssueSuggestion, placeholder: "例：压缩机异响" },
+        }
+      : {};
 
   useEffect(() => {
     if (!open || moduleId !== "daily-close") return;
@@ -1160,8 +1254,8 @@ export default function ModulePage() {
         </div>
       )}
 
-      {/* module-specific analytics (毛利排行 / 供应商比价 / 评价类别…) */}
-      <ModuleInsights moduleId={moduleId} rows={rows} slug={slug} />
+      {/* module-specific analytics (毛利排行 / 供应商比价 / 评价类别 / 本月保养清单…) */}
+      <ModuleInsights moduleId={moduleId} rows={rows} slug={slug} refresh={() => setTick((t) => t + 1)} />
 
       {/* trend chart */}
       {mod.amountKey && rows.length >= 2 && (
@@ -1257,16 +1351,32 @@ export default function ModulePage() {
               .filter((f) => !(moduleId === "stock-loss" && autoFields.has(f.key)))
               .map((f) => (
               <div key={f.key} className={f.half ? "" : "sm:col-span-2"}>
-                <FieldInput
-                  field={f}
-                  value={form[f.key] ?? ""}
-                  onChange={(v) => {
-                    updateForm(f.key, v);
-                    if (moduleId === "scheduling" && (f.key === "start" || f.key === "end")) setShiftPreset("custom");
-                  }}
-                  readOnly={computedTargets.has(f.key)}
-                  suggestions={textSuggestions[f.key]}
-                />
+                {equipmentSuggestFields[f.key] ? (
+                  <div>
+                    <label className="label">
+                      {f.label.zh}
+                      {f.required && <span className="text-red-500"> *</span>}
+                    </label>
+                    <SuggestInput
+                      value={form[f.key] ?? ""}
+                      onChange={(v) => updateForm(f.key, v)}
+                      suggestions={equipmentSuggestFields[f.key].suggestions}
+                      onRemoveSuggestion={equipmentSuggestFields[f.key].remove}
+                      placeholder={equipmentSuggestFields[f.key].placeholder}
+                    />
+                  </div>
+                ) : (
+                  <FieldInput
+                    field={f}
+                    value={form[f.key] ?? ""}
+                    onChange={(v) => {
+                      updateForm(f.key, v);
+                      if (moduleId === "scheduling" && (f.key === "start" || f.key === "end")) setShiftPreset("custom");
+                    }}
+                    readOnly={computedTargets.has(f.key)}
+                    suggestions={textSuggestions[f.key]}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -1374,7 +1484,7 @@ export default function ModulePage() {
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
-                {moduleId === "stock-loss" && <th className="w-8 px-2 py-2.5"></th>}
+                {(moduleId === "stock-loss" || groupByEquipment) && <th className="w-8 px-2 py-2.5"></th>}
                 {groupByStaff && (
                   <th className="w-8 px-2 py-2.5">
                     {copyMode && (
@@ -1486,10 +1596,12 @@ export default function ModulePage() {
               </tr>
             </thead>
             <tbody>
-              {moduleId === "stock-loss" ? (
-                <StockGroupedRows
+              {moduleId === "stock-loss" || groupByEquipment ? (
+                <GroupedRows
                   rows={pagedRows}
                   fields={displayFields}
+                  groupKey={groupByEquipment ? "equipment" : "item"}
+                  compactDates={groupByEquipment}
                   expandedItems={expandedItems}
                   setExpandedItems={setExpandedItems}
                   editingId={editingId}
@@ -1728,12 +1840,110 @@ function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
 }
 
 /** Per-module analytics blocks that the generic stats/alerts can't express. */
-function ModuleInsights({ moduleId, rows, slug }: { moduleId: string; rows: RecordRow[]; slug: string }) {
+function ModuleInsights({ moduleId, rows, slug, refresh }: { moduleId: string; rows: RecordRow[]; slug: string; refresh: () => void }) {
   if (moduleId === "dish-margin") return <DishSalesRanking rows={rows} />;
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
   if (moduleId === "members") return <TierSettings slug={slug} />;
+  if (moduleId === "equipment") return <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />;
   return null;
+}
+
+/** 本月到期保养清单：把「下次保养日期」落在本月及之前（含逾期）的设备列出来，做成
+ *  可勾选的清单。这里只看 nextService，不看 status —— status 记录的是"这条维修/问题
+ *  是否处理好了"，跟"下次保养提醒是否还没到"是两码事：同一台设备可以问题已解决
+ *  （status=已完成）但下次保养日期仍落在本月，这时候仍然要出现在清单里。 */
+function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[]; slug: string; refresh: () => void }) {
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const due = useMemo(() => {
+    // Local Y-M-D throughout — .toISOString() converts to UTC first, which can
+    // shift the calendar day (e.g. evenings in UTC-negative zones roll over to
+    // "tomorrow" in UTC), silently dropping items near the month boundary.
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const now = new Date();
+    const todayStr = ymd(now);
+    const monthEnd = ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    return rows
+      // servicedThrough records which nextService value was already acknowledged —
+      // once it matches the current nextService, this cycle's reminder is done.
+      // (We never touch nextService itself, so the date stays visible in the
+      // history table instead of getting wiped out.)
+      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService)
+      .map((r) => ({ ...r, overdue: r.nextService < todayStr }) as RecordRow & { overdue: boolean })
+      .sort((a, b) => (a.equipment || "").localeCompare(b.equipment || "") || (a.nextService || "").localeCompare(b.nextService || ""));
+  }, [rows]);
+
+  if (due.length === 0) return null;
+
+  /** "本次已保养" acknowledges this cycle's reminder without touching nextService
+   *  itself, so the due-date stays intact in the history table. It reappears
+   *  once the merchant edits nextService forward to a new date. Doesn't touch
+   *  status either — status tracks the logged issue/repair, not this reminder. */
+  const markServiced = async (r: RecordRow) => {
+    setSavingId(r.id);
+    const { id, createdAt, overdue, ...data } = r as any;
+    // status is now safe to set here — the checklist's due-list filter only
+    // looks at nextService/servicedThrough, not status, so this won't hide a
+    // still-due reminder. It just gives clear feedback in the table.
+    const { error } = await updateRecord(r.id, { ...data, status: "已完成", servicedThrough: r.nextService });
+    if (error) {
+      // Don't refresh on failure — it would just reload the same unchanged
+      // row, making it look like the action silently did nothing.
+      setSavingId(null);
+      alert("操作失败，请重试：" + error);
+      return;
+    }
+    // Only spawn the next cycle when there's a fixed 保养周期 to compute it
+    // from — otherwise there's nothing to schedule, and an empty placeholder
+    // row just clutters the table. `date` mirrors the new nextService: this
+    // record represents when that maintenance is due, not when the reminder
+    // happened to get auto-generated.
+    const intervalDays = parseInt(r.intervalDays, 10);
+    if (intervalDays > 0 && r.nextService) {
+      const newNextService = addDays(r.nextService, intervalDays);
+      await addRecord(slug, "equipment", {
+        equipment: r.equipment || "",
+        date: newNextService,
+        issue: r.issue || "",
+        vendor: r.vendor || "",
+        cost: "",
+        status: "待处理",
+        nextService: newNextService,
+        intervalDays: r.intervalDays,
+      });
+    }
+    setSavingId(null);
+    refresh();
+  };
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-1 flex items-center justify-between">
+        <div className="text-sm font-semibold text-ink">本月保养清单</div>
+        <span className="text-xs text-ink-faint">{due.length} 项待处理</span>
+      </div>
+      <p className="mb-3 text-xs text-ink-faint">下次保养日期落在本月（含已逾期）的设备，与「是否合格/已完成」无关</p>
+      <div className="space-y-1.5">
+        {due.map((r) => (
+          <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
+            <span className="font-medium text-ink">{r.equipment || "设备"}</span>
+            {r.issue && <span className="text-ink-soft">{r.issue}</span>}
+            <span className={`ml-auto text-xs font-medium tabular-nums ${r.overdue ? "text-red-600" : "text-ink-faint"}`}>
+              {r.overdue ? `已逾期 · ${r.nextService}` : r.nextService}
+            </span>
+            <button
+              className="btn-primary !py-1 !text-xs"
+              disabled={savingId === r.id}
+              onClick={() => markServiced(r)}
+            >
+              {savingId === r.id ? "…" : "本次已保养"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function TierSettings({ slug }: { slug: string }) {

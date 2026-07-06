@@ -217,9 +217,15 @@ export async function addRecord(
   if (error) console.error("addRecord", error);
 }
 
-export async function updateRecord(id: string, data: Record<string, any>): Promise<void> {
+/** Returns { error } on failure so callers that need to know (e.g. "mark done"
+ *  buttons) can warn the user instead of silently reloading unchanged data. */
+export async function updateRecord(id: string, data: Record<string, any>): Promise<{ error?: string }> {
   const { error } = await supabase.from("records").update({ data }).eq("id", id);
-  if (error) console.error("updateRecord", error);
+  if (error) {
+    console.error("updateRecord", error);
+    return { error: error.message || "更新失败" };
+  }
+  return {};
 }
 
 export async function deleteRecord(id: string): Promise<void> {
