@@ -8,7 +8,7 @@ import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
-import CloverPayment from "@/components/CloverPayment";
+import CheckoutSheet from "@/components/CheckoutSheet";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -943,9 +943,9 @@ export default function PublicMenu() {
         </div>
       )}
 
-      {/* pay-first: Clover card sheet for togo/delivery */}
+      {/* pay-first: checkout method sheet for togo/delivery */}
       {payingOrder && (
-        <CloverPayment
+        <CheckoutSheet
           orderId={payingOrder.id}
           amount={payingOrder.amount}
           lang={lang}
