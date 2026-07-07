@@ -36,7 +36,7 @@ export interface Order {
   created_at: string;
   // QR delivery + payments (supabase/orders-payment.sql)
   order_type: OrderType;
-  payment_status: "unpaid" | "pending" | "paid" | "expired" | "refunded";
+  payment_status: "unpaid" | "pending" | "paid" | "expired" | "refunded" | "reconcile_pending";
   payment_method: "" | "server" | "online";
   tip: number;
   subtotal: number | null; // server-written at re-price; null until then

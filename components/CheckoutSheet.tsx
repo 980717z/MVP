@@ -85,8 +85,12 @@ export default function CheckoutSheet({
   const [googleOk, setGoogleOk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Quote-then-pay: the server's authoritative total (cents). We display exactly
+  // this and send it back on charge so we're never billed above what's shown.
+  const [quote, setQuote] = useState<{ cents: number; amount: number } | null>(null);
+  const quoteRef = useRef<{ cents: number; amount: number } | null>(null);
   const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
-  const amountCents = Math.round(amount * 100);
+  const shownAmount = quote?.amount ?? amount; // optimistic prop until the quote lands
   const fieldCls = `h-11 overflow-hidden rounded-lg border border-slate-300 [&_iframe]:!h-11 [&_iframe]:!w-full ${ready ? "" : "animate-pulse bg-slate-50"}`;
   const soon = !ALPHAPAY_LIVE;
 
@@ -95,12 +99,17 @@ export default function CheckoutSheet({
     const res = await fetch("/api/pay/charge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, token }),
+      body: JSON.stringify({ orderId, token, quotedCents: quoteRef.current?.cents }),
     }).catch(() => null);
     const data = res ? await res.json().catch(() => ({ ok: false })) : { ok: false, error: t("网络错误", "Network error") };
     if (data.ok) {
       onPaid({ last4: data.last4, brand: data.brand, method });
       return true;
+    }
+    // Ambiguous/awaiting-confirmation: money may have moved — do NOT invite a retry.
+    if (data.reconcile || data.pending || data.inProgress) {
+      setErr(data.error || t("支付确认中，请勿重复支付", "Confirming your payment — please don't pay again"));
+      return false;
     }
     setErr(data.error || t("支付失败，请重试", "Payment failed — please try again"));
     return false;
@@ -126,9 +135,27 @@ export default function CheckoutSheet({
       }
     };
 
-    loadCloverSdk(env)
-      .then(() => {
+    // Fetch the authoritative amount first — wallet buttons must carry the real
+    // charge total, so we can't build them until the quote lands.
+    const fetchQuote = fetch("/api/pay/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId }),
+    })
+      .then((r) => r.json())
+      .catch(() => ({ ok: false, error: t("网络错误", "Network error") }));
+
+    Promise.all([loadCloverSdk(env), fetchQuote])
+      .then(([, q]: [void, any]) => {
         if (cancelled) return;
+        if (!q?.ok || typeof q.cents !== "number") {
+          setErr(q?.error || t("无法获取金额，请刷新重试", "Couldn't load the amount — please refresh"));
+          return;
+        }
+        const qCents = q.cents as number;
+        quoteRef.current = { cents: qCents, amount: q.amount };
+        setQuote({ cents: qCents, amount: q.amount });
+
         const Clover = (window as any).Clover;
         const clover = new Clover(pub, { merchantId: mid });
         cloverRef.current = clover;
@@ -142,7 +169,7 @@ export default function CheckoutSheet({
 
         let any = false;
         try {
-          const apReq = clover.createApplePaymentRequest?.({ amount: amountCents, countryCode: "CA", currencyCode: "CAD" });
+          const apReq = clover.createApplePaymentRequest?.({ amount: qCents, countryCode: "CA", currencyCode: "CAD" });
           if (apReq) {
             elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: apReq, sessionIdentifier: mid }).mount("#apple-pay-button");
             window.addEventListener("paymentMethod", onApplePaymentMethod);
@@ -153,7 +180,7 @@ export default function CheckoutSheet({
         }
         try {
           const grBtn = elements.create("PAYMENT_REQUEST_BUTTON", {
-            paymentReqData: { total: { label: "BentoOS", amount: amountCents }, options: { button: { buttonType: "long" } } },
+            paymentReqData: { total: { label: "BentoOS", amount: qCents }, options: { button: { buttonType: "long" } } },
           });
           grBtn.mount("#google-pay-button");
           grBtn.addEventListener?.("paymentMethod", async (d: any) => {
@@ -257,7 +284,7 @@ export default function CheckoutSheet({
         </div>
         <div className="mb-4 flex items-baseline justify-between rounded-lg bg-jade-wash px-3 py-2">
           <span className="text-sm text-ink-soft">{t("应付", "Amount due")}</span>
-          <span className="text-xl font-bold tabular-nums text-jade">${amount.toFixed(2)}</span>
+          <span className="text-xl font-bold tabular-nums text-jade">${shownAmount.toFixed(2)}</span>
         </div>
 
         {/* Clover wallet buttons — mounted once, visible only in the select view */}
@@ -304,7 +331,7 @@ export default function CheckoutSheet({
           <>
             {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
             <button onClick={payCard} disabled={!ready || paying} className="mt-4 w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50">
-              {paying ? t("支付中…", "Processing…") : `${t("确认支付", "Pay")} $${amount.toFixed(2)}`}
+              {paying ? t("支付中…", "Processing…") : `${t("确认支付", "Pay")} $${shownAmount.toFixed(2)}`}
             </button>
           </>
         )}

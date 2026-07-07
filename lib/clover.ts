@@ -8,14 +8,33 @@
 //  Spike: docs/clover-spike.md
 // ─────────────────────────────────────────────────────────────────────────
 
+// Charge outcome — the reconcile design hinges on this three-way split:
+//   succeeded → money moved, order is paid.
+//   declined  → Clover gave a definitive "no" (402 / bad request / non-paid
+//               200). NO money moved — safe to reset and let the diner retry.
+//   error     → we never got a definitive answer (network throw, timeout, 5xx).
+//               The charge MAY have landed. NEVER auto-retry; hold for reconcile.
+export type ChargeOutcome = "succeeded" | "declined" | "error";
+
 export interface ChargeResult {
   ok: boolean;
+  outcome: ChargeOutcome;
   chargeId?: string;
   brand?: string;
   last4?: string;
   amountCents?: number;
   /** Clean, customer-safe message on decline/failure. */
   error?: string;
+}
+
+/** A charge as returned by Clover's list/retrieve endpoints (subset we use). */
+export interface CloverCharge {
+  id: string;
+  amount: number;
+  status: string;
+  paid: boolean;
+  description?: string;
+  source?: { brand?: string; last4?: string };
 }
 
 function cfg() {
@@ -32,6 +51,15 @@ export function cloverConfigured(): boolean {
   return !!(c.base && c.key && c.mid);
 }
 
+/** Stable substring that ties a Clover charge back to an order. Both the charge
+ *  description and reconcile's lookup derive from this — keep them in lockstep. */
+export function chargeNeedle(orderId: string): string {
+  return `#${orderId.slice(0, 8)}`;
+}
+export function chargeDescription(tenantSlug: string, orderId: string): string {
+  return `BentoOS ${tenantSlug} ${chargeNeedle(orderId)}`;
+}
+
 /**
  * Charge a tokenized card. `amountCents` is the SERVER-computed total (never
  * trust the client). Returns ok:false with a clean message on decline/error —
@@ -46,12 +74,14 @@ export async function cloverCharge(opts: {
   idempotencyKey?: string;
 }): Promise<ChargeResult> {
   const { base, key, mid } = cfg();
-  if (!base || !key || !mid) return { ok: false, error: "Payments not configured." };
-  if (!Number.isInteger(opts.amountCents) || opts.amountCents <= 0) return { ok: false, error: "Invalid amount." };
-  if (!opts.token?.startsWith("clv_")) return { ok: false, error: "Invalid card token." };
+  // Config / input errors are definitive: no charge left our process → "declined".
+  if (!base || !key || !mid) return { ok: false, outcome: "declined", error: "Payments not configured." };
+  if (!Number.isInteger(opts.amountCents) || opts.amountCents <= 0) return { ok: false, outcome: "declined", error: "Invalid amount." };
+  if (!opts.token?.startsWith("clv_")) return { ok: false, outcome: "declined", error: "Invalid card token." };
 
+  let res: Response;
   try {
-    const res = await fetch(`${base}/v1/charges`, {
+    res = await fetch(`${base}/v1/charges`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -68,18 +98,51 @@ export async function cloverCharge(opts: {
         ...(opts.email ? { receipt_email: opts.email } : {}),
       }),
     });
-    const data: any = await res.json().catch(() => ({}));
-    if (res.ok && data?.status === "succeeded" && data?.paid) {
-      return { ok: true, chargeId: data.id, brand: data.source?.brand, last4: data.source?.last4, amountCents: data.amount };
-    }
-    // Decline or error — Clover returns an `error` object (Stripe-shaped).
-    const msg =
-      data?.error?.message ||
-      data?.message ||
-      (res.status === 402 ? "Card declined." : `Payment failed (${res.status}).`);
-    return { ok: false, error: msg };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "Network error reaching the payment processor." };
+    // Network threw — the request may or may not have reached Clover. UNKNOWN.
+    return { ok: false, outcome: "error", error: e?.message || "Network error reaching the payment processor." };
+  }
+
+  const data: any = await res.json().catch(() => ({}));
+  if (res.ok && data?.status === "succeeded" && data?.paid) {
+    return { ok: true, outcome: "succeeded", chargeId: data.id, brand: data.source?.brand, last4: data.source?.last4, amountCents: data.amount };
+  }
+  // 5xx = Clover-side failure that MAY have charged before erroring → UNKNOWN.
+  if (res.status >= 500) {
+    return { ok: false, outcome: "error", error: `Payment processor error (${res.status}).` };
+  }
+  // Any definitive 4xx / non-succeeded 200: Clover answered and no money moved.
+  const msg =
+    data?.error?.message ||
+    data?.message ||
+    (res.status === 402 ? "Card declined." : `Payment failed (${res.status}).`);
+  return { ok: false, outcome: "declined", error: msg };
+}
+
+/**
+ * Find a charge for an order by the orderId we embed in its `description`.
+ * Used by reconcile when `clover_checkout_id` is null (the timeout case) to
+ * answer "did this order's charge actually land?". Returns the newest paid
+ * match, or null. `descriptionNeedle` is the exact substring we wrote at charge
+ * time (e.g. "#1a2b3c4d").
+ */
+export async function cloverFindPaidCharge(descriptionNeedle: string): Promise<CloverCharge | null> {
+  const { base, key, mid } = cfg();
+  if (!base || !key || !mid) return null;
+  try {
+    // Clover ecommerce lists newest-first; a small page is plenty for reconcile.
+    const res = await fetch(`${base}/v1/charges?limit=100`, {
+      headers: { Authorization: `Bearer ${key}`, "X-Clover-Merchant-Id": mid },
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json().catch(() => ({}));
+    const list: CloverCharge[] = data?.elements || data?.data || data?.charges || [];
+    const hit = list.find(
+      (c) => c.paid && c.status === "succeeded" && (c.description || "").includes(descriptionNeedle),
+    );
+    return hit ?? null;
+  } catch {
+    return null;
   }
 }
 

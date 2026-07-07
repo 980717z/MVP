@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
@@ -203,6 +204,23 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     if (advancing.current.has(o.id)) return;
     advancing.current.add(o.id);
     try {
+      // Cancelling a PAID online order must return the money first (the DB gate
+      // lets a paid order be cancelled, so an un-refunded cancel keeps the
+      // diner's cash). Refund server-side, then fall through to set 'cancelled'.
+      if (to === "cancelled" && o.payment_status === "paid" && (o.order_type === "togo" || o.order_type === "delivery")) {
+        if (!confirm(`该订单已在线支付 $${Number(o.total).toFixed(2)}，取消将自动退款给顾客。确定吗？`)) return;
+        const { data: sess } = await supabase.auth.getSession();
+        const res = await fetch("/api/pay/refund", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
+          body: JSON.stringify({ orderId: o.id }),
+        });
+        const rd = await res.json().catch(() => ({ ok: false }));
+        if (!rd.ok) {
+          alert("退款失败，未取消订单：" + (rd.error ?? "请重试"));
+          return;
+        }
+      }
       // 时价 gate: an order can't be completed until every market-priced item has
       // its actual price entered (today's 时价 from the menu prefills the prompt).
       let items = o.items;
