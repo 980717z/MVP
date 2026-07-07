@@ -145,9 +145,10 @@ export default function PublicMenu() {
       const d = byId[id];
       if (!d) return null;
       const variant = vi != null ? d.variants?.[vi] ?? null : null;
-      // 时价 with today's price entered → priced normally (diner saw it).
-      // 时价 with NO price → $0 in cart; staff enters the price at completion.
-      const isMarket = !!d.is_market && !variant && !(Number(d.price) > 0);
+      // 时价 line = market dish whose chosen price is 0 (no today-price, or a
+      // priceless cooking-style variant like 生猛龙虾·清蒸). Staff prices it at
+      // completion. A market dish with a today-price entered charges normally.
+      const isMarket = !!d.is_market && !(unitPrice(d, vi) > 0);
       return { key, d, variant, isMarket, unit: isMarket ? 0 : unitPrice(d, vi), qty };
     })
     .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number } => !!x);
@@ -393,8 +394,10 @@ export default function PublicMenu() {
     const dp = displayPrice(d);
     // 时价 dish: with today's price entered → show it (gold); without → show
     // the 时价 tag only, still orderable, staff prices it at completion.
-    const isMarket = !!d.is_market && !hasVariants;
-    const marketPriced = isMarket && Number(d.price) > 0;
+    // Market dishes can also carry cooking-style/brand CHOICES (生猛龙虾:
+    // 清蒸/姜葱/豉椒) — still 时价, diner picks a style, priced at completion.
+    const isMarket = !!d.is_market;
+    const marketPriced = isMarket && !hasVariants && Number(d.price) > 0;
     // NOT market, no variants, no price = owner hasn't priced it yet — don't
     // let it into the cart at $0 (there's no completion gate for these).
     const unpriced = !hasVariants && !d.is_market && !(Number(d.price) > 0);
@@ -709,7 +712,7 @@ export default function PublicMenu() {
                         )}
                       </div>
                     </div>
-                    <span className="font-bold tabular-nums text-jade">{fmtPrice(v.price)}</span>
+                    <span className={`font-bold tabular-nums ${sheetDish.is_market ? "text-gold" : "text-jade"}`}>{sheetDish.is_market ? t("market") : fmtPrice(v.price)}</span>
                     {q === 0 ? (
                       <button onClick={() => inc(key, 1)} className="grid h-8 w-8 flex-none place-items-center rounded-full bg-jade text-lg text-white">＋</button>
                     ) : (

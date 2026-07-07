@@ -32,8 +32,10 @@ export interface MenuItem {
   sold_out?: boolean;
 }
 
-/** Read/display: only complete, valid sizes (label + positive price). */
-export function normVariants(raw: any): Variant[] {
+/** Read/display: keep complete sizes (label + positive price). For 时价 dishes
+ *  pass allowPriceless=true — their variants are cooking-style/brand CHOICES
+ *  (清蒸/姜葱/豉椒) with no fixed price; keep any labelled row. */
+export function normVariants(raw: any, allowPriceless = false): Variant[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((v) => ({
@@ -41,7 +43,7 @@ export function normVariants(raw: any): Variant[] {
       label_en: String(v?.label_en ?? "").trim() || undefined,
       price: Number(v?.price) || 0,
     }))
-    .filter((v) => v.label_zh && v.price > 0);
+    .filter((v) => v.label_zh && (allowPriceless || v.price > 0));
 }
 
 /** Write: keep every row (even half-typed) so the editor doesn't lose them
@@ -133,7 +135,7 @@ export async function listMenuItems(slug: string): Promise<MenuItem[]> {
     console.error("listMenuItems", error);
     return [];
   }
-  return (data ?? []).map((r: any) => ({ ...r, variants: normVariants(r.variants) })) as MenuItem[];
+  return (data ?? []).map((r: any) => ({ ...r, variants: normVariants(r.variants, !!r.is_market) })) as MenuItem[];
 }
 
 /** Editor read: keep variant rows exactly as stored (even half-typed), so the

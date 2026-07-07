@@ -134,3 +134,26 @@ describe("isChoiceDish — 同价多选 vs 不同价规格", () => {
     expect(isChoiceDish({ ...base, variants: [{ label_zh: "大", label_en: "L", price: 9 }] } as MenuItem)).toBe(false);
   });
 });
+
+describe("normVariants — market dishes keep priceless choices (龙虾做法)", () => {
+  const styles = [{ label_zh: "清蒸", label_en: "Steamed", price: null }, { label_zh: "姜葱", price: 0 }];
+  it("strips priceless variants by default (sizes need a price)", () => {
+    expect(normVariants(styles)).toHaveLength(0);
+  });
+  it("keeps labelled priceless variants when allowPriceless (时价 styles)", () => {
+    const r = normVariants(styles, true);
+    expect(r.map((v) => v.label_zh)).toEqual(["清蒸", "姜葱"]);
+  });
+  it("still drops truly empty rows even when allowPriceless", () => {
+    expect(normVariants([{ label_zh: "", price: null }], true)).toHaveLength(0);
+  });
+});
+
+describe("isChoiceDish — market styles read as a choice (all same 0 price)", () => {
+  const base = { id: "x", name_zh: "生猛龙虾", name_en: "", price: null, category: "海鲜", image_url: "", is_market: true } as unknown as MenuItem;
+  it("3 priceless styles = a choice picker", () => {
+    expect(isChoiceDish({ ...base, variants: [
+      { label_zh: "清蒸", price: 0 }, { label_zh: "姜葱", price: 0 }, { label_zh: "豉椒", price: 0 },
+    ] } as MenuItem)).toBe(true);
+  });
+});
