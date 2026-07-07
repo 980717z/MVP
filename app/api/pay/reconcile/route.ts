@@ -7,7 +7,11 @@ import type { MenuItem } from "@/lib/menu";
 export const runtime = "nodejs";
 
 // ─────────────────────────────────────────────────────────────────────────
-//  POST /api/pay/reconcile   header: x-reconcile-key: $RECONCILE_KEY
+//  GET/POST /api/pay/reconcile
+//  Auth (either): Vercel Cron sends `Authorization: Bearer $CRON_SECRET`;
+//  a manual/external caller can send `x-reconcile-key: $RECONCILE_KEY`. The
+//  secret is CRON_SECRET (preferred) or RECONCILE_KEY — set ONE.
+//
 //  The safety net for the synchronous charge. Two kinds of stuck orders:
 //    • reconcile_pending — charge outcome was UNKNOWN (timeout/5xx).
 //    • pending (stale)   — a charge that never resolved (client vanished, or
@@ -15,15 +19,30 @@ export const runtime = "nodejs";
 //  For each, ask Clover whether a charge actually landed (matched by the orderId
 //  we embed in the charge description — because clover_checkout_id is null in
 //  exactly the timeout case). Landed → mark paid. Not → release to unpaid.
-//  Run from cron every few minutes, or hit manually from ops.
+//  Scheduled from vercel.json (GET); also POST-able from ops.
 // ─────────────────────────────────────────────────────────────────────────
 
 const STALE_PENDING_MS = 5 * 60_000;
 
+function authorized(req: Request): boolean {
+  const secret = process.env.CRON_SECRET || process.env.RECONCILE_KEY;
+  if (!secret) return false;
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  return bearer === secret || req.headers.get("x-reconcile-key") === secret;
+}
+
+export async function GET(req: Request) {
+  return handle(req);
+}
 export async function POST(req: Request) {
-  const key = process.env.RECONCILE_KEY;
-  if (!key) return NextResponse.json({ ok: false, error: "reconcile not configured" }, { status: 503 });
-  if (req.headers.get("x-reconcile-key") !== key) {
+  return handle(req);
+}
+
+async function handle(req: Request) {
+  if (!process.env.CRON_SECRET && !process.env.RECONCILE_KEY) {
+    return NextResponse.json({ ok: false, error: "reconcile not configured" }, { status: 503 });
+  }
+  if (!authorized(req)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
   if (!cloverConfigured()) return NextResponse.json({ ok: false, error: "payments not configured" }, { status: 503 });

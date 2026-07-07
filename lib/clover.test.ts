@@ -57,11 +57,13 @@ describe("cloverCharge — outcome classification", () => {
   });
 
   it("passes the idempotency-key header through", async () => {
-    const spy = vi.fn(async () => res(200, OK_BODY));
-    vi.stubGlobal("fetch", spy);
+    let capturedHeaders: Record<string, string> = {};
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: { headers: Record<string, string> }) => {
+      capturedHeaders = opts.headers;
+      return res(200, OK_BODY);
+    }));
     await cloverCharge({ amountCents: 7457, token: "clv_x", idempotencyKey: "ord-1:clv_x" });
-    const headers = spy.mock.calls[0][1].headers;
-    expect(headers["idempotency-key"]).toBe("ord-1:clv_x");
+    expect(capturedHeaders["idempotency-key"]).toBe("ord-1:clv_x");
   });
 });
 

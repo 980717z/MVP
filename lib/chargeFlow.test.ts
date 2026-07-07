@@ -29,7 +29,7 @@ class FakeStore implements OrderStore {
     this.order = order;
     this.menu = menu;
   }
-  async loadOrder() {
+  async loadOrder(): Promise<ChargeableOrder | null> {
     return { ...this.order };
   }
   async loadMenu() {
@@ -81,8 +81,7 @@ describe("runChargeFlow — money state machine", () => {
     expect(r.body.ok).toBe(true);
     expect(store.order.payment_status).toBe("paid");
     expect(charge).toHaveBeenCalledOnce();
-    expect(charge.mock.calls[0][0].idempotencyKey).toBe("ord-1:clv_x");
-    expect(charge.mock.calls[0][0].amountCents).toBe(7457);
+    expect(charge).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "ord-1:clv_x", amountCents: 7457 }));
   });
 
   it("already-paid is idempotent, never re-charges", async () => {
