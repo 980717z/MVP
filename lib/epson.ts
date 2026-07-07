@@ -54,16 +54,10 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
  *  avoid a printer SchemaError on older firmware: alignment on its own element,
  *  double-size via dw/dh (not the newer width/height magnification), bold via em.
  *  `big` = double width+height. */
-function line(txt: string, opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
-  const out: string[] = [];
-  if (opts.align) out.push(`<text align="${opts.align}"/>`);
-  const attrs = [
-    `dw="${opts.big ? "true" : "false"}"`,
-    `dh="${opts.big ? "true" : "false"}"`,
-    `em="${opts.em ? "true" : "false"}"`,
-  ];
-  out.push(`<text ${attrs.join(" ")}>${esc(txt)}&#10;</text>`);
-  return out.join("");
+function line(txt: string, _opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
+  // BARE MINIMUM (isolating a SchemaError): plain <text> only, no attributes.
+  // Re-add align/em/dw once we confirm the printer accepts a basic doc.
+  return `<text>${esc(txt)}&#10;</text>`;
 }
 
 /** An empty ePOS-Print doc — the "nothing to print" reply to a poll. */
@@ -106,8 +100,8 @@ export function buildEposXml(o: Order, shopName: string): string {
     if (note) b.push(line(`! Note: ${note}`, { big: true, em: true }));
   }
   b.push(line(`${count} items total`, { align: "center" }));
-  b.push(`<feed line="2"/>`);
-  b.push(`<cut type="feed"/>`);
+  b.push(`<feed/>`);
+  b.push(`<cut/>`);
 
   // Server Direct Print requires the epos-print doc WRAPPED in a PrintRequestInfo
   // envelope (Epson SDP manual). Returning a raw <epos-print> — the ePOS-Print
