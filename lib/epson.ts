@@ -50,14 +50,20 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
   return { badge: o.table_no ? `DINE-IN  Table ${displayTable(o.table_no)}` : "DINE-IN" };
 }
 
-/** An ePOS-Print `<text>` line with size (1-8) + optional bold, ending in a newline. */
-function line(txt: string, opts: { w?: number; h?: number; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
-  const attrs: string[] = [];
-  if (opts.align) attrs.push(`align="${opts.align}"`);
-  if (opts.w) attrs.push(`width="${opts.w}"`);
-  if (opts.h) attrs.push(`height="${opts.h}"`);
-  attrs.push(`em="${opts.em ? "true" : "false"}"`);
-  return `<text ${attrs.join(" ")}>${esc(txt)}&#10;</text>`;
+/** One ePOS-Print text line. Uses the most universally-supported markup to
+ *  avoid a printer SchemaError on older firmware: alignment on its own element,
+ *  double-size via dw/dh (not the newer width/height magnification), bold via em.
+ *  `big` = double width+height. */
+function line(txt: string, opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
+  const out: string[] = [];
+  if (opts.align) out.push(`<text align="${opts.align}"/>`);
+  const attrs = [
+    `dw="${opts.big ? "true" : "false"}"`,
+    `dh="${opts.big ? "true" : "false"}"`,
+    `em="${opts.em ? "true" : "false"}"`,
+  ];
+  out.push(`<text ${attrs.join(" ")}>${esc(txt)}&#10;</text>`);
+  return out.join("");
 }
 
 /** An empty ePOS-Print doc — the "nothing to print" reply to a poll. */
@@ -77,27 +83,27 @@ export function buildEposXml(o: Order, shopName: string): string {
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
   const b: string[] = [];
-  // No lang="zh-hans" — this unit has no CJK font (see header note).
-  b.push(`<text smooth="true"/>`);
-  b.push(line(ascii(shopName) || "KITCHEN", { align: "center", w: 2, h: 2, em: true }));
+  // No lang="zh-hans" (no CJK font) and no smooth/width/height (SchemaError on
+  // this firmware) — only the classic dw/dh + em + align markup.
+  b.push(line(ascii(shopName) || "KITCHEN", { align: "center", big: true, em: true }));
   b.push(line("KITCHEN ORDER", { align: "center" }));
   b.push(line(RULE, { align: "left" }));
   // order type — biggest thing on the ticket
-  b.push(line(t.badge, { align: "center", w: 3, h: 3, em: true }));
+  b.push(line(t.badge, { align: "center", big: true, em: true }));
   b.push(line(`#${o.id.slice(0, 5).toUpperCase()}   ${time}`, { align: "left" }));
-  if (t.phone) b.push(line(`Tel ${fmtPhone(t.phone)}`, { w: 2, h: 1, em: true }));
+  if (t.phone) b.push(line(`Tel ${fmtPhone(t.phone)}`, { big: true, em: true }));
   if (t.addr) b.push(line(`Addr ${t.addr}`, { em: true }));
   b.push(line(DBL));
-  // items — qty huge; prefer English name, fall back to a placeholder if a dish
+  // items — qty big; prefer English name, fall back to a placeholder if a dish
   // has only a Chinese name (which would strip to empty on this printer).
   for (const it of items) {
     const name = ascii((it as any).name_en || it.name_zh) || "(item)";
-    b.push(line(`x${it.qty}  ${name}`, { w: 2, h: 2, em: true }));
+    b.push(line(`x${it.qty}  ${name}`, { big: true, em: true }));
   }
   b.push(line(RULE));
   if (o.note) {
     const note = ascii(o.note);
-    if (note) b.push(line(`! Note: ${note}`, { w: 2, h: 2, em: true }));
+    if (note) b.push(line(`! Note: ${note}`, { big: true, em: true }));
   }
   b.push(line(`${count} items total`, { align: "center" }));
   b.push(`<feed line="2"/>`);
