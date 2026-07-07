@@ -8,6 +8,7 @@ import { createOrder, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
+import CloverPayment from "@/components/CloverPayment";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -49,6 +50,8 @@ export default function PublicMenu() {
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [placed, setPlaced] = useState(false);
+  // togo/delivery pay-first: the order awaiting card payment (Clover sheet)
+  const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number; lines: PlacedLine[] } | null>(null);
   const [activeCat, setActiveCat] = useState<string>("");
   const [sheetDish, setSheetDish] = useState<MenuItem | null>(null); // open 多规格 size sheet
   const railRef = useRef<HTMLElement>(null);
@@ -309,9 +312,13 @@ export default function PublicMenu() {
     }
 
     if (togoMode && res.id) {
-      // Pay-first: hand off to Clover checkout; the webhook/reconcile marks the
-      // order paid, which is what releases it to the kitchen + printer.
-      window.location.href = `/api/pay/checkout?orderId=${res.id}`;
+      // Pay-first: show the Clover card sheet. On success the server (re-prices +)
+      // charges and marks the order paid, which releases it to the kitchen/printer.
+      setPayingOrder({
+        id: res.id,
+        amount: pricing.grandTotal,
+        lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })),
+      });
       return;
     }
 
@@ -934,6 +941,26 @@ export default function PublicMenu() {
             )}
           </div>
         </div>
+      )}
+
+      {/* pay-first: Clover card sheet for togo/delivery */}
+      {payingOrder && (
+        <CloverPayment
+          orderId={payingOrder.id}
+          amount={payingOrder.amount}
+          lang={lang}
+          onClose={() => setPayingOrder(null)}
+          onPaid={() => {
+            const po = payingOrder;
+            setPayingOrder(null);
+            setPlaced(true);
+            if (po) setPlacedOrders((p) => [...p, { lines: po.lines, total: po.amount }]);
+            setCart({});
+            setTableNo(lockedTable ?? "");
+            setPhone("");
+            setNote("");
+          }}
+        />
       )}
 
       {/* placed confirmation */}

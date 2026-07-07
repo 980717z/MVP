@@ -143,16 +143,37 @@ HCO (Q1) is now the FALLBACK — still record its answer for completeness.
 
 ---
 
-## Deliverable: fill this in and we start Phase 1
+## Deliverable — ANSWERED 2026-07-07 (sandbox, CA merchant, CAD)
 
 ```
-Q1 CAD Hosted Checkout:   [ works / NOT available → iframe pivot ]   notes:
-Q2 payment signal:        [ webhook works / poll-only → reconcile primary ]  header/secret:
-Q3 tip untaxed:           [ explicit lines ok / must send single total ]     tax recorded:
-Q4 session TTL:           ____ min   → order-expiry sweep set to ____ min
-Env confirmed:            CLOVER_ENV, CLOVER_BASE, CLOVER_MERCHANT_ID, CLOVER_ECOMM_TOKEN in .env.local
+Q1 CAD ecommerce:   ✅ WORKS. clv_ token (public key) → POST /v1/charges
+                    (Bearer private key + X-Clover-Merchant-Id) charged 8117 cents
+                    CAD, status:"succeeded", paid:true, approved_by_network. No US forcing.
+Q2 payment signal:  ✅ SYNCHRONOUS. The charge HTTP-200 response IS the confirmation.
+                    NO webhook, NO reconcile-poll needed. (This is why iframe > HCO.)
+Q3 tip untaxed:     ✅ We send ONE total (food+HST+tip). Clover charges EXACTLY that,
+                    adds nothing. We own the breakdown; Clover never re-taxes a charge.
+Q4 session TTL:     ✅ MOOT — no session, charge is instant. Nothing to expire/sweep.
+Decline shape:      TBD — both sandbox test cards approved; need the specific decline
+                    trigger. Handle defensively (non-200 OR status!=succeeded = failed);
+                    confirm exact trigger + body in the integration test.
 ```
 
-Paste those four answers back and I'll build `lib/clover.ts` + the `/api/pay/*`
-routes + the integration/E2E test layer against the shape the sandbox actually has —
-no guessing, no rework.
+### Confirmed endpoints
+- **Tokenize (client, clover.js / iframe):** `POST https://token-sandbox.dev.clover.com/v1/tokens`
+  header `apikey: <PUBLIC_KEY>`, body `{card:{number,exp_month,exp_year,cvv,brand}}` → `{id:"clv_…"}`. Single-use.
+- **Charge (server):** `POST $CLOVER_BASE/v1/charges` header `Authorization: Bearer <PRIVATE_KEY>` +
+  `X-Clover-Merchant-Id: <MID>`, body `{amount(cents),currency:"cad",source:"clv_…",ecomind:"ecom",description}`
+  → `{id,status:"succeeded",paid,amount,currency,outcome,source:{last4,brand}}`.
+
+### Architecture simplification (vs the original webhook/HCO plan)
+The synchronous charge collapses the design: **drop `/api/pay/webhook`, `/api/pay/reconcile`,
+session-TTL sweep**. New flow:
+1. Order created `payment_status='unpaid'` (togo/delivery).
+2. Client loads clover.js iframe (PUBLIC key) → customer enters card → iframe returns a `clv_` token.
+3. Client POSTs `{orderId, token}` to `/api/pay/charge`.
+4. Server **re-prices from DB items** (never trust client amount), charges Clover with the PRIVATE key,
+   and on `succeeded` sets `payment_status='paid', paid_at=now()` — which is the DB gate that releases
+   the order to the kitchen/printer.
+5. Charge result returns synchronously → client shows success/decline.
+Money settles to the merchant's own Clover MID; BentoOS never holds funds.
