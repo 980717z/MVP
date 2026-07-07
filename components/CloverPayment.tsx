@@ -3,10 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Clover hosted-iframe card form. The card fields are Clover-hosted iframes
-//  (PCI: the card number never touches our page or server). On pay we tokenize
-//  client-side (public key) → POST {orderId, token} to /api/pay/charge, which
-//  re-prices and charges server-side. Diner-facing → follows DESIGN.md (jade/paper).
+//  Clover hosted-iframe checkout: Apple Pay / Google Pay wallet buttons +
+//  a card form. All three tokenize client-side (card never touches our page)
+//  and POST {orderId, token} to /api/pay/charge, which re-prices and charges
+//  server-side. Diner-facing → DESIGN.md (jade/paper).
+//
+//  ⚠️ Wallet buttons are wired per Clover's docs but need a REAL device to
+//  verify (Apple Pay = Safari/iOS, Google Pay = Chrome/Android). Every wallet
+//  call is defensive: if the SDK shape differs, the wallet section hides and
+//  the (proven) card form still works. The exact token field may need a tweak
+//  after the first real-device test. Apple Pay also needs the domain file at
+//  /.well-known/apple-developer-merchantid-domain-association (see public/).
 // ─────────────────────────────────────────────────────────────────────────
 
 const sdkUrl = (env: string) =>
@@ -48,8 +55,27 @@ export default function CloverPayment({
   const cloverRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [walletsShown, setWalletsShown] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
+  const amountCents = Math.round(amount * 100);
+
+  // Shared: hand a token to the server. Returns true on paid.
+  const chargeWithToken = async (token: string): Promise<boolean> => {
+    setErr(null);
+    const res = await fetch("/api/pay/charge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, token }),
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({ ok: false })) : { ok: false, error: t("网络错误", "Network error") };
+    if (data.ok) {
+      onPaid({ last4: data.last4, brand: data.brand });
+      return true;
+    }
+    setErr(data.error || t("支付失败，请重试", "Payment failed — please try again"));
+    return false;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +86,19 @@ export default function CloverPayment({
       setErr(t("在线支付尚未开通", "Online payment isn't set up yet"));
       return;
     }
+
+    // Apple Pay fires a window-level 'paymentMethod' event with the token.
+    const onApplePaymentMethod = async (e: any) => {
+      try {
+        const token = e?.detail?.tokenRecieved?.id || e?.detail?.token;
+        if (!token) return;
+        const ok = await chargeWithToken(token);
+        cloverRef.current?.updateApplePaymentStatus?.(ok ? "success" : "failed");
+      } catch {
+        /* card form remains the fallback */
+      }
+    };
+
     loadCloverSdk(env)
       .then(() => {
         if (cancelled) return;
@@ -73,15 +112,56 @@ export default function CloverPayment({
         elements.create("CARD_CVV", style).mount("#cc-cvv");
         elements.create("CARD_POSTAL_CODE", style).mount("#cc-postal");
         setReady(true);
+
+        // ── Wallets (best-effort, isolated) ──────────────────────────────
+        let any = false;
+        // Apple Pay
+        try {
+          const apReq = clover.createApplePaymentRequest?.({ amount: amountCents, countryCode: "CA", currencyCode: "CAD" });
+          if (apReq) {
+            const apBtn = elements.create("PAYMENT_REQUEST_BUTTON_APPLE_PAY", { applePaymentRequest: apReq, sessionIdentifier: mid });
+            apBtn.mount("#apple-pay-button");
+            window.addEventListener("paymentMethod", onApplePaymentMethod);
+            any = true;
+          }
+        } catch {
+          /* Apple Pay unavailable on this device/browser — skip */
+        }
+        // Google Pay
+        try {
+          const grBtn = elements.create("PAYMENT_REQUEST_BUTTON", {
+            paymentReqData: { total: { label: "BentoOS", amount: amountCents }, options: { button: { buttonType: "long" } } },
+          });
+          grBtn.mount("#google-pay-button");
+          grBtn.addEventListener?.("paymentMethod", async (d: any) => {
+            const token = d?.token || d?.tokenRecieved?.id || d?.detail?.tokenRecieved?.id || d?.detail?.token;
+            if (token) await chargeWithToken(token);
+          });
+          any = true;
+        } catch {
+          /* Google Pay unavailable — skip */
+        }
+        // Only reveal the wallet section (+ "or pay with card" divider) if a
+        // button actually rendered — otherwise non-wallet diners see an empty gap.
+        if (any) {
+          setTimeout(() => {
+            if (cancelled) return;
+            const ap = document.getElementById("apple-pay-button");
+            const gp = document.getElementById("google-pay-button");
+            if ((ap?.childElementCount ?? 0) > 0 || (gp?.childElementCount ?? 0) > 0) setWalletsShown(true);
+          }, 1200);
+        }
       })
       .catch(() => !cancelled && setErr(t("支付组件加载失败，请刷新重试", "Couldn't load the card form — please refresh")));
+
     return () => {
       cancelled = true;
+      window.removeEventListener("paymentMethod", onApplePaymentMethod);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pay = async () => {
+  const payCard = async () => {
     if (!cloverRef.current) return;
     setErr(null);
     setPaying(true);
@@ -98,18 +178,8 @@ export default function CloverPayment({
         setPaying(false);
         return;
       }
-      const res = await fetch("/api/pay/charge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, token }),
-      });
-      const data = await res.json().catch(() => ({ ok: false }));
-      if (data.ok) {
-        onPaid({ last4: data.last4, brand: data.brand });
-      } else {
-        setErr(data.error || t("支付失败，请重试", "Payment failed — please try again"));
-        setPaying(false);
-      }
+      const ok = await chargeWithToken(token);
+      if (!ok) setPaying(false);
     } catch {
       setErr(t("网络错误，请重试", "Network error — please try again"));
       setPaying(false);
@@ -127,6 +197,19 @@ export default function CloverPayment({
           <span className="text-sm text-ink-soft">{t("应付", "Amount due")}</span>
           <span className="text-xl font-bold tabular-nums text-jade">${amount.toFixed(2)}</span>
         </div>
+
+        {/* wallets — auto-hide on unsupported devices */}
+        <div className={walletsShown ? "space-y-2" : "hidden"}>
+          <div id="apple-pay-button" style={{ display: "inline-block", width: "100%", height: 44, borderRadius: 6 }} />
+          <div id="google-pay-button" style={{ minHeight: 44 }} />
+          <div className="flex items-center gap-3 py-1 text-xs text-ink-faint">
+            <span className="h-px flex-1 bg-slate-200" />
+            {t("或用银行卡", "or pay with card")}
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+        </div>
+
+        {/* card */}
         <div className="space-y-2">
           <div id="cc-number" className="min-h-[46px] rounded-lg border border-slate-300 px-3 py-3" />
           <div className="grid grid-cols-2 gap-2">
@@ -138,7 +221,7 @@ export default function CloverPayment({
         {!ready && !err && <p className="mt-2 text-center text-xs text-ink-faint">{t("正在加载安全支付…", "Loading secure form…")}</p>}
         {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
         <button
-          onClick={pay}
+          onClick={payCard}
           disabled={!ready || paying}
           className="mt-4 w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
         >
