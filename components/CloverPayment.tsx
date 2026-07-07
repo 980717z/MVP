@@ -55,10 +55,17 @@ export default function CloverPayment({
   const cloverRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [paying, setPaying] = useState(false);
-  const [walletsShown, setWalletsShown] = useState(false);
+  // wallet availability is per-button + async: show both while checking (they
+  // must be laid out to mount), then keep only the ones that actually rendered.
+  const [walletCheck, setWalletCheck] = useState<"checking" | "done">("checking");
+  const [appleOk, setAppleOk] = useState(false);
+  const [googleOk, setGoogleOk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
   const amountCents = Math.round(amount * 100);
+  // Clover mounts each field as an iframe with its own tall default height;
+  // pin container + iframe to 44px (a proper touch target, not a big empty box).
+  const fieldCls = `h-11 overflow-hidden rounded-lg border border-slate-300 [&_iframe]:!h-11 [&_iframe]:!w-full ${ready ? "" : "animate-pulse bg-slate-50"}`;
 
   // Shared: hand a token to the server. Returns true on paid.
   const chargeWithToken = async (token: string): Promise<boolean> => {
@@ -106,7 +113,9 @@ export default function CloverPayment({
         const clover = new Clover(pub, { merchantId: mid });
         cloverRef.current = clover;
         const elements = clover.elements();
-        const style = { input: { fontSize: "16px", fontFamily: '"General Sans","Noto Sans SC",sans-serif' } };
+        // Clover's fields are cross-origin iframes — they can't load our webfont,
+        // so request the cleanest SYSTEM stack the diner's device already has.
+        const style = { input: { fontSize: "16px", fontFamily: '-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif', color: "#1C1B19" } };
         elements.create("CARD_NUMBER", style).mount("#cc-number");
         elements.create("CARD_DATE", style).mount("#cc-date");
         elements.create("CARD_CVV", style).mount("#cc-cvv");
@@ -141,15 +150,38 @@ export default function CloverPayment({
         } catch {
           /* Google Pay unavailable — skip */
         }
-        // Only reveal the wallet section (+ "or pay with card" divider) if a
-        // button actually rendered — otherwise non-wallet diners see an empty gap.
+        // Keep only the buttons that actually rendered. Clover mounts a wallet
+        // iframe asynchronously and ONLY where the wallet is available, so we
+        // WATCH each container (a fixed timeout would race the mount and could
+        // wrongly hide an available wallet). Safety cutoff ends the "checking"
+        // placeholders at 4s regardless.
         if (any) {
+          const watch = (id: string, setOk: (v: boolean) => void) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            if (el.childElementCount > 0) {
+              setOk(true);
+              return null;
+            }
+            const obs = new MutationObserver(() => {
+              if (!cancelled && el.childElementCount > 0) {
+                setOk(true);
+                obs.disconnect();
+              }
+            });
+            obs.observe(el, { childList: true });
+            return obs;
+          };
+          const obsA = watch("apple-pay-button", setAppleOk);
+          const obsG = watch("google-pay-button", setGoogleOk);
           setTimeout(() => {
             if (cancelled) return;
-            const ap = document.getElementById("apple-pay-button");
-            const gp = document.getElementById("google-pay-button");
-            if ((ap?.childElementCount ?? 0) > 0 || (gp?.childElementCount ?? 0) > 0) setWalletsShown(true);
-          }, 1200);
+            obsA?.disconnect();
+            obsG?.disconnect();
+            setWalletCheck("done");
+          }, 4000);
+        } else {
+          setWalletCheck("done");
         }
       })
       .catch(() => !cancelled && setErr(t("支付组件加载失败，请刷新重试", "Couldn't load the card form — please refresh")));
@@ -189,6 +221,7 @@ export default function CloverPayment({
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/50" onClick={onClose}>
       <div className="mx-auto w-full max-w-[440px] rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-slate-200" />
         <div className="mb-3 flex items-center justify-between">
           <div className="text-lg font-bold text-ink">{t("在线支付", "Pay online")}</div>
           <button onClick={onClose} className="text-ink-faint" aria-label="close">✕</button>
@@ -198,27 +231,42 @@ export default function CloverPayment({
           <span className="text-xl font-bold tabular-nums text-jade">${amount.toFixed(2)}</span>
         </div>
 
-        {/* wallets — auto-hide on unsupported devices */}
-        <div className={walletsShown ? "space-y-2" : "hidden"}>
-          <div id="apple-pay-button" style={{ display: "inline-block", width: "100%", height: 44, borderRadius: 6 }} />
-          <div id="google-pay-button" style={{ minHeight: 44 }} />
-          <div className="flex items-center gap-3 py-1 text-xs text-ink-faint">
-            <span className="h-px flex-1 bg-slate-200" />
-            {t("或用银行卡", "or pay with card")}
-            <span className="h-px flex-1 bg-slate-200" />
-          </div>
+        {/* wallets — each button shows only if it actually rendered; buttons
+            pinned to 44px (Clover mounts them as tall iframes, like the card fields) */}
+        <div className={walletCheck === "checking" || appleOk || googleOk ? "space-y-2" : "hidden"}>
+          <div id="apple-pay-button" className={`h-11 overflow-hidden rounded-md [&_iframe]:!h-11 [&_iframe]:!w-full ${walletCheck === "checking" || appleOk ? "" : "hidden"}`} />
+          <div id="google-pay-button" className={`h-11 overflow-hidden rounded-md [&_iframe]:!h-11 [&_iframe]:!w-full ${walletCheck === "checking" || googleOk ? "" : "hidden"}`} />
+          {walletCheck === "done" && (appleOk || googleOk) && (
+            <div className="flex items-center gap-3 py-1 text-xs text-ink-faint">
+              <span className="h-px flex-1 bg-slate-200" />
+              {t("或用银行卡", "or pay with card")}
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
+          )}
         </div>
 
-        {/* card */}
-        <div className="space-y-2">
-          <div id="cc-number" className="min-h-[46px] rounded-lg border border-slate-300 px-3 py-3" />
-          <div className="grid grid-cols-2 gap-2">
-            <div id="cc-date" className="min-h-[46px] rounded-lg border border-slate-300 px-3 py-3" />
-            <div id="cc-cvv" className="min-h-[46px] rounded-lg border border-slate-300 px-3 py-3" />
+        {/* card — labels use our font (the iframe fields can't); fields are a
+            fixed 44px tall (force the Clover iframe height) and shimmer while loading */}
+        <div className="space-y-2.5">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-soft">{t("卡号", "Card number")}</label>
+            <div id="cc-number" className={fieldCls} />
           </div>
-          <div id="cc-postal" className="min-h-[46px] rounded-lg border border-slate-300 px-3 py-3" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-soft">{t("有效期", "Expiry")}</label>
+              <div id="cc-date" className={fieldCls} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-soft">CVV</label>
+              <div id="cc-cvv" className={fieldCls} />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-soft">{t("邮编（可选）", "Postal (optional)")}</label>
+            <div id="cc-postal" className={fieldCls} />
+          </div>
         </div>
-        {!ready && !err && <p className="mt-2 text-center text-xs text-ink-faint">{t("正在加载安全支付…", "Loading secure form…")}</p>}
         {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
         <button
           onClick={payCard}
