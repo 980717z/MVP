@@ -36,6 +36,18 @@ async function handle(req: Request): Promise<Response> {
   const db = supabaseAdmin();
   if (!slug || !db) return new Response(eposEmpty(), { headers: XML_HEADERS });
 
+  // DEBUG (temporary): the printer POSTs its print RESULT back here as a
+  // <PrintResponseInfo> carrying success/error codes. We normally ignore the
+  // body; capture non-trivial bodies so we can see WHY a job doesn't print.
+  if (req.method === "POST") {
+    try {
+      const body = await req.text();
+      if (body && body.trim().length > 20) {
+        await db.from("print_debug").insert({ tenant_slug: slug, body: body.slice(0, 6000) });
+      }
+    } catch { /* ignore */ }
+  }
+
   try {
     // shop name + print switch
     const { data: tenant } = await db
