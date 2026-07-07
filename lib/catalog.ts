@@ -522,6 +522,7 @@ export const MODULES: ModuleDef[] = [
     category: "compliance",
     icon: "🧊",
     ready: true,
+    portal: true,
     label: { zh: "食品安全与清洁记录", en: "Food Safety & Cleaning" },
     pain: {
       zh: "温度记录、开关店清单分散，检查 / 留档不方便",
@@ -529,12 +530,13 @@ export const MODULES: ModuleDef[] = [
     },
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
-      { key: "type", label: { zh: "记录类型", en: "Type" }, type: "select", half: true,
-        options: [{ zh: "温度", en: "Temp" }, { zh: "开店清单", en: "Open" }, { zh: "关店清单", en: "Close" }, { zh: "清洁", en: "Cleaning" }] },
-      { key: "item", label: { zh: "项目", en: "Item" }, type: "text", half: true },
+      { key: "category", label: { zh: "类别", en: "Category" }, type: "select", half: true,
+        options: [{ zh: "温度", en: "Temp" }, { zh: "开店清单", en: "Open" }, { zh: "关店清单", en: "Close" }, { zh: "清洁", en: "Cleaning" }, { zh: "其他", en: "Other" }] },
+      { key: "item", label: { zh: "检查项", en: "Item" }, type: "text", half: true },
+      { key: "ok", label: { zh: "是否合格", en: "Pass" }, type: "select", options: yesNo, half: true },
       { key: "value", label: { zh: "读数/结果", en: "Value" }, type: "text", half: true },
       { key: "by", label: { zh: "记录人", en: "By" }, type: "text", half: true },
-      { key: "ok", label: { zh: "是否合格", en: "Pass" }, type: "select", options: yesNo, half: true },
+      { key: "note", label: { zh: "备注", en: "Note" }, type: "text" },
     ],
     outputs: [
       { zh: "可导出的合规台账，应付检查", en: "Exportable compliance log for audits" },
@@ -553,14 +555,14 @@ export const MODULES: ModuleDef[] = [
     },
     fields: [
       { key: "date", label: { zh: "日期", en: "Date" }, type: "date", half: true, required: true },
-      { key: "equipment", label: { zh: "设备", en: "Equipment" }, type: "select", half: true,
-        options: [{ zh: "冰箱", en: "Fridge" }, { zh: "冷柜", en: "Freezer" }, { zh: "海鲜池", en: "Tank" }, { zh: "炉灶", en: "Stove" }, { zh: "其他", en: "Other" }] },
+      { key: "equipment", label: { zh: "设备", en: "Equipment" }, type: "text", half: true },
       { key: "issue", label: { zh: "问题/保养", en: "Issue" }, type: "text", half: true },
       { key: "vendor", label: { zh: "维修方", en: "Vendor" }, type: "text", half: true },
       { key: "cost", label: { zh: "费用", en: "Cost" }, type: "money", half: true },
       { key: "status", label: { zh: "状态", en: "Status" }, type: "select", half: true,
         options: [{ zh: "待处理", en: "Open" }, { zh: "处理中", en: "In progress" }, { zh: "已完成", en: "Done" }] },
       { key: "nextService", label: { zh: "下次保养日期", en: "Next service" }, type: "date", half: true },
+      { key: "intervalDays", label: { zh: "保养周期（天）", en: "Interval (days)" }, type: "number", half: true },
     ],
     outputs: [
       { zh: "设备维护台账 + 保养到期提醒", en: "Maintenance log + service reminders" },
