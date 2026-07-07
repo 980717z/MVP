@@ -103,5 +103,16 @@ export function buildEposXml(o: Order, shopName: string): string {
   b.push(`<feed line="2"/>`);
   b.push(`<cut type="feed"/>`);
 
-  return `<?xml version="1.0" encoding="utf-8"?>\n<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
+  // Server Direct Print requires the epos-print doc WRAPPED in a PrintRequestInfo
+  // envelope (Epson SDP manual). Returning a raw <epos-print> — the ePOS-Print
+  // Web API format — makes the printer fetch the job but never render it.
+  // devid must match the printer's device ID ("local_printer").
+  const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<PrintRequestInfo Version="2.00"><ePOSPrint>` +
+    `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
+    `<PrintData>${eposDoc}</PrintData>` +
+    `</ePOSPrint></PrintRequestInfo>`
+  );
 }
