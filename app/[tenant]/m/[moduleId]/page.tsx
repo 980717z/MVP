@@ -225,10 +225,16 @@ function rowDate(r: RecordRow): string {
   return r.date || (r.createdAt ? String(r.createdAt).slice(0, 10) : "");
 }
 
+/** Local (device/shop TZ) YYYY-MM-DD. Avoids the UTC off-by-one that
+ *  toISOString() causes in negative-offset zones like Toronto near midnight. */
+function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function filterByDateRange(rows: RecordRow[], days: number): RecordRow[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const cutoffStr = localYmd(cutoff);
   return rows.filter((r) => {
     const d = rowDate(r);
     return d && d >= cutoffStr;
@@ -760,7 +766,7 @@ export default function ModulePage() {
       if (highScrap.length) list.push({ type: "warn", text: `🗑️ 报废率偏高（≥10%）：${highScrap.join("、")}` });
     }
     if (moduleId === "group-booking") {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localYmd(new Date());
       const upcoming = rows.filter((r) => r.date && r.date >= today && r.date <= addDays(today, 3));
       if (upcoming.length) list.push({ type: "info", text: `📅 近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
     }
@@ -768,7 +774,7 @@ export default function ModulePage() {
       const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
       if (open.length) list.push({ type: "warn", text: `🔧 ${open.length} 个设备问题待处理：${open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")}` });
       // 保养到期提醒：下次保养日期已过期或在近7天内
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localYmd(new Date());
       const soon = addDays(today, 7);
       const due = rows.filter((r) => r.nextService && r.nextService <= soon);
       if (due.length) {
@@ -826,7 +832,7 @@ export default function ModulePage() {
       // 明日备货建议 = round(近7天该菜日均售出 × 1.1)，多备10%防卖断
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 7);
-      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const cutoffStr = localYmd(cutoff);
       const byDish: Record<string, { sold: number; days: Set<string> }> = {};
       for (const r of rows) {
         if (!r.dish || !r.date || r.date < cutoffStr) continue;
@@ -970,7 +976,9 @@ export default function ModulePage() {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    await updateRecord(editingId, editForm);
+    // Re-run computed rules (pay=hours×rate, net, balance, total…) so an inline
+    // edit keeps derived fields consistent, same as the entry form does.
+    await updateRecord(editingId, applyComputed(editForm, mod?.computed));
     setEditingId(null);
     setEditForm({});
     setTick((t) => t + 1);
