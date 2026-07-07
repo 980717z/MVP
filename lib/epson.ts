@@ -6,6 +6,11 @@
 //  prints it and cuts. Big fonts (width/height 2-3) so an older chef reads it
 //  at a glance — mirrors components/KitchenTicket.tsx.
 //
+//  ⚠️ TEMPORARY (2026-07-07): this shop's TM-T88VI is the ALPHANUMERIC SKU
+//  ("Resident Character: Alphanumeric" on its self-test) — it has NO Chinese
+//  font, so any 中文 in the ticket makes the whole job fail silently. Until we
+//  add image/raster rendering for CJK, the ticket is forced to English/ASCII
+//  (ascii() strips anything non-printable-ASCII). Items fall back to name_en.
 //  ePOS-Print ref: https://download.epson-biz.com/ (ePOS-Print XML spec).
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -16,8 +21,14 @@ const NS = "http://www.epson-pos.com/schemas/2011/03/epos-print";
 const RULE = "--------------------------------"; // ~32 chars, fits 80mm Font A
 const DBL = "================================";
 
+/** Keep only printable ASCII — this printer can't render CJK, so non-ASCII
+ *  bytes would abort the whole print job. */
+function ascii(s: unknown): string {
+  return String(s ?? "").replace(/[^\x20-\x7E]/g, "").trim();
+}
+
 function esc(s: string): string {
-  return (s || "")
+  return ascii(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -33,10 +44,10 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
   const t = (o as any).order_type ?? "dine_in";
   if (t === "delivery") {
     const a = (o as any).address;
-    return { badge: "配送 DELIVERY", phone: o.phone, addr: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined };
+    return { badge: "DELIVERY", phone: o.phone, addr: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined };
   }
-  if (t === "togo") return { badge: "自取 TAKEOUT", phone: o.phone || undefined };
-  return { badge: o.table_no ? `堂食 桌 ${displayTable(o.table_no)}` : "堂食 DINE-IN" };
+  if (t === "togo") return { badge: "TAKEOUT", phone: o.phone || undefined };
+  return { badge: o.table_no ? `DINE-IN  Table ${displayTable(o.table_no)}` : "DINE-IN" };
 }
 
 /** An ePOS-Print `<text>` line with size (1-8) + optional bold, ending in a newline. */
@@ -54,7 +65,7 @@ export function eposEmpty(): string {
   return `<?xml version="1.0" encoding="utf-8"?><epos-print xmlns="${NS}"/>`;
 }
 
-/** Build the big-font kitchen ticket for one order. */
+/** Build the big-font kitchen ticket for one order (English/ASCII only — see note above). */
 export function buildEposXml(o: Order, shopName: string): string {
   const t = typeBadge(o);
   const time = (() => {
@@ -66,24 +77,29 @@ export function buildEposXml(o: Order, shopName: string): string {
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
   const b: string[] = [];
-  // zh-hans enables the multibyte (Simplified Chinese) font on the TM-T88VI.
-  b.push(`<text lang="zh-hans" smooth="true"/>`);
-  b.push(line(shopName, { align: "center", w: 2, h: 2, em: true }));
-  b.push(line("后厨备餐单", { align: "center" }));
+  // No lang="zh-hans" — this unit has no CJK font (see header note).
+  b.push(`<text smooth="true"/>`);
+  b.push(line(ascii(shopName) || "KITCHEN", { align: "center", w: 2, h: 2, em: true }));
+  b.push(line("KITCHEN ORDER", { align: "center" }));
   b.push(line(RULE, { align: "left" }));
   // order type — biggest thing on the ticket
   b.push(line(t.badge, { align: "center", w: 3, h: 3, em: true }));
   b.push(line(`#${o.id.slice(0, 5).toUpperCase()}   ${time}`, { align: "left" }));
-  if (t.phone) b.push(line(`电话 ${fmtPhone(t.phone)}`, { w: 2, h: 1, em: true }));
-  if (t.addr) b.push(line(`地址 ${t.addr}`, { em: true }));
+  if (t.phone) b.push(line(`Tel ${fmtPhone(t.phone)}`, { w: 2, h: 1, em: true }));
+  if (t.addr) b.push(line(`Addr ${t.addr}`, { em: true }));
   b.push(line(DBL));
-  // items — qty huge
+  // items — qty huge; prefer English name, fall back to a placeholder if a dish
+  // has only a Chinese name (which would strip to empty on this printer).
   for (const it of items) {
-    b.push(line(`x${it.qty}  ${it.name_zh}`, { w: 2, h: 2, em: true }));
+    const name = ascii((it as any).name_en || it.name_zh) || "(item)";
+    b.push(line(`x${it.qty}  ${name}`, { w: 2, h: 2, em: true }));
   }
   b.push(line(RULE));
-  if (o.note) b.push(line(`! 备注: ${o.note}`, { w: 2, h: 2, em: true }));
-  b.push(line(`共 ${count} 份`, { align: "center" }));
+  if (o.note) {
+    const note = ascii(o.note);
+    if (note) b.push(line(`! Note: ${note}`, { w: 2, h: 2, em: true }));
+  }
+  b.push(line(`${count} items total`, { align: "center" }));
   b.push(`<feed line="2"/>`);
   b.push(`<cut type="feed"/>`);
 

@@ -44,7 +44,9 @@ async function handle(req: Request): Promise<Response> {
       .eq("slug", slug)
       .maybeSingle();
     if (tenant && tenant.print_enabled === false) return new Response(eposEmpty(), { headers: XML_HEADERS });
-    const shopName = (tenant?.name as any)?.zh || (tenant?.name as any)?.en || slug;
+    // Prefer the English name — this shop's printer has no CJK font (temporary,
+    // see lib/epson.ts). Falls back to zh/slug (ascii() will strip non-ASCII).
+    const shopName = (tenant?.name as any)?.en || (tenant?.name as any)?.zh || slug;
 
     // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query
     // itself (dine-in always; togo/delivery only when paid) — filtering after a
