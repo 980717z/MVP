@@ -80,17 +80,14 @@ export function buildEposXml(o: Order, shopName: string): string {
   const items = o.items.filter((it: any) => !it.cancelled);
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
-  // TEMP ISOLATION: exact Epson-manual minimal sample only (Hello World style),
-  // to prove the epos-print schema is accepted before re-adding the full ticket.
+  // TEMP ISOLATION: EXACTLY the epos-print that printed via direct ePOS-Print
+  // (bare <text>, no attributes, no &#10;, bare <feed/> and <cut/>).
   void time; void items; void count; void t;
   const b: string[] = [
-    `<text lang="en"/>`,
-    `<text align="center"/>`,
-    `<text dw="true" dh="true"/>`,
-    `<text>PRINT TEST ${ascii(o.table_no) || "?"}&#10;</text>`,
+    `<text>PRINT TEST ${ascii(o.table_no) || "?"}</text>`,
   ];
-  b.push(`<feed line="3"/>`);
-  b.push(`<cut type="feed"/>`);
+  b.push(`<feed/>`);
+  b.push(`<cut/>`);
 
   // Server Direct Print response, per the Epson SDP manual (Version="3.00",
   // supported by TM-T88VI): PrintRequestInfo → ePOSPrint → Parameter(devid,
