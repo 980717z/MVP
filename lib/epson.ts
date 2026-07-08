@@ -103,20 +103,16 @@ export function buildEposXml(o: Order, shopName: string): string {
   b.push(`<feed/>`);
   b.push(`<cut/>`);
 
-  // Server Direct Print: wrap in a PrintRequestInfo envelope, and — critically —
-  // <PrintData> must contain the ePOS-Print doc as XML-ESCAPED TEXT, not nested
-  // live XML. Nesting makes the printer validate the <text> elements against the
-  // SDP schema (→ SchemaError) instead of extracting + rendering them. Direct
-  // ePOS-Print (SOAP) works because it parses epos-print on its own; SDP needs
-  // the escaped string it can un-escape and parse separately. devid must match
-  // the printer's device ID ("local_printer").
-  const eposDoc = `<?xml version="1.0" encoding="utf-8"?><epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
-  const printData = eposDoc.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Wrap in the SOAP envelope — the EXACT format that prints on this unit via
+  // direct ePOS-Print (we confirmed success="true" + paper). The printer feeds
+  // the Server-Direct-Print response into the same ePOS-Print engine, so the
+  // response must be this SOAP+epos-print shape (the PrintRequestInfo wrapper
+  // gave SchemaError on this firmware).
+  const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
-    `<PrintRequestInfo Version="2.00"><ePOSPrint>` +
-    `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
-    `<PrintData>${printData}</PrintData>` +
-    `</ePOSPrint></PrintRequestInfo>`
+    `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>` +
+    eposDoc +
+    `</s:Body></s:Envelope>`
   );
 }
