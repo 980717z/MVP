@@ -50,14 +50,18 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
   return { badge: o.table_no ? `DINE-IN  Table ${displayTable(o.table_no)}` : "DINE-IN" };
 }
 
-/** One ePOS-Print text line. Uses the most universally-supported markup to
- *  avoid a printer SchemaError on older firmware: alignment on its own element,
- *  double-size via dw/dh (not the newer width/height magnification), bold via em.
+/** One ePOS-Print text line. Per the Epson ePOS-Print/SDP spec, formatting
+ *  attributes each go on their OWN self-closing <text .../> element and the
+ *  CONTENT goes on a bare <text> with no attributes — mixing them on one <text>
+ *  is a SchemaError. &#10; in content is allowed with PrintRequestInfo v3.00.
  *  `big` = double width+height. */
-function line(txt: string, _opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
-  // Line break via <feed/>, NOT a &#10; inside <text> — the direct print that
-  // worked had no &#10;; this firmware's SDP schema appears to reject it.
-  return `<text>${esc(txt)}</text><feed/>`;
+function line(txt: string, opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
+  return (
+    `<text align="${opts.align || "left"}"/>` +
+    `<text width="${opts.big ? 2 : 1}" height="${opts.big ? 2 : 1}"/>` +
+    `<text em="${opts.em ? "true" : "false"}"/>` +
+    `<text>${esc(txt)}&#10;</text>`
+  );
 }
 
 /** An empty ePOS-Print doc — the "nothing to print" reply to a poll. */
@@ -77,8 +81,7 @@ export function buildEposXml(o: Order, shopName: string): string {
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
   const b: string[] = [];
-  // No lang="zh-hans" (no CJK font) and no smooth/width/height (SchemaError on
-  // this firmware) — only the classic dw/dh + em + align markup.
+  b.push(`<text lang="en"/>`); // ASCII font (no CJK on this unit)
   b.push(line(ascii(shopName) || "KITCHEN", { align: "center", big: true, em: true }));
   b.push(line("KITCHEN ORDER", { align: "center" }));
   b.push(line(RULE, { align: "left" }));
@@ -100,17 +103,16 @@ export function buildEposXml(o: Order, shopName: string): string {
     if (note) b.push(line(`! Note: ${note}`, { big: true, em: true }));
   }
   b.push(line(`${count} items total`, { align: "center" }));
-  b.push(`<feed/>`);
-  b.push(`<cut/>`);
+  b.push(`<feed line="3"/>`);
+  b.push(`<cut type="feed"/>`);
 
-  // Server Direct Print: PrintRequestInfo envelope with the ePOS-Print doc
-  // NESTED (not escaped — escaping broke Parameter parsing / SchemaError). The
-  // epos-print here is bare (no <text> attributes) — the exact shape that
-  // printed via direct ePOS-Print. devid = "local_printer".
+  // Server Direct Print response, per the Epson SDP manual (Version="3.00",
+  // supported by TM-T88VI): PrintRequestInfo → ePOSPrint → Parameter(devid,
+  // timeout, printjobid) + PrintData with the ePOS-Print doc NESTED (not escaped).
   const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
-    `<PrintRequestInfo Version="2.00"><ePOSPrint>` +
+    `<PrintRequestInfo Version="3.00"><ePOSPrint>` +
     `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
     `<PrintData>${eposDoc}</PrintData>` +
     `</ePOSPrint></PrintRequestInfo>`
