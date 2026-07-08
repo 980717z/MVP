@@ -43,11 +43,12 @@ function fmtPhone(p: string): string {
 
 function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
   const t = (o as any).order_type ?? "dine_in";
+  const phone = (o.phone || "").trim() || "N/A"; // blank phone → N/A on togo/delivery
   if (t === "delivery") {
     const a = (o as any).address;
-    return { badge: "DELIVERY", phone: o.phone, addr: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined };
+    return { badge: "DELIVERY", phone, addr: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined };
   }
-  if (t === "togo") return { badge: "TAKEOUT", phone: o.phone || undefined };
+  if (t === "togo") return { badge: "TAKEOUT", phone };
   return { badge: o.table_no ? `DINE-IN  Table ${displayTable(o.table_no)}` : "DINE-IN" };
 }
 

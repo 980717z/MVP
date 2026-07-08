@@ -34,11 +34,12 @@ function ensureFont(): boolean {
 
 function typeBadge(o: Order): { badge: string; sub?: string } {
   const t = (o as any).order_type ?? "dine_in";
+  const phone = (o.phone || "").trim() || "N/A"; // blank phone → N/A on the ticket
   if (t === "delivery") {
     const a = (o as any).address;
-    return { badge: "外卖", sub: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : o.phone };
+    return { badge: "外卖", sub: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : phone };
   }
-  if (t === "togo") return { badge: "自取", sub: o.phone || undefined };
+  if (t === "togo") return { badge: "自取", sub: phone };
   return { badge: o.table_no ? `堂食  台号 ${displayTable(o.table_no)}` : "堂食" };
 }
 

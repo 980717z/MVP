@@ -88,7 +88,10 @@ export async function createOrder(
     items: input.items,
     total: input.total,
     table_no: input.table_no ?? "",
-    phone: input.phone ?? "",
+    // phone is NOT NULL + must match orders_phone_chk (10-digit / +intl / 'N/A').
+    // A blank phone (e.g. a dine-in order with no number) is stored as the
+    // sentinel "N/A" so the insert can't fail — see supabase/phone-na.sql.
+    phone: (input.phone ?? "").trim() || "N/A",
     note: input.note ?? "",
     order_type: input.order_type ?? "dine_in",
     address: input.address ?? null,

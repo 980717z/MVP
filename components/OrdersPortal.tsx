@@ -311,11 +311,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
                   {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
-                  {o.phone && (
+                  {o.phone && o.phone !== "N/A" ? (
                     <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">
                       📞 {fmtPhone(o.phone)}
                     </a>
-                  )}
+                  ) : o.phone === "N/A" ? (
+                    <span className="text-sm text-slate-400">📞 N/A</span>
+                  ) : null}
                 </div>
                 <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
               </div>
