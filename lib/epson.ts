@@ -80,29 +80,15 @@ export function buildEposXml(o: Order, shopName: string): string {
   const items = o.items.filter((it: any) => !it.cancelled);
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
-  const b: string[] = [];
-  b.push(`<text lang="en"/>`); // ASCII font (no CJK on this unit)
-  b.push(line(ascii(shopName) || "KITCHEN", { align: "center", big: true, em: true }));
-  b.push(line("KITCHEN ORDER", { align: "center" }));
-  b.push(line(RULE, { align: "left" }));
-  // order type — biggest thing on the ticket
-  b.push(line(t.badge, { align: "center", big: true, em: true }));
-  b.push(line(`#${o.id.slice(0, 5).toUpperCase()}   ${time}`, { align: "left" }));
-  if (t.phone) b.push(line(`Tel ${fmtPhone(t.phone)}`, { big: true, em: true }));
-  if (t.addr) b.push(line(`Addr ${t.addr}`, { em: true }));
-  b.push(line(DBL));
-  // items — qty big; prefer English name, fall back to a placeholder if a dish
-  // has only a Chinese name (which would strip to empty on this printer).
-  for (const it of items) {
-    const name = ascii((it as any).name_en || it.name_zh) || "(item)";
-    b.push(line(`x${it.qty}  ${name}`, { big: true, em: true }));
-  }
-  b.push(line(RULE));
-  if (o.note) {
-    const note = ascii(o.note);
-    if (note) b.push(line(`! Note: ${note}`, { big: true, em: true }));
-  }
-  b.push(line(`${count} items total`, { align: "center" }));
+  // TEMP ISOLATION: exact Epson-manual minimal sample only (Hello World style),
+  // to prove the epos-print schema is accepted before re-adding the full ticket.
+  void time; void items; void count; void t;
+  const b: string[] = [
+    `<text lang="en"/>`,
+    `<text align="center"/>`,
+    `<text dw="true" dh="true"/>`,
+    `<text>PRINT TEST ${ascii(o.table_no) || "?"}&#10;</text>`,
+  ];
   b.push(`<feed line="3"/>`);
   b.push(`<cut type="feed"/>`);
 
