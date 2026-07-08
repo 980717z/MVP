@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { buildEposXml, eposEmpty } from "@/lib/epson";
+import { buildEposXml } from "@/lib/epson";
 import type { Order } from "@/lib/orders";
 
 export const runtime = "nodejs";
@@ -15,12 +15,20 @@ export const runtime = "nodejs";
 //  Print-eligible: dine-in always; togo/delivery only once payment_status='paid'
 //  (the pay-first gate). Cancelled orders never print. Honors tenants.print_enabled.
 //
-//  Server Direct Print sends both the poll and the print-result as POSTs; we
-//  treat every request the same (return next job or empty), which drains the
-//  queue safely because each job is marked on serve.
+//  Server Direct Print uses TWO POST channels (ConnectionType in the form body):
+//    • GetRequest  — "give me a job". Reply: the job's <PrintRequestInfo> XML,
+//                    OR an EMPTY body (Content-Length: 0) when nothing to print.
+//    • SetResponse — "here is my last print result". Reply: an EMPTY body (ack).
+//  Per the SDP manual (p.45 "Response When No Printing Is Performed" and the
+//  print-result flow), the no-job / ack reply MUST be an empty 200 — NOT an XML
+//  doc. Returning <epos-print/> here made the printer reject every poll and
+//  jobs served on the SetResponse channel were silently dropped (never printed).
 // ─────────────────────────────────────────────────────────────────────────
 
 const XML_HEADERS = { "Content-Type": "text/xml; charset=utf-8", "Cache-Control": "no-store" };
+// SDP "nothing for you" reply: empty body, 200. Used for idle GetRequest and for
+// the SetResponse ack. eposEmpty() (a real <epos-print/>) is kept only for tests.
+const empty = (status = 200) => new Response(null, { status, headers: XML_HEADERS });
 
 async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -31,22 +39,31 @@ async function handle(req: Request): Promise<Response> {
   // real printer never sees them. Requires EPSON_PRINT_KEY in the environment.
   const secret = process.env.EPSON_PRINT_KEY;
   if (secret && url.searchParams.get("key") !== secret) {
-    return new Response(eposEmpty(), { status: 401, headers: XML_HEADERS });
+    return empty(401);
   }
   const db = supabaseAdmin();
-  if (!slug || !db) return new Response(eposEmpty(), { headers: XML_HEADERS });
+  if (!slug || !db) return empty();
 
-  // DEBUG (temporary): the printer POSTs its print RESULT back here as a
-  // <PrintResponseInfo> carrying success/error codes. We normally ignore the
-  // body; capture non-trivial bodies so we can see WHY a job doesn't print.
+  // The SDP POST body is form-urlencoded: ConnectionType=GetRequest&ID=…  or
+  // ConnectionType=SetResponse&ID=&ResponseFile=<urlencoded PrintResponseInfo>.
+  let connType = "GetRequest";
   if (req.method === "POST") {
     try {
       const body = await req.text();
-      if (body && body.trim().length > 20) {
+      // ConnectionType is the first param; URLSearchParams reads it even though
+      // ResponseFile downstream may itself contain '&'.
+      connType = new URLSearchParams(body).get("ConnectionType") || "GetRequest";
+      // DEBUG (temporary): capture the printer's result report (SetResponse) so
+      // we can see success/error codes for each job.
+      if (connType === "SetResponse" && body.trim().length > 20) {
         await db.from("print_debug").insert({ tenant_slug: slug, body: body.slice(0, 6000) });
       }
     } catch { /* ignore */ }
   }
+
+  // SetResponse = the printer reporting a result → just acknowledge (empty 200).
+  // Never hand out a job here: a job served on this channel is never printed.
+  if (connType === "SetResponse") return empty();
 
   try {
     // shop name + print switch
@@ -55,7 +72,7 @@ async function handle(req: Request): Promise<Response> {
       .select("name, print_enabled")
       .eq("slug", slug)
       .maybeSingle();
-    if (tenant && tenant.print_enabled === false) return new Response(eposEmpty(), { headers: XML_HEADERS });
+    if (tenant && tenant.print_enabled === false) return empty();
     // Prefer the English name — this shop's printer has no CJK font (temporary,
     // see lib/epson.ts). Falls back to zh/slug (ascii() will strip non-ASCII).
     const shopName = (tenant?.name as any)?.en || (tenant?.name as any)?.zh || slug;
@@ -76,11 +93,11 @@ async function handle(req: Request): Promise<Response> {
       // Most likely the `printed_at` column isn't migrated yet — fail quiet so the
       // printer just gets "nothing to print" instead of erroring.
       console.error("[epson] query", error.message);
-      return new Response(eposEmpty(), { headers: XML_HEADERS });
+      return empty();
     }
 
     const order = (data as Order[] | null)?.[0];
-    if (!order) return new Response(eposEmpty(), { headers: XML_HEADERS });
+    if (!order) return empty();
 
     // Optimistically mark printed. The `.is('printed_at', null)` guard makes this a
     // compare-and-set so a rare double-poll can't double-print.
@@ -91,12 +108,12 @@ async function handle(req: Request): Promise<Response> {
       .is("printed_at", null)
       .select("id")
       .maybeSingle();
-    if (!claimed) return new Response(eposEmpty(), { headers: XML_HEADERS }); // someone else claimed it
+    if (!claimed) return empty(); // someone else claimed it
 
     return new Response(buildEposXml(order, shopName), { headers: XML_HEADERS });
   } catch (e) {
     console.error("[epson]", e);
-    return new Response(eposEmpty(), { headers: XML_HEADERS });
+    return empty();
   }
 }
 
