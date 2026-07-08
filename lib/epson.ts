@@ -103,16 +103,20 @@ export function buildEposXml(o: Order, shopName: string): string {
   b.push(`<feed/>`);
   b.push(`<cut/>`);
 
-  // Server Direct Print requires the epos-print doc WRAPPED in a PrintRequestInfo
-  // envelope (Epson SDP manual). Returning a raw <epos-print> — the ePOS-Print
-  // Web API format — makes the printer fetch the job but never render it.
-  // devid must match the printer's device ID ("local_printer").
-  const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
+  // Server Direct Print: wrap in a PrintRequestInfo envelope, and — critically —
+  // <PrintData> must contain the ePOS-Print doc as XML-ESCAPED TEXT, not nested
+  // live XML. Nesting makes the printer validate the <text> elements against the
+  // SDP schema (→ SchemaError) instead of extracting + rendering them. Direct
+  // ePOS-Print (SOAP) works because it parses epos-print on its own; SDP needs
+  // the escaped string it can un-escape and parse separately. devid must match
+  // the printer's device ID ("local_printer").
+  const eposDoc = `<?xml version="1.0" encoding="utf-8"?><epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
+  const printData = eposDoc.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<PrintRequestInfo Version="2.00"><ePOSPrint>` +
     `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
-    `<PrintData>${eposDoc}</PrintData>` +
+    `<PrintData>${printData}</PrintData>` +
     `</ePOSPrint></PrintRequestInfo>`
   );
 }
