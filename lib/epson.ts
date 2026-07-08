@@ -80,14 +80,29 @@ export function buildEposXml(o: Order, shopName: string): string {
   const items = o.items.filter((it: any) => !it.cancelled);
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
-  // TEMP ISOLATION: EXACTLY the epos-print that printed via direct ePOS-Print
-  // (bare <text>, no attributes, no &#10;, bare <feed/> and <cut/>).
+  // TEMP ISOLATION: VERBATIM from the Epson SDP manual's "Print Data Example"
+  // (p.43) — if even Epson's own sample SchemaErrors, the fault is in the
+  // transport/wrapper, not our content. Barcode omitted (content-sensitive).
   void time; void items; void count; void t;
   const b: string[] = [
-    `<text>PRINT TEST ${ascii(o.table_no) || "?"}</text>`,
+    `<text lang="en" />`,
+    `<text smooth="true" />`,
+    `<text align="center" />`,
+    `<text font="font_b" />`,
+    `<text width="2" height="2" />`,
+    `<text reverse="false" ul="false" em="true" color="color_1" />`,
+    `<text>DELIVERY TICKET</text>`,
+    `<feed unit="12" />`,
+    `<text></text>`,
+    `<text align="left" />`,
+    `<text font="font_a" />`,
+    `<text width="1" height="1" />`,
+    `<text reverse="false" ul="false" em="false" color="color_1" />`,
+    `<text>Order 0001</text>`,
+    `<text>Seat ${ascii(o.table_no) || "A-3"}</text>`,
+    `<feed line="3" />`,
+    `<cut type="feed" />`,
   ];
-  b.push(`<feed/>`);
-  b.push(`<cut/>`);
 
   // Server Direct Print response, per the Epson SDP manual (Version="3.00",
   // supported by TM-T88VI): PrintRequestInfo → ePOSPrint → Parameter(devid,
