@@ -55,9 +55,9 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
  *  double-size via dw/dh (not the newer width/height magnification), bold via em.
  *  `big` = double width+height. */
 function line(txt: string, _opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
-  // BARE plain <text> (no attributes) — the exact shape that printed via direct
-  // ePOS-Print. Any attribute (width/height/dw/dh) → SchemaError on this SDP path.
-  return `<text>${esc(txt)}&#10;</text>`;
+  // Line break via <feed/>, NOT a &#10; inside <text> — the direct print that
+  // worked had no &#10;; this firmware's SDP schema appears to reject it.
+  return `<text>${esc(txt)}</text><feed/>`;
 }
 
 /** An empty ePOS-Print doc — the "nothing to print" reply to a poll. */
