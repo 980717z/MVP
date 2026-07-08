@@ -54,10 +54,16 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
  *  avoid a printer SchemaError on older firmware: alignment on its own element,
  *  double-size via dw/dh (not the newer width/height magnification), bold via em.
  *  `big` = double width+height. */
-function line(txt: string, _opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
-  // BARE MINIMUM (isolating a SchemaError): plain <text> only, no attributes.
-  // Re-add align/em/dw once we confirm the printer accepts a basic doc.
-  return `<text>${esc(txt)}&#10;</text>`;
+function line(txt: string, opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
+  const out: string[] = [];
+  if (opts.align) out.push(`<text align="${opts.align}"/>`);
+  const attrs = [
+    `dw="${opts.big ? "true" : "false"}"`,
+    `dh="${opts.big ? "true" : "false"}"`,
+    `em="${opts.em ? "true" : "false"}"`,
+  ];
+  out.push(`<text ${attrs.join(" ")}>${esc(txt)}&#10;</text>`);
+  return out.join("");
 }
 
 /** An empty ePOS-Print doc — the "nothing to print" reply to a poll. */
@@ -103,16 +109,18 @@ export function buildEposXml(o: Order, shopName: string): string {
   b.push(`<feed/>`);
   b.push(`<cut/>`);
 
-  // Wrap in the SOAP envelope — the EXACT format that prints on this unit via
-  // direct ePOS-Print (we confirmed success="true" + paper). The printer feeds
-  // the Server-Direct-Print response into the same ePOS-Print engine, so the
-  // response must be this SOAP+epos-print shape (the PrintRequestInfo wrapper
-  // gave SchemaError on this firmware).
+  // Server Direct Print: PrintRequestInfo envelope, and <PrintData> holds the
+  // ePOS-Print doc as XML-ESCAPED TEXT (no inner <?xml?> declaration). Nested
+  // live XML makes the printer validate <text> against the SDP schema (→
+  // SchemaError); an inner <?xml?> prolog also errors. The printer un-escapes
+  // PrintData and parses it as ePOS-Print on its own. devid = "local_printer".
   const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
+  const printData = eposDoc.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
-    `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>` +
-    eposDoc +
-    `</s:Body></s:Envelope>`
+    `<PrintRequestInfo Version="2.00"><ePOSPrint>` +
+    `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
+    `<PrintData>${printData}</PrintData>` +
+    `</ePOSPrint></PrintRequestInfo>`
   );
 }
