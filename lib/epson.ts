@@ -58,7 +58,7 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
 function line(txt: string, opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
   return (
     `<text align="${opts.align || "left"}"/>` +
-    `<text width="${opts.big ? 2 : 1}" height="${opts.big ? 2 : 1}"/>` +
+    `<text dw="${opts.big ? "true" : "false"}" dh="${opts.big ? "true" : "false"}"/>` +
     `<text em="${opts.em ? "true" : "false"}"/>` +
     `<text>${esc(txt)}&#10;</text>`
   );
