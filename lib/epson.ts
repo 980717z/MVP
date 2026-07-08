@@ -50,15 +50,14 @@ function typeBadge(o: Order): { badge: string; phone?: string; addr?: string } {
   return { badge: o.table_no ? `DINE-IN  Table ${displayTable(o.table_no)}` : "DINE-IN" };
 }
 
-/** One ePOS-Print text line. Per the Epson ePOS-Print/SDP spec, formatting
- *  attributes each go on their OWN self-closing <text .../> element and the
- *  CONTENT goes on a bare <text> with no attributes — mixing them on one <text>
- *  is a SchemaError. &#10; in content is allowed with PrintRequestInfo v3.00.
- *  `big` = double width+height. */
+/** One ePOS-Print text line. Formatting attributes are set on their own
+ *  self-closing <text .../> elements, then the content on a <text>…&#10;</text>
+ *  (the &#10; is the line break). width/height="2" = double-size — confirmed
+ *  working on this unit; `big` uses it for lines the chef must read fast. */
 function line(txt: string, opts: { big?: boolean; em?: boolean; align?: "left" | "center" | "right" } = {}): string {
   return (
     `<text align="${opts.align || "left"}"/>` +
-    `<text dw="${opts.big ? "true" : "false"}" dh="${opts.big ? "true" : "false"}"/>` +
+    `<text width="${opts.big ? "2" : "1"}" height="${opts.big ? "2" : "1"}"/>` +
     `<text em="${opts.em ? "true" : "false"}"/>` +
     `<text>${esc(txt)}&#10;</text>`
   );
@@ -80,29 +79,33 @@ export function buildEposXml(o: Order, shopName: string): string {
   const items = o.items.filter((it: any) => !it.cancelled);
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
-  // TEST: match BadChoice/cloudPrint's proven-in-production provaJordi.xml
-  // structure exactly — content uses &#10; for newlines, attributes and content
-  // may share a <text>, and align/width set on their own self-closing <text/>.
-  void time; void items; void count; void t;
-  const b: string[] = [
-    `<text align="center"/>`,
-    `<text width="2" height="2"/>`,
-    `<text>PRINT TEST&#10;</text>`,
-    `<text width="1" height="1"/>`,
-    `<text align="left"/>`,
-    `<text>Table ${ascii(o.table_no) || "?"}&#10;</text>`,
-    `<feed line="3"/>`,
-    `<cut type="feed"/>`,
-  ];
+  // Big-font kitchen ticket. English/ASCII only (see note above) — items fall
+  // back to name_en. Mirrors components/KitchenTicket.tsx.
+  const b: string[] = [];
+  b.push(line(ascii(shopName), { big: true, align: "center" }));
+  b.push(line(DBL));
+  b.push(line(t.badge, { big: true, em: true }));
+  b.push(line(time));
+  if (t.phone) b.push(line(`Tel ${fmtPhone(t.phone)}`));
+  if (t.addr) b.push(line(t.addr));
+  b.push(line(RULE));
+  for (const it of items) {
+    const qty = Number(it.qty) || 1;
+    const name = ascii(it.name_en) || ascii(it.name_zh) || "Item";
+    b.push(line(`${qty} x ${name}`, { big: true }));
+  }
+  b.push(line(RULE));
+  b.push(line(`Items: ${count}`, { em: true }));
+  const onote = ascii(o.note);
+  if (onote) b.push(line(`Note: ${onote}`));
+  b.push(`<feed line="3"/>`);
+  b.push(`<cut type="feed"/>`);
 
   // Wrapper matches the proven cloudPrint sample: BARE <PrintRequestInfo> (no
   // Version → implicit 1.00), Parameter = devid + timeout only (NO printjobid),
   // PrintData with the ePOS-Print doc NESTED. Version/printjobid (v2/v3) appear
   // to make THIS unit's firmware SchemaError even on Epson's own sample.
   const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
-  // TEST: PrintRequestInfo Version="2.00" (also supported by TM-T88VI). If this
-  // firmware's v3.00 schema validator is the culprit, v2.00 may accept the same
-  // nested epos-print. Parameter/PrintData structure is shared across versions.
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<PrintRequestInfo><ePOSPrint>` +
