@@ -80,41 +80,33 @@ export function buildEposXml(o: Order, shopName: string): string {
   const items = o.items.filter((it: any) => !it.cancelled);
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
-  // TEMP ISOLATION: VERBATIM from the Epson SDP manual's "Print Data Example"
-  // (p.43) — if even Epson's own sample SchemaErrors, the fault is in the
-  // transport/wrapper, not our content. Barcode omitted (content-sensitive).
+  // TEST: match BadChoice/cloudPrint's proven-in-production provaJordi.xml
+  // structure exactly — content uses &#10; for newlines, attributes and content
+  // may share a <text>, and align/width set on their own self-closing <text/>.
   void time; void items; void count; void t;
   const b: string[] = [
-    `<text lang="en" />`,
-    `<text smooth="true" />`,
-    `<text align="center" />`,
-    `<text font="font_b" />`,
-    `<text width="2" height="2" />`,
-    `<text reverse="false" ul="false" em="true" color="color_1" />`,
-    `<text>DELIVERY TICKET</text>`,
-    `<feed unit="12" />`,
-    `<text></text>`,
-    `<text align="left" />`,
-    `<text font="font_a" />`,
-    `<text width="1" height="1" />`,
-    `<text reverse="false" ul="false" em="false" color="color_1" />`,
-    `<text>Order 0001</text>`,
-    `<text>Seat ${ascii(o.table_no) || "A-3"}</text>`,
-    `<feed line="3" />`,
-    `<cut type="feed" />`,
+    `<text align="center"/>`,
+    `<text width="2" height="2"/>`,
+    `<text>PRINT TEST&#10;</text>`,
+    `<text width="1" height="1"/>`,
+    `<text align="left"/>`,
+    `<text>Table ${ascii(o.table_no) || "?"}&#10;</text>`,
+    `<feed line="3"/>`,
+    `<cut type="feed"/>`,
   ];
 
-  // Server Direct Print response, per the Epson SDP manual (Version="3.00",
-  // supported by TM-T88VI): PrintRequestInfo → ePOSPrint → Parameter(devid,
-  // timeout, printjobid) + PrintData with the ePOS-Print doc NESTED (not escaped).
+  // Wrapper matches the proven cloudPrint sample: BARE <PrintRequestInfo> (no
+  // Version → implicit 1.00), Parameter = devid + timeout only (NO printjobid),
+  // PrintData with the ePOS-Print doc NESTED. Version/printjobid (v2/v3) appear
+  // to make THIS unit's firmware SchemaError even on Epson's own sample.
   const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
   // TEST: PrintRequestInfo Version="2.00" (also supported by TM-T88VI). If this
   // firmware's v3.00 schema validator is the culprit, v2.00 may accept the same
   // nested epos-print. Parameter/PrintData structure is shared across versions.
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
-    `<PrintRequestInfo Version="2.00"><ePOSPrint>` +
-    `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
+    `<PrintRequestInfo><ePOSPrint>` +
+    `<Parameter><devid>local_printer</devid><timeout>10000</timeout></Parameter>` +
     `<PrintData>${eposDoc}</PrintData>` +
     `</ePOSPrint></PrintRequestInfo>`
   );
