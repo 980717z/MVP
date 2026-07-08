@@ -53,11 +53,6 @@ async function handle(req: Request): Promise<Response> {
       // ConnectionType is the first param; URLSearchParams reads it even though
       // ResponseFile downstream may itself contain '&'.
       connType = new URLSearchParams(body).get("ConnectionType") || "GetRequest";
-      // DEBUG (temporary): capture the printer's result report (SetResponse) so
-      // we can see success/error codes for each job.
-      if (connType === "SetResponse" && body.trim().length > 20) {
-        await db.from("print_debug").insert({ tenant_slug: slug, body: body.slice(0, 6000) });
-      }
     } catch { /* ignore */ }
   }
 
