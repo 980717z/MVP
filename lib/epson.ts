@@ -108,11 +108,20 @@ export function buildEposXml(o: Order, shopName: string): string {
   // supported by TM-T88VI): PrintRequestInfo → ePOSPrint → Parameter(devid,
   // timeout, printjobid) + PrintData with the ePOS-Print doc NESTED (not escaped).
   const eposDoc = `<epos-print xmlns="${NS}">${b.join("")}</epos-print>`;
+  // TEST: escape the epos-print inside <PrintData> so the printer passes the
+  // WHOLE namespaced document verbatim to its ePOS-Print engine, instead of
+  // re-serializing the nested tree (which may drop the default namespace and
+  // trigger SchemaError). If this prints, escaping was the fix.
+  const eposEscaped = eposDoc
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<PrintRequestInfo Version="3.00"><ePOSPrint>` +
     `<Parameter><devid>local_printer</devid><timeout>10000</timeout><printjobid>${esc(o.id)}</printjobid></Parameter>` +
-    `<PrintData>${eposDoc}</PrintData>` +
+    `<PrintData>${eposEscaped}</PrintData>` +
     `</ePOSPrint></PrintRequestInfo>`
   );
 }
