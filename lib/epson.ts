@@ -16,6 +16,7 @@
 
 import type { Order } from "./orders";
 import { displayTable } from "./format";
+import { renderTicketImage } from "./ticketImage";
 
 const NS = "http://www.epson-pos.com/schemas/2011/03/epos-print";
 const RULE = "--------------------------------"; // ~32 chars, fits 80mm Font A
@@ -79,8 +80,28 @@ export function buildEposXml(o: Order, shopName: string): string {
   const items = o.items.filter((it: any) => !it.cancelled);
   const count = items.reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
-  // Big-font kitchen ticket. English/ASCII only (see note above) — items fall
-  // back to name_en. Mirrors components/KitchenTicket.tsx.
+  // Preferred path: render the whole ticket (中文 included) to a 1-bit raster
+  // and print it as an <image> — this shop's printer has no CJK font, so text
+  // 中文 is impossible; a bitmap prints regardless. Falls back to the ASCII
+  // text ticket below if canvas/font is unavailable (keeps printing alive).
+  const img = renderTicketImage(o, shopName);
+  if (img) {
+    const doc =
+      `<epos-print xmlns="${NS}">` +
+      `<text align="center"/>` +
+      `<image width="${img.width}" height="${img.height}">${img.base64}</image>` +
+      `<feed line="3"/><cut type="feed"/>` +
+      `</epos-print>`;
+    return (
+      `<?xml version="1.0" encoding="utf-8"?>` +
+      `<PrintRequestInfo><ePOSPrint>` +
+      `<Parameter><devid>local_printer</devid><timeout>10000</timeout></Parameter>` +
+      `<PrintData>${doc}</PrintData>` +
+      `</ePOSPrint></PrintRequestInfo>`
+    );
+  }
+
+  // Fallback: big-font English/ASCII ticket (items fall back to name_en).
   const b: string[] = [];
   b.push(line(ascii(shopName), { big: true, align: "center" }));
   b.push(line(DBL));
