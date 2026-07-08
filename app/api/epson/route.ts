@@ -68,9 +68,9 @@ async function handle(req: Request): Promise<Response> {
       .eq("slug", slug)
       .maybeSingle();
     if (tenant && tenant.print_enabled === false) return empty();
-    // Prefer the English name — this shop's printer has no CJK font (temporary,
-    // see lib/epson.ts). Falls back to zh/slug (ascii() will strip non-ASCII).
-    const shopName = (tenant?.name as any)?.en || (tenant?.name as any)?.zh || slug;
+    // Prefer the Chinese name — the ticket is now rendered as a bitmap <image>
+    // (lib/ticketImage.ts) so CJK prints fine. Falls back to en/slug.
+    const shopName = (tenant?.name as any)?.zh || (tenant?.name as any)?.en || slug;
 
     // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query
     // itself (dine-in always; togo/delivery only when paid) — filtering after a

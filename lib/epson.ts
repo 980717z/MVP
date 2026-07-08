@@ -101,9 +101,12 @@ export function buildEposXml(o: Order, shopName: string): string {
     );
   }
 
-  // Fallback: big-font English/ASCII ticket (items fall back to name_en).
+  // Fallback: big-font English/ASCII ticket (items fall back to name_en). Only
+  // reached if canvas/font is unavailable; shopName may be 中文 → strips empty,
+  // so guard it and fall back to the slug-ish header.
   const b: string[] = [];
-  b.push(line(ascii(shopName), { big: true, align: "center" }));
+  const sn = ascii(shopName);
+  b.push(line(sn || "KITCHEN", { big: true, align: "center" }));
   b.push(line(DBL));
   b.push(line(t.badge, { big: true, em: true }));
   b.push(line(time));
