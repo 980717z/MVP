@@ -16,7 +16,8 @@
 
 import type { Order } from "./orders";
 import { displayTable } from "./format";
-import { renderTicketImage } from "./ticketImage";
+import { renderTicketImage, renderReceiptImage } from "./ticketImage";
+import { computeTax } from "./tax";
 
 const NS = "http://www.epson-pos.com/schemas/2011/03/epos-print";
 const RULE = "--------------------------------"; // ~32 chars, fits 80mm Font A
@@ -138,4 +139,63 @@ export function buildEposXml(o: Order, shopName: string): string {
     `<PrintData>${eposDoc}</PrintData>` +
     `</ePOSPrint></PrintRequestInfo>`
   );
+}
+
+/** Wrap an ePOS-Print body in the proven PrintRequestInfo envelope. */
+function wrapPrintJob(body: string): string {
+  return (
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<PrintRequestInfo><ePOSPrint>` +
+    `<Parameter><devid>local_printer</devid><timeout>10000</timeout></Parameter>` +
+    `<PrintData><epos-print xmlns="${NS}">${body}</epos-print></PrintData>` +
+    `</ePOSPrint></PrintRequestInfo>`
+  );
+}
+
+/** left…right within `width` cols (Font A ≈ 42 cols on 80mm; 32 keeps a margin). */
+function padRow(l: string, r: string, width = 32): string {
+  const left = ascii(l);
+  const right = ascii(r);
+  const room = Math.max(1, width - right.length);
+  const shown = left.length > room ? left.slice(0, room - 1) : left;
+  const pad = Math.max(1, width - shown.length - right.length);
+  return shown + " ".repeat(pad) + right;
+}
+
+/** Build the priced customer bill (账单) for one order: line prices, 小计, GST,
+ *  PST, 合计. Menu prices are pre-tax → HST added on top (matches togo checkout). */
+export function buildEposReceiptXml(o: Order, shopName: string): string {
+  // Preferred: render the whole bill (中文 + prices) to a raster <image>.
+  const img = renderReceiptImage(o, shopName);
+  if (img) {
+    return wrapPrintJob(
+      `<text align="center"/>` +
+      `<image width="${img.width}" height="${img.height}">${img.base64}</image>` +
+      `<feed line="3"/><cut type="feed"/>`,
+    );
+  }
+
+  // Fallback: ASCII bill (only if canvas/font is unavailable). Prices still print.
+  const t = typeBadge(o);
+  const items = o.items.filter((it: any) => !it.cancelled);
+  const subtotal = Math.round(items.reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * 100) / 100;
+  const tax = computeTax(subtotal, false);
+  const usd = (n: number) => "$" + (Math.round(n * 100) / 100).toFixed(2);
+  const b: string[] = [];
+  b.push(line(ascii(shopName) || "RECEIPT", { big: true, align: "center" }));
+  b.push(line(`BILL  ${t.badge}`, { em: true }));
+  b.push(line(DBL));
+  for (const it of items) {
+    const qty = Number(it.qty) || 1;
+    const name = ascii(it.name_en) || ascii(it.name_zh) || "Item";
+    b.push(line(padRow(`${name} x${qty}`, usd((Number(it.price) || 0) * qty))));
+  }
+  b.push(line(RULE));
+  b.push(line(padRow("Subtotal", usd(subtotal))));
+  b.push(line(padRow("GST 5%", usd(tax.gst))));
+  b.push(line(padRow("PST 8%", usd(tax.pst))));
+  b.push(line(RULE));
+  b.push(line(padRow("TOTAL", usd(tax.total)), { big: true, em: true }));
+  b.push(`<feed line="3"/><cut type="feed"/>`);
+  return wrapPrintJob(b.join(""));
 }

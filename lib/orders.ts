@@ -46,7 +46,9 @@ export interface Order {
   address: OrderAddress | null;
   eta_minutes: number | null;
   paid_at: string | null;
-  printed_at: string | null; // Epson Server Direct Print: null = needs printing
+  printed_at: string | null; // Epson: kitchen ticket, null = needs printing
+  bill_at: string | null; // customer bill requested (queued for the printer)
+  bill_printed_at: string | null; // customer bill printed; null while pending
 }
 
 /** UUID v4 with a fallback for older mobile browsers. */
@@ -181,6 +183,20 @@ export async function deleteOrder(id: string): Promise<void> {
 export async function reprintOrder(id: string): Promise<void> {
   const { error } = await supabase.from("orders").update({ printed_at: null }).eq("id", id);
   if (error) console.error("reprintOrder", error);
+}
+
+/** Queue the customer bill (priced 账单) for the printer. Setting bill_printed_at
+ *  back to null also serves as a reprint. */
+export async function requestBill(id: string): Promise<{ error?: string }> {
+  const { error } = await supabase
+    .from("orders")
+    .update({ bill_at: new Date().toISOString(), bill_printed_at: null })
+    .eq("id", id);
+  if (error) {
+    console.error("requestBill", error);
+    return { error: error.message };
+  }
+  return {};
 }
 
 /** Re-queue every ACTIVE order (new / preparing) for printing — one click after

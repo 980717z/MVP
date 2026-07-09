@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems } from "@/lib/menu";
@@ -267,6 +267,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           return;
         }
         if (claimed) {
+          // Dine-in: print the customer bill (items + GST/PST + 合计) on complete.
+          if (o.order_type === "dine_in") requestBill(o.id).catch(() => {});
           const activeItems = items.filter((it: any) => !it.cancelled);
           const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
           try {
@@ -390,10 +392,19 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
                 <div className="flex gap-2">
                   <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
+                  {o.status !== "cancelled" && (
+                    <button
+                      onClick={async () => { const r = await requestBill(o.id); if (r.error) alert("打印账单失败：" + r.error); }}
+                      className="text-xs text-ink-faint hover:text-brand-ink"
+                      title="打印带价格和税的顾客账单"
+                    >
+                      打印账单
+                    </button>
+                  )}
                   <button
                     onClick={async () => { await reprintOrder(o.id); load(); }}
                     className="text-xs text-ink-faint hover:text-brand-ink"
-                    title="让打印机重新出这单"
+                    title="让打印机重新出这单（厨房单）"
                   >
                     重打
                   </button>

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { buildEposXml } from "@/lib/epson";
+import { buildEposXml, buildEposReceiptXml } from "@/lib/epson";
 import type { Order } from "@/lib/orders";
 
 export const runtime = "nodejs";
@@ -92,20 +92,42 @@ async function handle(req: Request): Promise<Response> {
     }
 
     const order = (data as Order[] | null)?.[0];
-    if (!order) return empty();
+    if (order) {
+      // Optimistically mark printed. The `.is('printed_at', null)` guard makes this a
+      // compare-and-set so a rare double-poll can't double-print.
+      const { data: claimed } = await db
+        .from("orders")
+        .update({ printed_at: new Date().toISOString() })
+        .eq("id", order.id)
+        .is("printed_at", null)
+        .select("id")
+        .maybeSingle();
+      if (claimed) return new Response(buildEposXml(order, shopName), { headers: XML_HEADERS });
+      // else another poll claimed it — fall through to a bill, don't idle this poll.
+    }
 
-    // Optimistically mark printed. The `.is('printed_at', null)` guard makes this a
-    // compare-and-set so a rare double-poll can't double-print.
-    const { data: claimed } = await db
+    // No kitchen ticket to print → serve the oldest pending customer bill (账单),
+    // requested when staff tapped 标记完成 / 打印账单. Kitchen tickets always win.
+    const { data: bills } = await db
       .from("orders")
-      .update({ printed_at: new Date().toISOString() })
-      .eq("id", order.id)
-      .is("printed_at", null)
+      .select("*")
+      .eq("tenant_slug", slug)
+      .not("bill_at", "is", null)
+      .is("bill_printed_at", null)
+      .neq("status", "cancelled")
+      .order("bill_at", { ascending: true })
+      .limit(1);
+    const bill = (bills as Order[] | null)?.[0];
+    if (!bill) return empty();
+    const { data: bclaimed } = await db
+      .from("orders")
+      .update({ bill_printed_at: new Date().toISOString() })
+      .eq("id", bill.id)
+      .is("bill_printed_at", null)
       .select("id")
       .maybeSingle();
-    if (!claimed) return empty(); // someone else claimed it
-
-    return new Response(buildEposXml(order, shopName), { headers: XML_HEADERS });
+    if (!bclaimed) return empty(); // another poll claimed this bill
+    return new Response(buildEposReceiptXml(bill, shopName), { headers: XML_HEADERS });
   } catch (e) {
     console.error("[epson]", e);
     return empty();
