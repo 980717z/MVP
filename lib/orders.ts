@@ -183,6 +183,22 @@ export async function reprintOrder(id: string): Promise<void> {
   if (error) console.error("reprintOrder", error);
 }
 
+/** Re-queue every ACTIVE order (new / preparing) for printing — one click after
+ *  a printer/network outage so the kitchen gets every current ticket. Orders the
+ *  printer never received already have printed_at=null (auto-print on reconnect);
+ *  this also recovers ones marked printed but never physically printed.
+ *  Returns how many were re-queued. */
+export async function reprintActiveOrders(slug: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ printed_at: null })
+    .eq("tenant_slug", slug)
+    .in("status", ["new", "preparing"])
+    .select("id");
+  if (error) { console.error("reprintActiveOrders", error); return 0; }
+  return data?.length ?? 0;
+}
+
 /** Staff: persist item prices (时价 entry at completion) + the recomputed total. */
 export async function updateOrderItems(
   id: string,

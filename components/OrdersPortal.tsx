@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -295,6 +295,19 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             </button>
           )}
           <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title="看看小票长什么样">🖨️ 出单样张</button>
+          <button
+            onClick={async () => {
+              if (active.length === 0) { alert("没有进行中的订单"); return; }
+              if (!confirm(`把 ${active.length} 张进行中的订单重新发给打印机?（网络/打印机恢复后用）`)) return;
+              const n = await reprintActiveOrders(slug);
+              load();
+              alert(`已补打 ${n} 张，打印机将在几秒内陆续打印。`);
+            }}
+            className="btn-ghost border border-slate-300 text-sm"
+            title="网络或打印机恢复后，一键重打所有进行中的订单"
+          >
+            🖨️ 补打全部
+          </button>
           <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">刷新</button>
         </div>
       </header>
