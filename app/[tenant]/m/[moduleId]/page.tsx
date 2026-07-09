@@ -24,6 +24,8 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
+import { addDays, mondayOf, shopToday, shopYmd } from "@/lib/shopTime";
+import { computeStockLossFifo } from "@/lib/inventory";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
@@ -84,21 +86,6 @@ function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Re
   return next;
 }
 
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Monday (YYYY-MM-DD) of the week containing dateStr. */
-function mondayOf(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  const day = d.getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-
 /** "5月26日" from a YYYY-MM-DD string. */
 function fmtMonthDay(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -141,7 +128,7 @@ function exportCsv(mod: ModuleDef, rows: RecordRow[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${mod.label.zh}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${mod.label.zh}_${shopToday()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -205,6 +192,7 @@ async function importCsv(
   }
 
   let count = 0;
+  let failed = 0;
   for (let i = 1; i < parsed.length; i++) {
     const row = parsed[i];
     const data: Record<string, string> = {};
@@ -215,11 +203,18 @@ async function importCsv(
       }
     }
     if (Object.keys(data).length > 0) {
-      await addRecord(slug, moduleId, data);
-      count++;
+      const { error } = await addRecord(slug, moduleId, applyComputed(data, mod.computed));
+      if (error) failed++;
+      else count++;
     }
   }
-  return { count };
+  // Same as the manual single-entry submit(): a batch of imported purchases
+  // needs its stock sync too, so imported rows don't just sit unreflected in
+  // stock until someone happens to add a purchase by hand.
+  if (moduleId === "purchasing" && count > 0) {
+    await syncPurchasingToStock(slug);
+  }
+  return { count, error: failed > 0 ? `${failed} 行导入失败（已成功导入 ${count} 行）` : undefined };
 }
 
 /** The YYYY-MM-DD a record belongs to: its `date` field, else when it was created.
@@ -229,9 +224,7 @@ function rowDate(r: RecordRow): string {
 }
 
 function filterByDateRange(rows: RecordRow[], days: number): RecordRow[] {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const cutoffStr = addDays(shopToday(), -days);
   return rows.filter((r) => {
     const d = rowDate(r);
     return d && d >= cutoffStr;
@@ -421,7 +414,7 @@ export default function ModulePage() {
   const [filterSearch, setFilterSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [weekAnchor, setWeekAnchor] = useState(() => new Date().toISOString().slice(0, 10));
+  const [weekAnchor, setWeekAnchor] = useState(() => shopToday());
   const [shiftPreset, setShiftPreset] = useState<string>("custom");
   const [presetConfigId, setPresetConfigId] = useState<string | null>(null);
   const [presetConfig, setPresetConfig] = useState<Record<string, string>>({});
@@ -491,10 +484,12 @@ export default function ModulePage() {
   };
 
   const savePresets = async () => {
-    if (presetConfigId) {
-      await updateRecord(presetConfigId, presetForm);
-    } else {
-      await addRecord(slug, "scheduling_presets", presetForm);
+    const { error } = presetConfigId
+      ? await updateRecord(presetConfigId, presetForm)
+      : await addRecord(slug, "scheduling_presets", presetForm);
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
     }
     setEditingPresets(false);
     setTick((t) => t + 1);
@@ -531,8 +526,9 @@ export default function ModulePage() {
     const toCopy = filteredRows.filter((r) => selectedForCopy.has(r.id));
     if (toCopy.length === 0 || copyingWeek) return;
     setCopyingWeek(true);
+    let failed = 0;
     try {
-      await Promise.all(
+      const results = await Promise.all(
         toCopy.map((r) => {
           const data: Record<string, string> = {};
           for (const f of mod.fields) {
@@ -542,8 +538,12 @@ export default function ModulePage() {
           return addRecord(slug, "scheduling", data);
         }),
       );
+      failed = results.filter((r) => r.error).length;
     } finally {
       setCopyingWeek(false);
+    }
+    if (failed > 0) {
+      alert(`${failed} 条排班复制失败，请重试（其余 ${toCopy.length - failed} 条已成功）`);
     }
     setCopyMode(false);
     setSelectedForCopy(new Set());
@@ -591,10 +591,12 @@ export default function ModulePage() {
 
   const removeEquipmentSuggestion = async (val: string) => {
     const next = Array.from(new Set([...hiddenEquipmentOptions, val]));
-    if (equipmentOptionConfig?.id) {
-      await updateRecord(equipmentOptionConfig.id, { hidden: next });
-    } else {
-      await addRecord(slug, "equipment-options-config", { hidden: next });
+    const { error } = equipmentOptionConfig?.id
+      ? await updateRecord(equipmentOptionConfig.id, { hidden: next })
+      : await addRecord(slug, "equipment-options-config", { hidden: next });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
     }
     setTick((t) => t + 1);
   };
@@ -611,10 +613,12 @@ export default function ModulePage() {
 
   const removeVendorSuggestion = async (val: string) => {
     const next = Array.from(new Set([...hiddenVendors, val]));
-    if (vendorConfig?.id) {
-      await updateRecord(vendorConfig.id, { hidden: next });
-    } else {
-      await addRecord(slug, "equipment-vendor-config", { hidden: next });
+    const { error } = vendorConfig?.id
+      ? await updateRecord(vendorConfig.id, { hidden: next })
+      : await addRecord(slug, "equipment-vendor-config", { hidden: next });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
     }
     setTick((t) => t + 1);
   };
@@ -631,10 +635,12 @@ export default function ModulePage() {
 
   const removeIssueSuggestion = async (val: string) => {
     const next = Array.from(new Set([...hiddenIssues, val]));
-    if (issueConfig?.id) {
-      await updateRecord(issueConfig.id, { hidden: next });
-    } else {
-      await addRecord(slug, "equipment-issue-config", { hidden: next });
+    const { error } = issueConfig?.id
+      ? await updateRecord(issueConfig.id, { hidden: next })
+      : await addRecord(slug, "equipment-issue-config", { hidden: next });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
     }
     setTick((t) => t + 1);
   };
@@ -648,62 +654,7 @@ export default function ModulePage() {
       });
     }
     if (moduleId === "stock-loss") {
-      const r2 = (n: number) => Math.round(n * 100) / 100;
-      // group rows by item
-      const byItem: Record<string, RecordRow[]> = {};
-      for (const r of rawRows) {
-        const item = r.item || "";
-        if (item) (byItem[item] ??= []).push(r);
-      }
-      // FIFO value per row + onHand per item
-      const valueMap = new Map<string, { scrapValue: number; lossValue: number }>();
-      const itemOnHand: Record<string, number> = {};
-      for (const [item, itemRows] of Object.entries(byItem)) {
-        const sorted = [...itemRows].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-        // build batch queue from "in" rows
-        const batches: { qty: number; cost: number }[] = [];
-        for (const r of sorted) {
-          const inQty = parseFloat(r.inQty) || 0;
-          if (inQty > 0) batches.push({ qty: inQty, cost: parseFloat(r.unitCost) || 0 });
-        }
-        // deduct scrap+loss in date order, assign FIFO cost per row
-        let bi = 0;
-        for (const r of sorted) {
-          const scrap = parseFloat(r.scrapQty) || 0;
-          const loss = parseFloat(r.lossQty) || 0;
-          let scrapVal = 0;
-          let lossVal = 0;
-          let toDeduct = scrap;
-          while (toDeduct > 0 && bi < batches.length) {
-            const take = Math.min(toDeduct, batches[bi].qty);
-            scrapVal += take * batches[bi].cost;
-            batches[bi].qty -= take;
-            toDeduct -= take;
-            if (batches[bi].qty <= 0) bi++;
-          }
-          toDeduct = loss;
-          while (toDeduct > 0 && bi < batches.length) {
-            const take = Math.min(toDeduct, batches[bi].qty);
-            lossVal += take * batches[bi].cost;
-            batches[bi].qty -= take;
-            toDeduct -= take;
-            if (batches[bi].qty <= 0) bi++;
-          }
-          valueMap.set(r.id, { scrapValue: r2(scrapVal), lossValue: r2(lossVal) });
-        }
-        const remainQty = batches.slice(bi).reduce((s, b) => s + b.qty, 0);
-        itemOnHand[item] = r2(remainQty);
-      }
-      return rawRows.map((r) => {
-        const v = valueMap.get(r.id) ?? { scrapValue: 0, lossValue: 0 };
-        const onHand = itemOnHand[r.item || ""] ?? 0;
-        return {
-          ...r,
-          scrapValue: String(v.scrapValue),
-          lossValue: String(v.lossValue),
-          onHand: String(onHand),
-        };
-      });
+      return computeStockLossFifo(rawRows);
     }
     return rawRows;
   }, [rawRows, moduleId]);
@@ -840,7 +791,7 @@ export default function ModulePage() {
       if (highScrap.length) list.push({ type: "warn", text: `🗑️ 报废率偏高（≥10%）：${highScrap.join("、")}` });
     }
     if (moduleId === "group-booking") {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = shopToday();
       const upcoming = rows.filter((r) => r.date && r.date >= today && r.date <= addDays(today, 3));
       if (upcoming.length) list.push({ type: "info", text: `📅 近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
     }
@@ -848,7 +799,7 @@ export default function ModulePage() {
       const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
       if (open.length) list.push({ type: "warn", text: `🔧 ${open.length} 个设备问题待处理：${open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")}` });
       // 保养到期提醒：下次保养日期已过期或在近7天内
-      const today = new Date().toISOString().slice(0, 10);
+      const today = shopToday();
       const soon = addDays(today, 7);
       const due = rows.filter((r) => r.nextService && r.nextService <= soon);
       if (due.length) {
@@ -872,11 +823,9 @@ export default function ModulePage() {
     if (moduleId === "members") {
       // 近7天（含今天）生日的会员，按 月-日 比对（忽略年份）
       const upcoming = new Set<string>();
-      const base = new Date();
+      const base = shopToday();
       for (let i = 0; i < 7; i++) {
-        const d = new Date(base);
-        d.setDate(base.getDate() + i);
-        upcoming.add(`${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+        upcoming.add(addDays(base, i).slice(5));
       }
       const bday = rows.filter((r) => r.birthday && upcoming.has(String(r.birthday).slice(5)));
       if (bday.length) {
@@ -900,9 +849,7 @@ export default function ModulePage() {
       if (waste > 0) list.push({ type: "info", text: `♻️ 累计剩余/报废 ${Math.round(waste)} 份` });
 
       // 明日备货建议 = round(近7天该菜日均售出 × 1.1)，多备10%防卖断
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 7);
-      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const cutoffStr = addDays(shopToday(), -7);
       const byDish: Record<string, { sold: number; days: Set<string> }> = {};
       for (const r of rows) {
         if (!r.dish || !r.date || r.date < cutoffStr) continue;
@@ -966,9 +913,7 @@ export default function ModulePage() {
 
   useEffect(() => {
     if (!open || moduleId !== "daily-close") return;
-    const now = new Date();
-    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const date = form.date || localDate;
+    const date = form.date || shopToday();
     setAutoFilling(true);
     computeDailyClose(slug, date).then((result) => {
       setForm((prev) => {
@@ -1034,7 +979,11 @@ export default function ModulePage() {
       alert("请填写：" + missing.map((f) => f.label.zh).join("、"));
       return;
     }
-    await addRecord(slug, moduleId, form);
+    const { error } = await addRecord(slug, moduleId, form);
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
+    }
     if (moduleId === "purchasing") {
       await syncPurchasingToStock(slug);
     }
@@ -1064,7 +1013,13 @@ export default function ModulePage() {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    await updateRecord(editingId, editForm);
+    // Re-run computed rules (pay=hours×rate, net, balance, total…) so an inline
+    // edit keeps derived fields consistent, same as the entry form does.
+    const { error } = await updateRecord(editingId, applyComputed(editForm, mod?.computed));
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
+    }
     setEditingId(null);
     setEditForm({});
     setTick((t) => t + 1);
@@ -1408,7 +1363,7 @@ export default function ModulePage() {
             </button>
             <button
               className="text-brand hover:text-brand-soft"
-              onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}
+              onClick={() => setWeekAnchor(shopToday())}
             >
               本周
             </button>
@@ -1857,13 +1812,13 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const due = useMemo(() => {
-    // Local Y-M-D throughout — .toISOString() converts to UTC first, which can
-    // shift the calendar day (e.g. evenings in UTC-negative zones roll over to
-    // "tomorrow" in UTC), silently dropping items near the month boundary.
-    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const now = new Date();
-    const todayStr = ymd(now);
-    const monthEnd = ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    // Shop-timezone Y-M-D throughout, not the viewing device's own clock — a
+    // remote owner checking this near midnight or a month boundary must see
+    // the same due/overdue list a device physically at the shop would.
+    const todayStr = shopToday();
+    const [y, m] = todayStr.split("-").map(Number);
+    const nextMonthFirst = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`;
+    const monthEnd = addDays(nextMonthFirst, -1);
     return rows
       // servicedThrough records which nextService value was already acknowledged —
       // once it matches the current nextService, this cycle's reminder is done.
@@ -1902,7 +1857,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
     const intervalDays = parseInt(r.intervalDays, 10);
     if (intervalDays > 0 && r.nextService) {
       const newNextService = addDays(r.nextService, intervalDays);
-      await addRecord(slug, "equipment", {
+      const { error: nextError } = await addRecord(slug, "equipment", {
         equipment: r.equipment || "",
         date: newNextService,
         issue: r.issue || "",
@@ -1912,6 +1867,10 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
         nextService: newNextService,
         intervalDays: r.intervalDays,
       });
+      // The "已完成" mark above already succeeded — don't hide that — but the
+      // next reminder cycle silently failing to spawn would mean this piece
+      // of equipment just stops getting maintenance reminders, unnoticed.
+      if (nextError) alert("已保养已记录，但下一周期提醒创建失败，请手动补上：" + nextError);
     }
     setSavingId(null);
     refresh();

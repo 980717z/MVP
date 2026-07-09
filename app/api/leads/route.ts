@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rateLimit, clientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,12 @@ function escapeHtml(s: string) {
 }
 
 export async function POST(req: Request) {
+  // Public, unauthenticated form — rate limit by IP to blunt scripted flooding
+  // of the leads table and the support@ inbox.
+  if (!rateLimit(`leads:ip:${clientIp(req)}`, 5, 60_000)) {
+    return NextResponse.json({ ok: false, error: "too many requests" }, { status: 429 });
+  }
+
   let d: Lead;
   try {
     d = await req.json();
@@ -27,6 +34,10 @@ export async function POST(req: Request) {
 
   if (!d.business_name?.trim() || !d.email?.trim()) {
     return NextResponse.json({ ok: false, error: "missing business_name or email" }, { status: 400 });
+  }
+
+  if (!rateLimit(`leads:email:${d.email.trim().toLowerCase()}`, 3, 60_000)) {
+    return NextResponse.json({ ok: false, error: "too many requests" }, { status: 429 });
   }
 
   let stored = false;

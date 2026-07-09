@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { rateLimit, clientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,11 @@ export async function POST(req: Request) {
   const db = supabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "server not configured" }, { status: 500 });
 
+  // 0) rate limit by caller IP — casual abuse doesn't even reach the auth check
+  if (!rateLimit(`invite:ip:${clientIp(req)}`, 10, 60_000)) {
+    return NextResponse.json({ ok: false, error: "too many requests" }, { status: 429 });
+  }
+
   // 1) authenticate the caller
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
@@ -40,6 +46,12 @@ export async function POST(req: Request) {
   const slug = (d.slug ?? "").trim().slice(0, 60);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !slug) {
     return NextResponse.json({ ok: false, error: "invalid email or slug" }, { status: 400 });
+  }
+
+  // rate limit by target email too — caps how fast one inbox can be spammed
+  // regardless of which authenticated caller (or how many IPs) is sending it
+  if (!rateLimit(`invite:email:${email}`, 3, 60_000)) {
+    return NextResponse.json({ ok: false, error: "too many requests" }, { status: 429 });
   }
 
   // 3) caller must own the tenant

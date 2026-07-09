@@ -4,6 +4,7 @@
 
 import { supabase } from "./supabase";
 import type { OrderType } from "./tax";
+import { SHOP_TZ, shopYmd } from "./shopTime";
 
 export interface OrderItem {
   id: string;
@@ -49,30 +50,16 @@ export interface Order {
   printed_at: string | null; // Epson Server Direct Print: null = needs printing
 }
 
-/** UUID v4 with a fallback for older mobile browsers. */
-function newId(): string {
-  try {
-    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  } catch {
-    /* fall through */
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-  });
-}
-
 /** Customer submits an order (works for anon).
- *  RLS pins new rows to status='new', payment_status='unpaid', tip=0 — payment
- *  and money columns are only ever written by server routes.
- *  NOTE: the id is generated CLIENT-SIDE and inserted, never read back —
- *  anon has insert-only permission on orders, so `.select()` after insert
- *  fails with "permission denied" (RETURNING needs SELECT). */
+ *  Goes through /api/orders/create instead of inserting directly: the server
+ *  reprices every line against the live menu and computes `total` itself —
+ *  the client's price/total is never trusted (see supabase/orders-lockdown.sql,
+ *  which revokes anon's direct INSERT on `orders` so this route is the only
+ *  way in). */
 export async function createOrder(
   slug: string,
   input: {
     items: OrderItem[];
-    total: number;
     table_no?: string;
     phone?: string;
     note?: string;
@@ -81,37 +68,26 @@ export async function createOrder(
     customer_email?: string;
   }
 ): Promise<{ id?: string; error?: string }> {
-  const id = newId();
-  const { error } = await supabase.from("orders").insert({
-    id,
-    tenant_slug: slug,
-    items: input.items,
-    total: input.total,
-    table_no: input.table_no ?? "",
-    phone: input.phone ?? "",
-    note: input.note ?? "",
-    order_type: input.order_type ?? "dine_in",
-    address: input.address ?? null,
-    customer_email: input.customer_email?.trim() || null,
-  });
-  if (error) {
-    console.error("createOrder", error);
-    return { error: error.message };
+  try {
+    const res = await fetch("/api/orders/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, ...input }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.ok) return { error: json.error || "下单失败" };
+    return { id: json.id };
+  } catch (e) {
+    console.error("createOrder", e);
+    return { error: "网络错误，请重试" };
   }
-  return { id };
 }
 
 /** Start-of-today as an ISO timestamp in the shop's fixed timezone (Toronto),
  *  so the order window is stable for remote owners and across device clocks. */
-const SHOP_TZ = "America/Toronto";
 function startOfTodayShopTz(): string {
   const now = new Date();
-  const d = new Intl.DateTimeFormat("en-CA", {
-    timeZone: SHOP_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now); // "YYYY-MM-DD"
+  const d = shopYmd(now); // "YYYY-MM-DD"
   const offPart = new Intl.DateTimeFormat("en-US", { timeZone: SHOP_TZ, timeZoneName: "longOffset" })
     .formatToParts(now)
     .find((p) => p.type === "timeZoneName")?.value; // "GMT-04:00"

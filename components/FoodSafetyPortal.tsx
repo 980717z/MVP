@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listRecords, addRecord, updateRecord, deleteRecord, type RecordRow } from "@/lib/store";
+import { addDays, mondayOf, shopHm, shopToday } from "@/lib/shopTime";
 import { useLang, type Dict } from "@/app/i18n";
 import SuggestInput from "@/components/SuggestInput";
 
@@ -30,28 +31,25 @@ const PASS_OPTIONS: { value: string; zh: string; en: string; fr: string }[] = [
   { value: "否", zh: "不合格", en: "Fail", fr: "Non conforme" },
 ];
 
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** Match a stored category value against a preset by ANY of its languages —
+ *  storage is always meant to be the canonical `zh` key, but this also
+ *  matches en/fr so a pre-fix record saved under a translated label still
+ *  resolves back to the same preset instead of looking like a distinct,
+ *  unrelated custom category. */
+function matchPreset(raw: string): Dict | undefined {
+  return CATEGORIES.find((c) => c.zh === raw || c.en === raw || c.fr === raw);
 }
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+
+/** Translate a stored category for display. Anything that matches no preset
+ *  is a merchant's own custom category and shows as-is. */
+function catLabel(raw: string, t: (d: Dict) => string): string {
+  if (!raw) return "";
+  const preset = matchPreset(raw);
+  return preset ? t(preset) : raw;
 }
-function mondayOf(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
+
 function weekdayOf(dateStr: string): number {
   return new Date(dateStr + "T00:00:00").getDay();
-}
-function nowHM(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 function fmtMonthDay(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -93,12 +91,7 @@ const emptyDraft = (): TemplateDraft => ({ name: "", category: "", weekdays: [],
 export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
   const { t, lang } = useLang();
   const bi = (b: { zh: string; en: string }) => (lang === "zh" ? b.zh : b.en);
-  /** Known presets translate; anything the merchant typed themselves shows as-is. */
-  const catLabel = (zh: string) => {
-    if (!zh) return "";
-    const preset = CATEGORIES.find((c) => c.zh === zh);
-    return preset ? t(preset) : zh;
-  };
+  const label = (raw: string) => catLabel(raw, t);
   const wdLabel = (d: number) => t(WEEKDAYS.find((w) => w.d === d) ?? WEEKDAYS[0]);
 
   const [templates, setTemplates] = useState<RecordRow[]>([]);
@@ -110,12 +103,22 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
   const [loading, setLoading] = useState(true);
 
   /** Preset suggestions + every category the merchant has already typed, minus
-   *  any the merchant explicitly removed from the dropdown (hiddenCategories). */
+   *  any the merchant explicitly removed from the dropdown (hiddenCategories).
+   *  Values are always the canonical `zh` key — never the current display
+   *  language — so a category picked in EN mode still matches back up when
+   *  viewed in ZH (see catLabel). SuggestInput shows the translated label via
+   *  `labelFor` but stores this canonical value on pick. */
   const categorySuggestions = useMemo(() => {
-    const used = templates.map((tpl) => (tpl.category || "").trim()).filter(Boolean);
-    const all = Array.from(new Set([...CATEGORIES.map((c) => t(c)), ...used]));
+    // Normalize legacy values saved under a translated label (e.g. "Temp"
+    // from a pre-fix EN-mode save) back to their preset's zh key, so they
+    // merge with the same category instead of listing as a separate one.
+    const used = templates
+      .map((tpl) => (tpl.category || "").trim())
+      .filter(Boolean)
+      .map((c) => matchPreset(c)?.zh ?? c);
+    const all = Array.from(new Set([...CATEGORIES.map((c) => c.zh), ...used]));
     return all.filter((c) => !hiddenCategories.includes(c));
-  }, [templates, lang, hiddenCategories]);
+  }, [templates, hiddenCategories]);
 
   /** Every 记录人 name already used on a past check, minus any explicitly removed. */
   const bySuggestions = useMemo(() => {
@@ -131,7 +134,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
       listRecords(slug, "food-safety-by-config"),
     ]);
     setTemplates(tpls);
-    setCompletions(comps);
+    setCompletions(comps.map((r) => (r.category == null && r.type != null ? { ...r, category: r.type } : r)));
     const cfg = catConfig[0];
     setCatConfigId(cfg?.id ?? null);
     setHiddenCategories(Array.isArray(cfg?.hidden) ? cfg.hidden : []);
@@ -144,10 +147,12 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
   /** Remove a suggestion from the category dropdown (doesn't touch templates that already use it). */
   const removeCategorySuggestion = async (cat: string) => {
     const next = Array.from(new Set([...hiddenCategories, cat]));
-    if (catConfigId) {
-      await updateRecord(catConfigId, { hidden: next });
-    } else {
-      await addRecord(slug, "food-safety-category-config", { hidden: next });
+    const { error } = catConfigId
+      ? await updateRecord(catConfigId, { hidden: next })
+      : await addRecord(slug, "food-safety-category-config", { hidden: next });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
     }
     await load();
   };
@@ -155,10 +160,12 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
   /** Remove a suggestion from the 记录人 dropdown (doesn't touch past records that already used it). */
   const removeBySuggestion = async (name: string) => {
     const next = Array.from(new Set([...hiddenBy, name]));
-    if (byConfigId) {
-      await updateRecord(byConfigId, { hidden: next });
-    } else {
-      await addRecord(slug, "food-safety-by-config", { hidden: next });
+    const { error } = byConfigId
+      ? await updateRecord(byConfigId, { hidden: next })
+      : await addRecord(slug, "food-safety-by-config", { hidden: next });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
     }
     await load();
   };
@@ -168,12 +175,12 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
   }, [load]);
 
   // ── weekly checklist (Monday–Sunday of the current week) ──────────────
-  const monday = useMemo(() => mondayOf(todayStr()), []);
+  const monday = useMemo(() => mondayOf(shopToday()), []);
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(monday, i)), [monday]);
 
   const dueItems: DueItem[] = useMemo(() => {
-    const today = todayStr();
-    const nowTime = nowHM();
+    const today = shopToday();
+    const nowTime = shopHm();
     const list: DueItem[] = [];
     for (const tpl of templates) {
       if (tpl.active === "否") continue;
@@ -246,9 +253,19 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
       note: checkForm.note.trim(),
     };
     if (item.record) {
-      await updateRecord(item.record.id, data);
+      const { error } = await updateRecord(item.record.id, data);
+      if (error) {
+        setSaving(false);
+        alert(t({ zh: "保存失败，请重试：", en: "Save failed, please retry: ", fr: "Échec de l'enregistrement, veuillez réessayer : " }) + error);
+        return;
+      }
     } else {
-      await addRecord(slug, "food-safety", data);
+      const { error } = await addRecord(slug, "food-safety", data);
+      if (error) {
+        setSaving(false);
+        alert(t({ zh: "保存失败，请重试：", en: "Save failed, please retry: ", fr: "Échec de l'enregistrement, veuillez réessayer : " }) + error);
+        return;
+      }
     }
     setSaving(false);
     setOpenKey(null);
@@ -305,19 +322,25 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
       time: tplDraft.time,
       active: tplDraft.active ? "是" : "否",
     };
-    if (editingTplId) {
-      await updateRecord(editingTplId, data);
-    } else {
-      await addRecord(slug, "food-safety-templates", data);
-    }
+    const { error } = editingTplId
+      ? await updateRecord(editingTplId, data)
+      : await addRecord(slug, "food-safety-templates", data);
     setSavingTpl(false);
+    if (error) {
+      alert(t({ zh: "保存失败，请重试：", en: "Save failed, please retry: ", fr: "Échec de l'enregistrement, veuillez réessayer : " }) + error);
+      return;
+    }
     setAddingTpl(false);
     setEditingTplId(null);
     await load();
   };
 
   const toggleActive = async (tpl: RecordRow) => {
-    await updateRecord(tpl.id, { ...toData(tpl), active: tpl.active === "否" ? "是" : "否" });
+    const { error } = await updateRecord(tpl.id, { ...toData(tpl), active: tpl.active === "否" ? "是" : "否" });
+    if (error) {
+      alert(t({ zh: "保存失败，请重试：", en: "Save failed, please retry: ", fr: "Échec de l'enregistrement, veuillez réessayer : " }) + error);
+      return;
+    }
     await load();
   };
 
@@ -349,7 +372,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${mod.label.zh}_${todayStr()}.csv`;
+    a.download = `${mod.label.zh}_${shopToday()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -421,7 +444,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
               <div key={date} className="px-4 py-3">
                 <div className="mb-2 text-xs font-semibold text-ink-faint">
                   {t({ zh: "周", en: "", fr: "" })}{wdLabel(weekdayOf(date))} · {fmtMonthDay(date)}
-                  {date === todayStr() && <span className="ml-1.5 rounded-full bg-brand-wash px-1.5 py-0.5 text-brand-ink">{t({ zh: "今天", en: "Today", fr: "Aujourd'hui" })}</span>}
+                  {date === shopToday() && <span className="ml-1.5 rounded-full bg-brand-wash px-1.5 py-0.5 text-brand-ink">{t({ zh: "今天", en: "Today", fr: "Aujourd'hui" })}</span>}
                 </div>
                 <div className="space-y-1.5">
                   {byDay.get(date)!.map((item) => (
@@ -434,7 +457,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                         <span className="flex-1 text-sm font-medium text-ink">{item.name}</span>
                         {item.category && (
                           <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-ink-faint sm:inline">
-                            {catLabel(item.category)}
+                            {label(item.category)}
                           </span>
                         )}
                         <StatusBadge status={item.status} t={t} failed={item.record?.ok === "否"} />
@@ -538,7 +561,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                   <div key={tpl.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5">
                     <span className="font-medium text-ink">{tpl.name}</span>
                     {tpl.category && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-ink-faint">{catLabel(tpl.category)}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-ink-faint">{label(tpl.category)}</span>
                     )}
                     <span className="text-xs text-ink-faint">
                       {WEEKDAYS.filter((w) => (tpl.weekdays || []).includes(w.d)).map((w) => wdLabel(w.d)).join(" ")}
@@ -622,7 +645,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                 {histRows.map((r) => (
                   <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
                     <td className="px-4 py-2.5 text-ink-soft">{r.date}</td>
-                    <td className="px-4 py-2.5 text-ink-soft">{r.category ? catLabel(r.category) : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-4 py-2.5 text-ink-soft">{r.category ? label(r.category) : <span className="text-slate-300">—</span>}</td>
                     <td className="px-4 py-2.5 text-ink">{r.item}</td>
                     <td className="px-4 py-2.5">
                       <span className={r.ok === "否" ? "font-medium text-red-600" : "text-ink-soft"}>
@@ -708,6 +731,7 @@ function TplForm({
             value={draft.category}
             onChange={(v) => setDraft((d) => ({ ...d, category: v }))}
             suggestions={categorySuggestions}
+            labelFor={(v) => catLabel(v, t)}
             onRemoveSuggestion={onRemoveCategorySuggestion}
             placeholder={t({ zh: "例：温度", en: "e.g. Temp", fr: "ex. Température" })}
             t={t}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { getTenant, myAccess, type Tenant } from "@/lib/store";
+import { getTenant, loadTenants, myAccess, type Tenant } from "@/lib/store";
 import { CATEGORIES, DOMAINS, MODULE_BY_ID } from "@/lib/catalog";
 import { useLang, LangToggle } from "@/app/i18n";
 import { signOut } from "@/lib/useAuth";
@@ -44,6 +44,24 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
       alive = false;
     };
   }, [slug, pathname]);
+
+  // Defense-in-depth: RLS already blocks a non-member from reading this
+  // tenant's data (getTenant/`tenant` above comes back empty for them), so
+  // this only fires in that already-blocked case. It cross-checks against
+  // loadTenants() (the user's own accessible-tenant list) before redirecting,
+  // so a transient fetch hiccup in getTenant alone can't bounce someone who
+  // does have access — a clean redirect beats sitting on "store not found".
+  useEffect(() => {
+    if (!ready || tenant) return;
+    let alive = true;
+    loadTenants().then((tenants) => {
+      if (!alive) return;
+      if (!tenants.some((t) => t.slug === slug)) router.replace("/app");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ready, tenant, slug, router]);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => {

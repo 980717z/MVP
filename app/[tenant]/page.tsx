@@ -7,6 +7,7 @@ import { getTenant, type Tenant } from "@/lib/store";
 import { MODULE_BY_ID, type ModuleDef } from "@/lib/catalog";
 import { displayTable, money, num, sum } from "@/lib/format";
 import { listOrders, type Order } from "@/lib/orders";
+import { shopToday } from "@/lib/shopTime";
 import { useLang } from "@/app/i18n";
 
 const ORDERS_MODULE = "online-orders";
@@ -58,7 +59,7 @@ export default function Dashboard() {
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shopToday();
   const moneyKpis = tenant.enabled
     .map((id) => MODULE_BY_ID[id])
     .filter((m): m is ModuleDef => !!m && !!m.amountKey && m.amountKind === "money");

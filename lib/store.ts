@@ -9,6 +9,7 @@ import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
 import { computeTax } from "./tax";
 import { isValidSlug } from "./qrContract";
+import { shopYmd, shopHm } from "./shopTime";
 
 export type Role = "owner" | "manager" | "staff";
 
@@ -204,17 +205,23 @@ export async function myAccess(slug: string): Promise<{ role: Role; allowed: str
   return { role: m.role as Role, allowed: m.role === "owner" || access.length === 0 ? null : access };
 }
 
+/** Returns { error } on failure — same contract as updateRecord — so callers
+ *  can warn the user instead of closing a form / reloading as if it saved. */
 export async function addRecord(
   slug: string,
   moduleId: string,
   data: Record<string, any>
-): Promise<void> {
+): Promise<{ error?: string }> {
   const { error } = await supabase.from("records").insert({
     tenant_slug: slug,
     module_id: moduleId,
     data,
   });
-  if (error) console.error("addRecord", error);
+  if (error) {
+    console.error("addRecord", error);
+    return { error: error.message || "保存失败" };
+  }
+  return {};
 }
 
 /** Returns { error } on failure so callers that need to know (e.g. "mark done"
@@ -301,11 +308,13 @@ export async function syncMemberFromOrder(
       .select("*")
       .eq("tenant_slug", slug)
       .eq("module_id", "members")
-      .order("created_at", { ascending: false }),
+      .eq("data->>phone", phone)
+      .order("created_at", { ascending: false })
+      .limit(1),
     loadTierRules(slug),
   ]);
 
-  const match = (existing ?? []).find((r) => r.data?.phone === phone);
+  const match = (existing ?? [])[0];
   if (match) {
     const prev = match.data ?? {};
     const visits = (parseInt(prev.visits) || 0) + 1;
@@ -373,15 +382,21 @@ export async function recordOrderSale(
 ): Promise<void> {
   const { data: existing } = await supabase
     .from("records")
-    .select("id,data")
+    .select("id")
     .eq("tenant_slug", slug)
-    .eq("module_id", "sales");
-  if ((existing ?? []).some((r) => r.data?.orderId === order.id)) return;
+    .eq("module_id", "sales")
+    .eq("data->>orderId", order.id)
+    .limit(1);
+  if ((existing ?? []).length > 0) return;
 
   const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
+  // Shop-timezone date/time, not the completing device's local clock — a
+  // remote owner or a staff device in another timezone completing near
+  // midnight must still land on the shop's actual day, or daily-close
+  // totals won't reconcile.
   const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const date = shopYmd(now);
+  const ts = shopHm(now);
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
 
   const { error } = await supabase.from("records").insert({
@@ -488,7 +503,9 @@ async function _syncMenuToMarginImpl(slug: string): Promise<{ added: number; upd
     const match = byDish.get(name);
     if (match) {
       const prev = match.data ?? {};
-      const price = d.price != null ? String(d.price) : prev.price ?? "";
+      // Same rule as postOrderSales: a merchant-set price (e.g. a promo)
+      // wins over the menu price — only fill in when it's genuinely blank.
+      const price = prev.price && prev.price !== "" ? prev.price : (d.price != null ? String(d.price) : "");
       if (prev.price !== price) {
         await supabase.from("records").update({ data: { ...prev, price } }).eq("id", match.id);
         updated++;
@@ -678,10 +695,17 @@ export async function newTenantSlug(name: string): Promise<string> {
   if (base.length < 3) base = `${base}-shop`.slice(0, 30).replace(/^-|-$/g, "");
   base = base.slice(0, 30).replace(/-$/g, "");
   if (!isValidSlug(base).ok) base = `${base.slice(0, 25)}-shop`;
-  const { data } = await supabase.from("tenants").select("slug");
-  const existing = new Set((data ?? []).map((t) => t.slug));
-  if (!existing.has(base)) return base;
+  // Check one candidate at a time against `storefront`, not `tenants` — RLS on
+  // `tenants` only shows slugs the caller already owns/belongs to, so a
+  // brand-new user with zero shops would see an empty table and never detect
+  // a real collision (it'd surface later as a raw unique-constraint error on
+  // insert instead). `storefront` is the public, RLS-unrestricted view.
+  const slugTaken = async (candidate: string) => {
+    const { data } = await supabase.from("storefront").select("slug").eq("slug", candidate).maybeSingle();
+    return !!data;
+  };
+  if (!(await slugTaken(base))) return base;
   let i = 2;
-  while (existing.has(`${base}-${i}`)) i++;
+  while (await slugTaken(`${base}-${i}`)) i++;
   return `${base}-${i}`;
 }

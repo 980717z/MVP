@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Order } from "@/lib/orders";
 import { displayTable } from "@/lib/format";
+import { shopMonthDayTime } from "@/lib/shopTime";
 
 // Big-font kitchen ticket preview, sized to 80mm thermal paper (Epson TM-T88VI).
 // Large type by default so an older chef reads it at a glance; the 字号 dial
@@ -34,8 +35,7 @@ function fmtPhone(p: string) {
 }
 
 function ago(iso: string) {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return shopMonthDayTime(iso);
 }
 
 export default function KitchenTicket({ order, shopName, onClose }: { order: Order; shopName: string; onClose: () => void }) {

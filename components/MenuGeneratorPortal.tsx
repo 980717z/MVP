@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { displayPrice, normVariants, addMenuItem, deleteMenuImage, deleteMenuItem, getCatOrder, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 
 const CATEGORIES = [
@@ -86,6 +86,9 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     const { error } = await addMenuItem(slug, { name_zh: zh.trim(), name_en: en.trim(), price, category, image_url });
     setBusy(false);
     if (error) {
+      // The insert never happened, so nothing points at the image we just
+      // uploaded — clean it up instead of leaving an orphan blob.
+      if (image_url) await deleteMenuImage(image_url);
       alert("添加失败：" + error);
       return;
     }
@@ -93,51 +96,84 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     setTick((t) => t + 1);
   };
 
-  const remove = async (id: string) => {
-    await deleteMenuItem(id);
-    setDishes((prev) => prev.filter((d) => d.id !== id));
+  const remove = async (d: MenuItem) => {
+    await deleteMenuItem(d.id);
+    await deleteMenuImage(d.image_url);
+    setDishes((prev) => prev.filter((x) => x.id !== d.id));
   };
 
   // live-edit: update local state instantly (preview reacts), persist on commit
   const patchLocal = (id: string, patch: Record<string, any>) =>
     setDishes((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
 
-  const saveField = (id: string, patch: Record<string, any>) => {
-    updateMenuItem(id, patch);
+  const saveField = async (id: string, patch: Record<string, any>) => {
+    const { error } = await updateMenuItem(id, patch);
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      // patchLocal already applied the edit optimistically — resync from the
+      // DB so the field snaps back to what's actually saved, instead of
+      // showing a value that looks saved but got lost on refresh.
+      setTick((t) => t + 1);
+    }
   };
 
   // ── 多规格 (size variants) editing ──────────────────────────────────────
-  const setVariants = (d: MenuItem, next: any[]) => {
+  const setVariants = async (d: MenuItem, next: any[]) => {
     patchLocal(d.id, { variants: next });
-    updateMenuItem(d.id, { variants: next });
+    const { error } = await updateMenuItem(d.id, { variants: next });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      setTick((t) => t + 1);
+    }
   };
   const addVariant = (d: MenuItem) => setVariants(d, [...(d.variants ?? []), { label_zh: "", label_en: "", price: "" }]);
   const patchVariant = (d: MenuItem, i: number, patch: Record<string, any>) =>
     patchLocal(d.id, { variants: (d.variants ?? []).map((v: any, idx: number) => (idx === i ? { ...v, ...patch } : v)) });
   // Persist by reading the LATEST state (avoids saving a stale variants array
   // captured in the row's onBlur closure — the cause of sizes not saving).
-  const saveVariants = (id: string) =>
+  const saveVariants = (id: string) => {
     setDishes((prev) => {
       const d = prev.find((x) => x.id === id);
-      if (d) updateMenuItem(id, { variants: d.variants ?? [] });
+      if (d) {
+        updateMenuItem(id, { variants: d.variants ?? [] }).then(({ error }) => {
+          if (error) {
+            alert("保存失败，请重试：" + error);
+            setTick((t) => t + 1);
+          }
+        });
+      }
       return prev;
     });
+  };
   const rmVariant = (d: MenuItem, i: number) => setVariants(d, (d.variants ?? []).filter((_: any, idx: number) => idx !== i));
 
-  const changeImage = async (id: string, file: File | null) => {
+  const changeImage = async (id: string, oldUrl: string, file: File | null) => {
     if (!file) return;
     const up = await uploadMenuImage(slug, file);
     if (up.error) {
       alert("图片上传失败：" + up.error);
       return;
     }
+    const { error } = await updateMenuItem(id, { image_url: up.url ?? "" });
+    if (error) {
+      // DB write failed — the old image is still the one in use, so leave it
+      // alone; clean up the new upload instead so it doesn't sit orphaned.
+      await deleteMenuImage(up.url);
+      alert("保存失败，请重试：" + error);
+      return;
+    }
     patchLocal(id, { image_url: up.url ?? "" });
-    saveField(id, { image_url: up.url ?? "" });
+    await deleteMenuImage(oldUrl);
   };
 
-  const removeImage = (id: string) => {
+  const removeImage = async (id: string, oldUrl: string) => {
+    const { error } = await updateMenuItem(id, { image_url: "" });
+    if (error) {
+      alert("保存失败，请重试：" + error);
+      return;
+    }
     patchLocal(id, { image_url: "" });
-    saveField(id, { image_url: "" });
+    await deleteMenuImage(oldUrl);
   };
 
   // present categories (have dishes) in the saved custom order
@@ -390,13 +426,13 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) => changeImage(d.id, e.target.files?.[0] ?? null)}
+                            onChange={(e) => changeImage(d.id, d.image_url, e.target.files?.[0] ?? null)}
                           />
                         </label>
                         {d.image_url && (
                           <button
                             type="button"
-                            onClick={() => removeImage(d.id)}
+                            onClick={() => removeImage(d.id, d.image_url)}
                             title="删除图片 Remove photo"
                             aria-label="删除图片"
                             className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/55 text-[11px] leading-none text-white transition hover:bg-red-600"
@@ -511,7 +547,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                       )}
                     </div>
 
-                    <button onClick={() => remove(d.id)} className="flex-none self-start px-1 text-xs text-ink-faint hover:text-red-600">删除</button>
+                    <button onClick={() => remove(d)} className="flex-none self-start px-1 text-xs text-ink-faint hover:text-red-600">删除</button>
                   </div>
                 ))}
                 {dishes.length === 0 && (

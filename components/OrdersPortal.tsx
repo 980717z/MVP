@@ -6,6 +6,7 @@ import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
 import { listMenuItems } from "@/lib/menu";
+import { shopMonthDayTime } from "@/lib/shopTime";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
 
@@ -271,10 +272,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
   };
 
-  const fmtTime = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  };
+  const fmtTime = shopMonthDayTime;
 
   const active = orders.filter((o) => o.status === "new" || o.status === "preparing");
 
@@ -311,11 +309,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
                   {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
-                  {o.phone && (
+                  {o.phone && o.phone !== "N/A" ? (
                     <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">
                       📞 {fmtPhone(o.phone)}
                     </a>
-                  )}
+                  ) : o.phone === "N/A" ? (
+                    <span className="text-sm text-slate-400">📞 N/A</span>
+                  ) : null}
                 </div>
                 <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
               </div>

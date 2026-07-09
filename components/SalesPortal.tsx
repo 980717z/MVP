@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listRecords, addRecord, deleteRecord, type RecordRow } from "@/lib/store";
 import { computeTax } from "@/lib/tax";
+import { addDays, shopHm, shopToday } from "@/lib/shopTime";
 import { money } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -41,13 +42,8 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
     load();
   }, [load]);
 
-  const _now = new Date();
-  const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
-  const cutoff = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
-  }, []);
+  const today = shopToday();
+  const cutoff = useMemo(() => addDays(shopToday(), -6), []);
 
   const filtered = useMemo(() => {
     if (range === "all") return rows;
@@ -76,9 +72,8 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
   const save = async () => {
     if (num(amount) <= 0) return;
     setSaving(true);
-    const now = new Date();
-    const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    await addRecord(slug, "sales", {
+    const ts = shopHm();
+    const { error } = await addRecord(slug, "sales", {
       date: today,
       ts,
       source,
@@ -88,9 +83,13 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
       pst: String(preview.pst),
       total: String(preview.total),
     });
+    setSaving(false);
+    if (error) {
+      alert(t({ zh: "保存失败，请重试：", en: "Save failed, please retry: ", fr: "Échec de l'enregistrement, veuillez réessayer : " }) + error);
+      return;
+    }
     setAmount("");
     setDesc("");
-    setSaving(false);
     load();
   };
 

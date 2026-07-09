@@ -15,6 +15,7 @@ export default function SuggestInput({
   onRemoveSuggestion,
   placeholder,
   t,
+  labelFor,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -23,8 +24,14 @@ export default function SuggestInput({
   placeholder?: string;
   /** Localizer for chrome text (the ✕ button's aria-label). Defaults to zh for single-language pages. */
   t?: (d: Dict) => string;
+  /** Display label for a suggestion, when it differs from the stored value
+   *  (e.g. a category whose canonical value is always `zh`, translated for
+   *  display). Clicking a suggestion still stores the raw value, not the
+   *  label. Defaults to showing the value as-is. */
+  labelFor?: (value: string) => string;
 }) {
   const label = t ?? ((d: Dict) => d.zh);
+  const display = labelFor ?? ((s: string) => s);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +44,9 @@ export default function SuggestInput({
     return () => document.removeEventListener("mousedown", onClickAway);
   }, [open]);
 
-  const filtered = suggestions.filter((s) => !value.trim() || s.toLowerCase().includes(value.trim().toLowerCase()));
+  const filtered = suggestions.filter(
+    (s) => !value.trim() || display(s).toLowerCase().includes(value.trim().toLowerCase()),
+  );
 
   return (
     <div className="relative" ref={boxRef}>
@@ -63,7 +72,7 @@ export default function SuggestInput({
                   setOpen(false);
                 }}
               >
-                {s}
+                {display(s)}
               </button>
               <button
                 type="button"
