@@ -26,6 +26,7 @@ import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/l
 import { money, num, sum } from "@/lib/format";
 import { addDays, mondayOf, shopToday, shopYmd } from "@/lib/shopTime";
 import { computeStockLossFifo } from "@/lib/inventory";
+import { uploadEquipmentPhoto, deleteEquipmentPhoto } from "@/lib/equipmentPhoto";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
@@ -365,6 +366,11 @@ function GroupedRows({
               </td>
             ))}
             <td className="px-4 py-2.5 text-right whitespace-nowrap">
+              {r.photo_url && (
+                <a href={r.photo_url} target="_blank" rel="noreferrer" className="text-xs text-ink-faint hover:text-brand mr-2" title="查看照片">
+                  📷
+                </a>
+              )}
               <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
               <button
                 onClick={async () => { if (confirm("删除这条记录？")) await doDelete(r.id); }}
@@ -406,6 +412,7 @@ export default function ModulePage() {
   const [customStatsFrom, setCustomStatsFrom] = useState("");
   const [customStatsTo, setCustomStatsTo] = useState("");
   const [importing, setImporting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
@@ -796,12 +803,25 @@ export default function ModulePage() {
       if (upcoming.length) list.push({ type: "info", text: `📅 近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
     }
     if (moduleId === "equipment") {
-      const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
-      if (open.length) list.push({ type: "warn", text: `🔧 ${open.length} 个设备问题待处理：${open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")}` });
-      // 保养到期提醒：下次保养日期已过期或在近7天内
+      // 紧急排在前面，同一优先级内维持原有（最新在前）顺序
+      const open = rows
+        .filter((r) => r.status === "待处理" || r.status === "处理中")
+        .sort((a, b) => (a.priority === "紧急" ? -1 : 0) - (b.priority === "紧急" ? -1 : 0));
+      if (open.length) {
+        const urgentCount = open.filter((r) => r.priority === "紧急").length;
+        list.push({
+          type: "warn",
+          text: `🔧 ${open.length} 个设备问题待处理${urgentCount ? `（${urgentCount} 个紧急）` : ""}：${open
+            .map((r) => `${r.priority === "紧急" ? "⚠️" : ""}${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`)
+            .join("、")}`,
+        });
+      }
+      // 保养到期提醒：下次保养日期已过期或在近7天内，跳过已停用和已确认处理过的
       const today = shopToday();
       const soon = addDays(today, 7);
-      const due = rows.filter((r) => r.nextService && r.nextService <= soon);
+      const due = rows.filter(
+        (r) => r.nextService && r.nextService <= soon && r.status !== "停用" && r.servicedThrough !== r.nextService,
+      );
       if (due.length) {
         const overdue = due.filter((r) => r.nextService < today);
         list.push({
@@ -935,11 +955,21 @@ export default function ModulePage() {
   const updateForm = useCallback(
     (key: string, value: string) => {
       setForm((prev) => {
-        const next = { ...prev, [key]: value };
+        let next = { ...prev, [key]: value };
+        // 设备维护：填了保养周期、但还没手动填下次保养日期时，自动算一个出来
+        // （日期字段 + 周期天数，日期没填就用今天）——算出来的值会显示在下次
+        // 保养日期那栏，可以直接改掉，不会覆盖已经手动填过的日期。
+        if (moduleId === "equipment" && key === "intervalDays" && !prev.nextService) {
+          const days = parseInt(value, 10);
+          if (days > 0) {
+            const base = prev.date || shopToday();
+            next = { ...next, nextService: addDays(base, days) };
+          }
+        }
         return applyComputed(next, mod?.computed);
       });
     },
-    [mod]
+    [mod, moduleId]
   );
 
   if (!mod) {
@@ -973,19 +1003,57 @@ export default function ModulePage() {
 
   const enabled = tenant.enabled.includes(moduleId);
 
+  const handleEquipmentPhotoUpload = async (file: File | null) => {
+    if (!file) return;
+    setUploadingPhoto(true);
+    // replace any previously uploaded photo for this draft — re-picking a photo
+    // shouldn't leave the first upload orphaned in storage.
+    if (form.photo_url) await deleteEquipmentPhoto(form.photo_url);
+    const up = await uploadEquipmentPhoto(slug, file);
+    setUploadingPhoto(false);
+    if (up.error) {
+      alert("照片上传失败：" + up.error);
+      return;
+    }
+    updateForm("photo_url", up.url ?? "");
+  };
+
   const submit = async () => {
     const missing = mod.fields.filter((f) => f.required && !form[f.key]?.trim());
     if (missing.length) {
       alert("请填写：" + missing.map((f) => f.label.zh).join("、"));
       return;
     }
-    const { error } = await addRecord(slug, moduleId, form);
+    // 设备维护：填了「下次保养日期」的话，这条刚提交的记录本身标记成"已经为这个
+    // 下次保养日期建好提醒了"（servicedThrough），不然它自己也会因为没有
+    // servicedThrough 而被保养清单/提醒栏当成"还没处理"，跟下面新建的那条提醒
+    // 记录重复出现两次。真正承担提醒任务的是下面新建的那条独立记录。
+    const toSave = moduleId === "equipment" && form.nextService ? { ...form, servicedThrough: form.nextService } : form;
+    const { error } = await addRecord(slug, moduleId, toSave);
     if (error) {
+      // The insert never happened, so nothing points at the photo we just
+      // uploaded — clean it up instead of leaving an orphan.
+      if (form.photo_url) await deleteEquipmentPhoto(form.photo_url);
       alert("保存失败，请重试：" + error);
       return;
     }
     if (moduleId === "purchasing") {
       await syncPurchasingToStock(slug);
+    }
+    // 和 markServiced 里"自动生成下一周期"是同一套逻辑，只是这里是新增时就建好，
+    // 不用等点了"本次已保养"才生成。
+    if (moduleId === "equipment" && form.nextService) {
+      const { error: reminderError } = await addRecord(slug, "equipment", {
+        equipment: form.equipment || "",
+        issue: form.issue || "",
+        vendor: form.vendor || "",
+        cost: "",
+        status: "待处理",
+        date: form.nextService,
+        nextService: form.nextService,
+        intervalDays: form.intervalDays || "",
+      });
+      if (reminderError) alert("记录已保存，但保养提醒创建失败，请手动补上：" + reminderError);
     }
     const orderModules = ["group-booking"];
     if (orderModules.includes(moduleId) && form.phone) {
@@ -1335,9 +1403,49 @@ export default function ModulePage() {
               </div>
             ))}
           </div>
+          {moduleId === "equipment" && (
+            <div className="mt-3">
+              <label className="label">照片（可选）</label>
+              {form.photo_url ? (
+                <div className="flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.photo_url} alt="设备照片" className="h-16 w-16 rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    className="text-xs text-ink-faint hover:text-red-600"
+                    onClick={async () => {
+                      await deleteEquipmentPhoto(form.photo_url);
+                      updateForm("photo_url", "");
+                    }}
+                  >
+                    移除
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploadingPhoto}
+                  className="input !py-1.5 text-xs"
+                  onChange={(e) => handleEquipmentPhotoUpload(e.target.files?.[0] ?? null)}
+                />
+              )}
+              {uploadingPhoto && <p className="mt-1 text-xs text-ink-faint">上传中…</p>}
+            </div>
+          )}
           <div className="mt-4 flex gap-2">
             <button className="btn-primary" onClick={submit}>保存</button>
-            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>取消</button>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                if (form.photo_url) deleteEquipmentPhoto(form.photo_url);
+                setForm({});
+                setShiftPreset("custom");
+                setOpen(false);
+              }}
+            >
+              取消
+            </button>
           </div>
         </section>
       )}
@@ -1565,7 +1673,14 @@ export default function ModulePage() {
                   startEdit={startEdit}
                   saveEdit={saveEdit}
                   cancelEdit={cancelEdit}
-                  deleteRecord={async (id) => { await deleteRecord(id); setTick((t) => t + 1); }}
+                  deleteRecord={async (id) => {
+                    if (moduleId === "equipment") {
+                      const photoUrl = filteredRows.find((r) => r.id === id)?.photo_url;
+                      if (photoUrl) await deleteEquipmentPhoto(photoUrl);
+                    }
+                    await deleteRecord(id);
+                    setTick((t) => t + 1);
+                  }}
                 />
               ) : groupByStaff
                 ? staffGroups.map((g) => {
@@ -1800,7 +1915,14 @@ function ModuleInsights({ moduleId, rows, slug, refresh }: { moduleId: string; r
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
   if (moduleId === "members") return <TierSettings slug={slug} />;
-  if (moduleId === "equipment") return <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />;
+  if (moduleId === "equipment") {
+    return (
+      <>
+        <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />
+        <EquipmentRoster rows={rows} />
+      </>
+    );
+  }
   return null;
 }
 
@@ -1823,8 +1945,8 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       // servicedThrough records which nextService value was already acknowledged —
       // once it matches the current nextService, this cycle's reminder is done.
       // (We never touch nextService itself, so the date stays visible in the
-      // history table instead of getting wiped out.)
-      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService)
+      // history table instead of getting wiped out.) 停用设备不再提醒。
+      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService && r.status !== "停用")
       .map((r) => ({ ...r, overdue: r.nextService < todayStr }) as RecordRow & { overdue: boolean })
       .sort((a, b) => (a.equipment || "").localeCompare(b.equipment || "") || (a.nextService || "").localeCompare(b.nextService || ""));
   }, [rows]);
@@ -1886,6 +2008,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       <div className="space-y-1.5">
         {due.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
+            {r.priority === "紧急" && <span className="text-red-600" title="紧急">⚠️</span>}
             <span className="font-medium text-ink">{r.equipment || "设备"}</span>
             {r.issue && <span className="text-ink-soft">{r.issue}</span>}
             <span className={`ml-auto text-xs font-medium tabular-nums ${r.overdue ? "text-red-600" : "text-ink-faint"}`}>
@@ -1900,6 +2023,65 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
             </button>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+/** 设备总览：每台设备当前状态、下次保养日期、累计维修费用一览——不用逐条翻历史表
+ *  去拼"这台设备到底花了多少钱、现在是什么状态"。按累计费用从高到低排，费用最高的
+ *  设备最值得关注（可能该考虑换新的了）。 */
+function EquipmentRoster({ rows }: { rows: RecordRow[] }) {
+  const roster = useMemo(() => {
+    const byEquipment = new Map<string, RecordRow[]>();
+    for (const r of rows) {
+      const name = (r.equipment || "").trim();
+      if (!name) continue;
+      (byEquipment.get(name) ?? byEquipment.set(name, []).get(name)!).push(r);
+    }
+    return Array.from(byEquipment.entries())
+      .map(([name, recs]) => {
+        const sorted = [...recs].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const latest = sorted[0];
+        const totalCost = recs.reduce((s, r) => s + (parseFloat(r.cost) || 0), 0);
+        const openCount = recs.filter((r) => r.status === "待处理" || r.status === "处理中").length;
+        return { name, latest, totalCost, openCount };
+      })
+      .sort((a, b) => b.totalCost - a.totalCost);
+  }, [rows]);
+
+  if (roster.length < 2) return null;
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-1 text-sm font-semibold text-ink">设备总览</div>
+      <p className="mb-3 text-xs text-ink-faint">按累计维修费用从高到低排——花费最多的设备可能该考虑换新的了</p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
+              <th className="px-3 py-2 font-medium">设备</th>
+              <th className="px-3 py-2 font-medium">当前状态</th>
+              <th className="px-3 py-2 font-medium">下次保养</th>
+              <th className="px-3 py-2 font-medium text-right">累计维修费用</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roster.map((e) => (
+              <tr key={e.name} className="border-b border-slate-100 last:border-0">
+                <td className="px-3 py-2 font-medium text-ink">
+                  {e.name}
+                  {e.openCount > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-700">{e.openCount} 个待处理</span>}
+                </td>
+                <td className="px-3 py-2 text-ink-soft">
+                  {e.latest?.status === "停用" ? <span className="text-ink-faint">已停用</span> : (e.latest?.status || "—")}
+                </td>
+                <td className="px-3 py-2 text-ink-soft">{e.latest?.nextService || "—"}</td>
+                <td className="px-3 py-2 text-right font-medium tabular-nums text-ink">{money(e.totalCost)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );
