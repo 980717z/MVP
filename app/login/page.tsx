@@ -4,9 +4,35 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { claimInvites } from "@/lib/store";
+import { useLang, LangToggle, type Dict } from "@/app/i18n";
+
+// Trilingual copy (EN default, + 中 / FR). Chrome only — Supabase auth errors
+// come back in English and are shown as-is.
+const T: Record<string, Dict> = {
+  signin: { en: "Sign in", zh: "登录", fr: "Connexion" },
+  signup: { en: "Sign up", zh: "注册", fr: "Inscription" },
+  email: { en: "Email", zh: "邮箱", fr: "Courriel" },
+  password: { en: "Password", zh: "密码", fr: "Mot de passe" },
+  pwPlaceholder: { en: "At least 6 characters", zh: "至少 6 位", fr: "Au moins 6 caractères" },
+  wait: { en: "Please wait…", zh: "请稍候…", fr: "Un instant…" },
+  ctaSignin: { en: "Sign in", zh: "登录", fr: "Se connecter" },
+  ctaSignup: { en: "Sign up & continue", zh: "注册并登录", fr: "S'inscrire et continuer" },
+  footer: {
+    en: "Demo environment. Signing up creates your merchant account.",
+    zh: "演示环境。注册即创建你的商家账号。",
+    fr: "Environnement de démo. L'inscription crée votre compte marchand.",
+  },
+  signupOk: {
+    en: "Account created. If email verification is on, check your inbox before signing in.",
+    zh: "注册成功。如开启了邮箱验证，请查收邮件后再登录。",
+    fr: "Compte créé. Si la vérification par courriel est activée, consultez votre boîte avant de vous connecter.",
+  },
+  genericErr: { en: "Something went wrong", zh: "出错了", fr: "Une erreur s'est produite" },
+};
 
 export default function Login() {
   const router = useRouter();
+  const { t } = useLang();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,7 +63,7 @@ export default function Login() {
           await claimInvites(); // link any pending staff invites for this email
           router.replace("/app");
         } else {
-          setMsg("注册成功。如开启了邮箱验证，请查收邮件后再登录。");
+          setMsg(t(T.signupOk));
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -46,7 +72,7 @@ export default function Login() {
         router.replace("/app");
       }
     } catch (e: any) {
-      setMsg(e.message ?? "出错了");
+      setMsg(e.message ?? t(T.genericErr));
     } finally {
       setBusy(false);
     }
@@ -55,9 +81,12 @@ export default function Login() {
   return (
     <main className="grid min-h-screen place-items-center px-6">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-sky-500 text-lg shadow-sm">🍱</div>
-          <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
+        <div className="mb-6 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-sky-500 text-lg shadow-sm">🍱</div>
+            <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
+          </div>
+          <LangToggle />
         </div>
 
         <div className="card p-6">
@@ -66,17 +95,17 @@ export default function Login() {
               className={`flex-1 rounded-md min-h-11 py-1.5 ${mode === "signin" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
               onClick={() => setMode("signin")}
             >
-              登录
+              {t(T.signin)}
             </button>
             <button
               className={`flex-1 rounded-md min-h-11 py-1.5 ${mode === "signup" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
               onClick={() => setMode("signup")}
             >
-              注册
+              {t(T.signup)}
             </button>
           </div>
 
-          <label className="label">邮箱</label>
+          <label className="label">{t(T.email)}</label>
           <input
             className="input mb-3"
             type="email"
@@ -84,26 +113,24 @@ export default function Login() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
           />
-          <label className="label">密码</label>
+          <label className="label">{t(T.password)}</label>
           <input
             className="input"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            placeholder="至少 6 位"
+            placeholder={t(T.pwPlaceholder)}
           />
 
           {msg && <div className="mt-3 text-sm text-amber-700">{msg}</div>}
 
           <button className="btn-primary mt-4 w-full" onClick={submit} disabled={busy || !email || !password}>
-            {busy ? "请稍候…" : mode === "signin" ? "登录" : "注册并登录"}
+            {busy ? t(T.wait) : mode === "signin" ? t(T.ctaSignin) : t(T.ctaSignup)}
           </button>
         </div>
 
-        <p className="mt-4 text-center text-xs text-ink-faint">
-          演示环境。注册即创建你的商家账号。
-        </p>
+        <p className="mt-4 text-center text-xs text-ink-faint">{t(T.footer)}</p>
       </div>
     </main>
   );
