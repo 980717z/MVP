@@ -30,6 +30,67 @@ const PASS_OPTIONS: { value: string; zh: string; en: string; fr: string }[] = [
   { value: "否", zh: "不合格", en: "Fail", fr: "Non conforme" },
 ];
 
+// Trilingual UI chrome (EN default, + 中 / FR). Merchant-entered data (dish/check
+// names, staff names) and stored flags ("是"/"否") are never translated.
+const T: Record<string, Dict> = {
+  selectPassFail: { zh: "请选择合格 / 不合格", en: "Please select pass or fail", fr: "Veuillez sélectionner conforme ou non conforme" },
+  fillTemplate: { zh: "请填写名称、至少选一个星期几、时间", en: "Please fill in a name, at least one weekday, and a time", fr: "Veuillez remplir le nom, au moins un jour et l'heure" },
+  deleteConfirm: { zh: "删除这个检查项？历史记录会保留。", en: "Delete this check item? History is kept.", fr: "Supprimer cet élément ? L'historique est conservé." },
+  loading: { zh: "加载中…", en: "Loading…", fr: "Chargement…" },
+  overview: { zh: "总览", en: "Overview", fr: "Aperçu" },
+  kpiDue: { zh: "本周应检", en: "Due this week", fr: "À faire cette sem." },
+  kpiCompleted: { zh: "已完成", en: "Completed", fr: "Complétés" },
+  kpiOverdue: { zh: "漏检", en: "Overdue", fr: "En retard" },
+  kpiFailed: { zh: "不合格", en: "Failed", fr: "Non conforme" },
+  overdueBanner: { zh: "{n} 项检查已到期未做：", en: "{n} check(s) overdue: ", fr: "{n} vérification(s) en retard : " },
+  weekChecklist: { zh: "本周清单", en: "This week's checklist", fr: "Liste de cette semaine" },
+  noCheckItems: { zh: "还没有检查项", en: "No check items yet", fr: "Aucun élément de vérification" },
+  noCheckItemsHint: {
+    zh: "在下面「检查项设置」里添加，比如冷藏温度、关店清洁——设定好每周哪几天、几点检查，本周该做的会自动列在这里。",
+    en: "Add one below in “Check item settings” — e.g. fridge temp, closing clean-up. Pick which weekdays and time, and it shows up here automatically.",
+    fr: "Ajoutez-en un ci-dessous dans « Paramètres des vérifications » — les éléments dus s'afficheront ici automatiquement.",
+  },
+  weekPrefix: { zh: "周", en: "", fr: "" },
+  today: { zh: "今天", en: "Today", fr: "Aujourd'hui" },
+  result: { zh: "结果", en: "Result", fr: "Résultat" },
+  reading: { zh: "读数/结果说明", en: "Reading / notes", fr: "Lecture / notes" },
+  checkedBy: { zh: "记录人", en: "Checked by", fr: "Vérifié par" },
+  byPlaceholder: { zh: "例：张经理", en: "e.g. Manager Zhang", fr: "ex. Gérant Zhang" },
+  note: { zh: "备注", en: "Note", fr: "Remarque" },
+  save: { zh: "保存", en: "Save", fr: "Enregistrer" },
+  cancel: { zh: "取消", en: "Cancel", fr: "Annuler" },
+  settings: { zh: "检查项设置", en: "Check item settings", fr: "Paramètres des vérifications" },
+  settingsEmptyHint: { zh: "从空白开始，按需添加检查项——每个检查项设定名称、类别、每周哪几天、几点检查。", en: "Starts empty — add check items as you need them: a name, category, which weekdays, and a time.", fr: "Commence vide — ajoutez des éléments au besoin : nom, catégorie, jours et heure." },
+  paused: { zh: "已暂停", en: "Paused", fr: "En pause" },
+  enable: { zh: "启用", en: "Enable", fr: "Activer" },
+  pause: { zh: "暂停", en: "Pause", fr: "Pause" },
+  edit: { zh: "编辑", en: "Edit", fr: "Modifier" },
+  delete: { zh: "删除", en: "Delete", fr: "Supprimer" },
+  addCheckItem: { zh: "新增检查项", en: "Add check item", fr: "Ajouter un élément" },
+  history: { zh: "历史记录", en: "History", fr: "Historique" },
+  exportCsv: { zh: "导出 CSV", en: "Export CSV", fr: "Exporter CSV" },
+  noHistory: { zh: "还没有历史记录", en: "No history yet", fr: "Aucun historique" },
+  colDate: { zh: "日期", en: "Date", fr: "Date" },
+  colCategory: { zh: "类别", en: "Category", fr: "Catégorie" },
+  colItem: { zh: "检查项", en: "Item", fr: "Élément" },
+  colResult: { zh: "结果", en: "Result", fr: "Résultat" },
+  colReading: { zh: "读数", en: "Reading", fr: "Lecture" },
+  colBy: { zh: "记录人", en: "By", fr: "Par" },
+  colNote: { zh: "备注", en: "Note", fr: "Remarque" },
+  fail: { zh: "不合格", en: "Fail", fr: "Non conforme" },
+  pass: { zh: "合格", en: "Pass", fr: "Conforme" },
+  done: { zh: "已完成", en: "Done", fr: "Fait" },
+  overdue: { zh: "漏检", en: "Overdue", fr: "En retard" },
+  pending: { zh: "待检", en: "Pending", fr: "À faire" },
+  name: { zh: "名称", en: "Name", fr: "Nom" },
+  namePlaceholder: { zh: "例：冷藏温度", en: "e.g. Fridge temp", fr: "ex. Température frigo" },
+  category: { zh: "类别（可选，输入后自动记住）", en: "Category (optional, remembers what you type)", fr: "Catégorie (facultatif, mémorisée)" },
+  categoryPlaceholder: { zh: "例：温度", en: "e.g. Temp", fr: "ex. Température" },
+  weekdays: { zh: "每周哪几天", en: "Which weekdays", fr: "Quels jours" },
+  time: { zh: "时间", en: "Time", fr: "Heure" },
+  active: { zh: "启用", en: "Active", fr: "Actif" },
+};
+
 function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -231,7 +292,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
 
   const saveCheck = async (item: DueItem) => {
     if (!checkForm.ok) {
-      alert(t({ zh: "请选择合格 / 不合格", en: "Please select pass or fail", fr: "Veuillez sélectionner conforme ou non conforme" }));
+      alert(t(T.selectPassFail));
       return;
     }
     setSaving(true);
@@ -294,7 +355,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
 
   const saveTpl = async () => {
     if (!tplDraft.name.trim() || tplDraft.weekdays.length === 0 || !tplDraft.time) {
-      alert(t({ zh: "请填写名称、至少选一个星期几、时间", en: "Please fill in a name, at least one weekday, and a time", fr: "Veuillez remplir le nom, au moins un jour et l'heure" }));
+      alert(t(T.fillTemplate));
       return;
     }
     setSavingTpl(true);
@@ -322,7 +383,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
   };
 
   const removeTpl = async (id: string) => {
-    if (!confirm(t({ zh: "删除这个检查项？历史记录会保留。", en: "Delete this check item? History is kept.", fr: "Supprimer cet élément ? L'historique est conservé." }))) return;
+    if (!confirm(t(T.deleteConfirm))) return;
     await deleteRecord(id);
     await load();
   };
@@ -355,13 +416,13 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
   };
 
   if (loading) {
-    return <main className="px-5 py-6 lg:px-7 text-sm text-ink-faint">{t({ zh: "加载中…", en: "Loading…", fr: "Chargement…" })}</main>;
+    return <main className="px-5 py-6 lg:px-7 text-sm text-ink-faint">{t(T.loading)}</main>;
   }
 
   return (
     <main className="px-5 py-6 lg:px-7">
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">
-        ← {t({ zh: "总览", en: "Overview", fr: "Aperçu" })}
+        ← {t(T.overview)}
       </Link>
 
       <header className="mt-3 mb-5">
@@ -373,16 +434,16 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
 
       {/* KPI strip */}
       <section className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kpi label={t({ zh: "本周应检", en: "Due this week", fr: "À faire cette sem." })} value={dueItems.length} />
-        <Kpi label={t({ zh: "已完成", en: "Completed", fr: "Complétés" })} value={doneCount} tone="brand" />
-        <Kpi label={t({ zh: "漏检", en: "Overdue", fr: "En retard" })} value={overdueCount} tone={overdueCount > 0 ? "danger" : undefined} />
-        <Kpi label={t({ zh: "不合格", en: "Failed", fr: "Non conforme" })} value={failCount} tone={failCount > 0 ? "danger" : undefined} />
+        <Kpi label={t(T.kpiDue)} value={dueItems.length} />
+        <Kpi label={t(T.kpiCompleted)} value={doneCount} tone="brand" />
+        <Kpi label={t(T.kpiOverdue)} value={overdueCount} tone={overdueCount > 0 ? "danger" : undefined} />
+        <Kpi label={t(T.kpiFailed)} value={failCount} tone={failCount > 0 ? "danger" : undefined} />
       </section>
 
       {/* overdue reminder banner */}
       {overdueCount > 0 && (
         <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
-          🔔 {t({ zh: `${overdueCount} 项检查已到期未做：`, en: `${overdueCount} check(s) overdue: `, fr: `${overdueCount} vérification(s) en retard : ` })}
+          🔔 {t(T.overdueBanner).replace("{n}", String(overdueCount))}
           {dueItems
             .filter((i) => i.status === "overdue")
             .map((i) => `${i.name}(${fmtMonthDay(i.date)} ${i.time})`)
@@ -394,7 +455,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
       <section className="card mb-6 overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">
-            {t({ zh: "本周清单", en: "This week's checklist", fr: "Liste de cette semaine" })}
+            {t(T.weekChecklist)}
           </h2>
           <span className="text-xs text-ink-faint">
             {fmtMonthDay(weekDates[0])} – {fmtMonthDay(weekDates[6])}
@@ -405,14 +466,10 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
           <div className="px-6 py-12 text-center">
             <div className="text-2xl">🧊</div>
             <div className="mt-2 text-sm font-semibold text-ink">
-              {t({ zh: "还没有检查项", en: "No check items yet", fr: "Aucun élément de vérification" })}
+              {t(T.noCheckItems)}
             </div>
             <p className="mx-auto mt-1 max-w-xs text-xs text-ink-soft">
-              {t({
-                zh: "在下面「检查项设置」里添加，比如冷藏温度、关店清洁——设定好每周哪几天、几点检查，本周该做的会自动列在这里。",
-                en: "Add one below in “Check item settings” — e.g. fridge temp, closing clean-up. Pick which weekdays and time, and it shows up here automatically.",
-                fr: "Ajoutez-en un ci-dessous dans « Paramètres des vérifications » — les éléments dus s'afficheront ici automatiquement.",
-              })}
+              {t(T.noCheckItemsHint)}
             </p>
           </div>
         ) : (
@@ -420,8 +477,8 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
             {weekDates.filter((d) => (byDay.get(d)?.length ?? 0) > 0).map((date) => (
               <div key={date} className="px-4 py-3">
                 <div className="mb-2 text-xs font-semibold text-ink-faint">
-                  {t({ zh: "周", en: "", fr: "" })}{wdLabel(weekdayOf(date))} · {fmtMonthDay(date)}
-                  {date === todayStr() && <span className="ml-1.5 rounded-full bg-brand-wash px-1.5 py-0.5 text-brand-ink">{t({ zh: "今天", en: "Today", fr: "Aujourd'hui" })}</span>}
+                  {t(T.weekPrefix)}{wdLabel(weekdayOf(date))} · {fmtMonthDay(date)}
+                  {date === todayStr() && <span className="ml-1.5 rounded-full bg-brand-wash px-1.5 py-0.5 text-brand-ink">{t(T.today)}</span>}
                 </div>
                 <div className="space-y-1.5">
                   {byDay.get(date)!.map((item) => (
@@ -443,7 +500,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                         <div className="border-t border-slate-100 bg-slate-50/60 p-3">
                           <div className="grid gap-2.5 sm:grid-cols-2">
                             <div>
-                              <label className="label">{t({ zh: "结果", en: "Result", fr: "Résultat" })}</label>
+                              <label className="label">{t(T.result)}</label>
                               <div className="flex gap-1.5">
                                 {PASS_OPTIONS.map((o) => (
                                   <button
@@ -464,31 +521,31 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                               </div>
                             </div>
                             <div>
-                              <label className="label">{t({ zh: "读数/结果说明", en: "Reading / notes", fr: "Lecture / notes" })}</label>
+                              <label className="label">{t(T.reading)}</label>
                               <input className="input" value={checkForm.value} onChange={(e) => setCheckForm((f) => ({ ...f, value: e.target.value }))} />
                             </div>
                             <div>
-                              <label className="label">{t({ zh: "记录人", en: "Checked by", fr: "Vérifié par" })}</label>
+                              <label className="label">{t(T.checkedBy)}</label>
                               <SuggestInput
                                 value={checkForm.by}
                                 onChange={(v) => setCheckForm((f) => ({ ...f, by: v }))}
                                 suggestions={bySuggestions}
                                 onRemoveSuggestion={removeBySuggestion}
-                                placeholder={t({ zh: "例：张经理", en: "e.g. Manager Zhang", fr: "ex. Gérant Zhang" })}
+                                placeholder={t(T.byPlaceholder)}
                                 t={t}
                               />
                             </div>
                             <div>
-                              <label className="label">{t({ zh: "备注", en: "Note", fr: "Remarque" })}</label>
+                              <label className="label">{t(T.note)}</label>
                               <input className="input" value={checkForm.note} onChange={(e) => setCheckForm((f) => ({ ...f, note: e.target.value }))} />
                             </div>
                           </div>
                           <div className="mt-3 flex gap-2">
                             <button className="btn-primary" disabled={saving} onClick={() => saveCheck(item)}>
-                              {saving ? "…" : t({ zh: "保存", en: "Save", fr: "Enregistrer" })}
+                              {saving ? "…" : t(T.save)}
                             </button>
                             <button className="btn-ghost" onClick={() => setOpenKey(null)}>
-                              {t({ zh: "取消", en: "Cancel", fr: "Annuler" })}
+                              {t(T.cancel)}
                             </button>
                           </div>
                         </div>
@@ -508,14 +565,14 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
           className="flex w-full items-center justify-between px-4 py-3 text-left"
           onClick={() => setSettingsOpen((v) => !v)}
         >
-          <span className="text-sm font-semibold text-ink">{t({ zh: "检查项设置", en: "Check item settings", fr: "Paramètres des vérifications" })}</span>
+          <span className="text-sm font-semibold text-ink">{t(T.settings)}</span>
           <span className={`text-lg leading-none text-ink-faint transition-transform ${settingsOpen ? "rotate-180" : ""}`}>▾</span>
         </button>
         {settingsOpen && (
           <div className="border-t border-slate-100 p-4">
             {templates.length === 0 && !addingTpl && (
               <p className="mb-3 text-xs text-ink-soft">
-                {t({ zh: "从空白开始，按需添加检查项——每个检查项设定名称、类别、每周哪几天、几点检查。", en: "Starts empty — add check items as you need them: a name, category, which weekdays, and a time.", fr: "Commence vide — ajoutez des éléments au besoin : nom, catégorie, jours et heure." })}
+                {t(T.settingsEmptyHint)}
               </p>
             )}
             <div className="space-y-2">
@@ -546,18 +603,18 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                     <span className="text-xs font-medium tabular-nums text-ink-soft">{tpl.time}</span>
                     {tpl.active === "否" && (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-ink-faint">
-                        {t({ zh: "已暂停", en: "Paused", fr: "En pause" })}
+                        {t(T.paused)}
                       </span>
                     )}
                     <div className="ml-auto flex items-center gap-3 text-xs">
                       <button onClick={() => toggleActive(tpl)} className="text-ink-faint hover:text-ink">
-                        {tpl.active === "否" ? t({ zh: "启用", en: "Enable", fr: "Activer" }) : t({ zh: "暂停", en: "Pause", fr: "Pause" })}
+                        {tpl.active === "否" ? t(T.enable) : t(T.pause)}
                       </button>
                       <button onClick={() => startEditTpl(tpl)} className="text-brand hover:text-brand-soft">
-                        {t({ zh: "编辑", en: "Edit", fr: "Modifier" })}
+                        {t(T.edit)}
                       </button>
                       <button onClick={() => removeTpl(tpl.id)} className="text-ink-faint hover:text-red-600">
-                        {t({ zh: "删除", en: "Delete", fr: "Supprimer" })}
+                        {t(T.delete)}
                       </button>
                     </div>
                   </div>
@@ -580,7 +637,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
             </div>
             {!addingTpl && (
               <button className="btn-ghost mt-3 border border-slate-300" onClick={startAddTpl}>
-                + {t({ zh: "新增检查项", en: "Add check item", fr: "Ajouter un élément" })}
+                + {t(T.addCheckItem)}
               </button>
             )}
           </div>
@@ -590,32 +647,32 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
       {/* history / compliance log */}
       <section className="card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">{t({ zh: "历史记录", en: "History", fr: "Historique" })}</h2>
+          <h2 className="text-sm font-semibold text-ink">{t(T.history)}</h2>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <input type="date" className="rounded border border-slate-200 px-2 py-1 outline-none focus:border-brand" value={histFrom} onChange={(e) => setHistFrom(e.target.value)} />
             <span className="text-ink-faint">—</span>
             <input type="date" className="rounded border border-slate-200 px-2 py-1 outline-none focus:border-brand" value={histTo} onChange={(e) => setHistTo(e.target.value)} />
             <button className="btn-ghost border border-slate-300 !py-1 !text-xs" onClick={exportCsv} disabled={histRows.length === 0}>
-              {t({ zh: "导出 CSV", en: "Export CSV", fr: "Exporter CSV" })}
+              {t(T.exportCsv)}
             </button>
           </div>
         </div>
         {histRows.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm text-ink-faint">
-            {t({ zh: "还没有历史记录", en: "No history yet", fr: "Aucun historique" })}
+            {t(T.noHistory)}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "日期", en: "Date", fr: "Date" })}</th>
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "类别", en: "Category", fr: "Catégorie" })}</th>
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "检查项", en: "Item", fr: "Élément" })}</th>
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "结果", en: "Result", fr: "Résultat" })}</th>
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "读数", en: "Reading", fr: "Lecture" })}</th>
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "记录人", en: "By", fr: "Par" })}</th>
-                  <th className="px-4 py-2.5 font-medium">{t({ zh: "备注", en: "Note", fr: "Remarque" })}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colDate)}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colCategory)}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colItem)}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colResult)}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colReading)}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colBy)}</th>
+                  <th className="px-4 py-2.5 font-medium">{t(T.colNote)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -626,7 +683,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
                     <td className="px-4 py-2.5 text-ink">{r.item}</td>
                     <td className="px-4 py-2.5">
                       <span className={r.ok === "否" ? "font-medium text-red-600" : "text-ink-soft"}>
-                        {r.ok === "否" ? t({ zh: "不合格", en: "Fail", fr: "Non conforme" }) : t({ zh: "合格", en: "Pass", fr: "Conforme" })}
+                        {r.ok === "否" ? t(T.fail) : t(T.pass)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-ink-soft">{r.value || <span className="text-slate-300">—</span>}</td>
@@ -657,14 +714,14 @@ function StatusBadge({ status, failed, t }: { status: Status; failed?: boolean; 
   if (status === "done") {
     return (
       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${failed ? "bg-red-50 text-red-700" : "bg-brand-wash text-brand-ink"}`}>
-        {failed ? `✕ ${t({ zh: "不合格", en: "Fail", fr: "Non conforme" })}` : `✓ ${t({ zh: "已完成", en: "Done", fr: "Fait" })}`}
+        {failed ? `✕ ${t(T.fail)}` : `✓ ${t(T.done)}`}
       </span>
     );
   }
   if (status === "overdue") {
-    return <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">{t({ zh: "漏检", en: "Overdue", fr: "En retard" })}</span>;
+    return <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">{t(T.overdue)}</span>;
   }
-  return <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-ink-faint">{t({ zh: "待检", en: "Pending", fr: "À faire" })}</span>;
+  return <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-ink-faint">{t(T.pending)}</span>;
 }
 
 function TplForm({
@@ -694,27 +751,27 @@ function TplForm({
     <div className="rounded-lg border border-brand/30 bg-brand-wash/30 p-3">
       <div className="grid gap-2.5 sm:grid-cols-2">
         <div>
-          <label className="label">{t({ zh: "名称", en: "Name", fr: "Nom" })}</label>
+          <label className="label">{t(T.name)}</label>
           <input
             className="input"
-            placeholder={t({ zh: "例：冷藏温度", en: "e.g. Fridge temp", fr: "ex. Température frigo" })}
+            placeholder={t(T.namePlaceholder)}
             value={draft.name}
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           />
         </div>
         <div>
-          <label className="label">{t({ zh: "类别（可选，输入后自动记住）", en: "Category (optional, remembers what you type)", fr: "Catégorie (facultatif, mémorisée)" })}</label>
+          <label className="label">{t(T.category)}</label>
           <SuggestInput
             value={draft.category}
             onChange={(v) => setDraft((d) => ({ ...d, category: v }))}
             suggestions={categorySuggestions}
             onRemoveSuggestion={onRemoveCategorySuggestion}
-            placeholder={t({ zh: "例：温度", en: "e.g. Temp", fr: "ex. Température" })}
+            placeholder={t(T.categoryPlaceholder)}
             t={t}
           />
         </div>
         <div>
-          <label className="label">{t({ zh: "每周哪几天", en: "Which weekdays", fr: "Quels jours" })}</label>
+          <label className="label">{t(T.weekdays)}</label>
           <div className="flex flex-wrap gap-1.5">
             {WEEKDAYS.map((w) => (
               <button
@@ -731,20 +788,20 @@ function TplForm({
           </div>
         </div>
         <div>
-          <label className="label">{t({ zh: "时间", en: "Time", fr: "Heure" })}</label>
+          <label className="label">{t(T.time)}</label>
           <input type="time" className="input" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} />
         </div>
       </div>
       <label className="mt-3 flex items-center gap-2 text-xs text-ink-soft">
         <input type="checkbox" className="h-3.5 w-3.5 accent-brand" checked={draft.active} onChange={(e) => setDraft((d) => ({ ...d, active: e.target.checked }))} />
-        {t({ zh: "启用", en: "Active", fr: "Actif" })}
+        {t(T.active)}
       </label>
       <div className="mt-3 flex gap-2">
         <button className="btn-primary" disabled={saving} onClick={onSave}>
-          {saving ? "…" : t({ zh: "保存", en: "Save", fr: "Enregistrer" })}
+          {saving ? "…" : t(T.save)}
         </button>
         <button className="btn-ghost" onClick={onCancel}>
-          {t({ zh: "取消", en: "Cancel", fr: "Annuler" })}
+          {t(T.cancel)}
         </button>
       </div>
     </div>

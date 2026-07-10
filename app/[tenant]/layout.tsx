@@ -61,7 +61,9 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
     );
   }
 
-  const tl = (b: { zh: string; en: string }) => (lang === "zh" ? b.zh : b.en);
+  // Label resolver: fr falls back to en when a dict has no fr (e.g. catalog
+  // module labels are {zh,en}), so the nav never blanks in French.
+  const tl = (b: { zh: string; en: string; fr?: string }) => b[lang] ?? b.en;
 
   // staff with a restricted access[] only see their allowed modules (owner sees all)
   const visibleModules = (tenant?.enabled ?? []).filter((id) => !allowed || allowed.includes(id));
@@ -79,14 +81,14 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
         <div className="border-t border-[#F3F2EE] px-2.5 py-3">
           <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
-            {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
+            {tl({ zh: "设置 · 员工 · 功能", en: "Settings", fr: "Réglages" })}
           </NavLink>
           <button
             onClick={handleLogout}
             className="mt-px flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-ink-soft transition hover:bg-red-50 hover:text-red-600"
           >
             <span className="w-5 flex-none text-center text-[15px] leading-none">⎋</span>
-            <span className="min-w-0 truncate">{tl({ zh: "退出登录", en: "Sign out" })}</span>
+            <span className="min-w-0 truncate">{tl({ zh: "退出登录", en: "Sign out", fr: "Déconnexion" })}</span>
           </button>
         </div>
       </aside>
@@ -100,14 +102,14 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
             <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
             <div className="border-t border-[#F3F2EE] px-2.5 py-3">
               <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
-                ⚙️ {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
+                ⚙️ {tl({ zh: "设置 · 员工 · 功能", en: "Settings", fr: "Réglages" })}
               </NavLink>
               <button
                 onClick={handleLogout}
                 className="mt-px flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-ink-soft transition hover:bg-red-50 hover:text-red-600"
               >
                 <span className="w-5 flex-none text-center text-[15px] leading-none">⎋</span>
-                <span className="min-w-0 truncate">{tl({ zh: "退出登录", en: "Sign out" })}</span>
+                <span className="min-w-0 truncate">{tl({ zh: "退出登录", en: "Sign out", fr: "Déconnexion" })}</span>
               </button>
             </div>
           </div>
@@ -177,7 +179,7 @@ function NavTree({
   slug: string;
   pathname: string;
   enabled: string[];
-  tl: (b: { zh: string; en: string }) => string;
+  tl: (b: { zh: string; en: string; fr?: string }) => string;
   lang: string;
 }) {
   // category id → domain, so we can group by the two domains only (no per-category
@@ -189,7 +191,7 @@ function NavTree({
   return (
     <>
       <NavLink href={`/${slug}`} active={pathname === `/${slug}`} icon="▦">
-        {tl({ zh: "总览", en: "Overview" })}
+        {tl({ zh: "总览", en: "Overview", fr: "Aperçu" })}
       </NavLink>
 
       {DOMAINS.map((dom) => {
@@ -198,7 +200,7 @@ function NavTree({
         return (
           <div key={dom.id} className="mt-4">
             <div className="px-2.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">
-              {dom.id === "frontend" ? `🛎️ ${tl({ zh: "前台", en: "Front of house" })}` : `🗄️ ${tl({ zh: "后台", en: "Back office" })}`}
+              {dom.id === "frontend" ? `🛎️ ${tl({ zh: "前台", en: "Front of house", fr: "Salle" })}` : `🗄️ ${tl({ zh: "后台", en: "Back office", fr: "Back-office" })}`}
             </div>
             {mods.map((m) => (
               <NavLink key={m!.id} href={`/${slug}/m/${m!.id}`} active={pathname === `/${slug}/m/${m!.id}`} icon={m!.icon}>
@@ -211,7 +213,7 @@ function NavTree({
 
       <div className="mt-4 border-t border-[#F3F2EE] pt-3">
         <NavLink href={`/${slug}/settings`} active={false} icon="＋">
-          {tl({ zh: "增减功能", en: "Add / remove modules" })}
+          {tl({ zh: "增减功能", en: "Add / remove modules", fr: "Ajouter / retirer des modules" })}
         </NavLink>
       </div>
     </>

@@ -9,19 +9,113 @@ import { supabase } from "@/lib/supabase";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
+import { useLang, type Dict } from "@/app/i18n";
 
-const STATUS: Record<Order["status"], { label: string; cls: string }> = {
-  new: { label: "新单", cls: "bg-amber-100 text-amber-700" },
-  preparing: { label: "备餐中", cls: "bg-blue-100 text-blue-700" },
-  delivering: { label: "配送中", cls: "bg-violet-100 text-violet-700" },
-  done: { label: "已完成", cls: "bg-green-100 text-green-700" },
-  cancelled: { label: "已取消", cls: "bg-slate-100 text-ink-faint" },
+// Trilingual UI chrome (EN default, + 中 / FR). Merchant DATA (dish names, store
+// name, table numbers) is never translated — only labels/buttons/hints/dialogs.
+const T: Record<string, Dict> = {
+  // STATUS labels
+  stNew: { en: "New", zh: "新单", fr: "Nouveau" },
+  stPreparing: { en: "Preparing", zh: "备餐中", fr: "En préparation" },
+  stDelivering: { en: "Delivering", zh: "配送中", fr: "En livraison" },
+  stDone: { en: "Done", zh: "已完成", fr: "Terminé" },
+  stCancelled: { en: "Cancelled", zh: "已取消", fr: "Annulé" },
+  // NEXT-action labels
+  nextPreparing: { en: "Start preparing", zh: "开始备餐", fr: "Commencer" },
+  nextDone: { en: "Mark done", zh: "标记完成", fr: "Marquer terminé" },
+  nextDelivered: { en: "Delivered", zh: "已送达", fr: "Livré" },
+  // Header
+  overview: { en: "Overview", zh: "总览", fr: "Aperçu" },
+  newOrdersPill: { en: "{n} new orders", zh: "{n} 个新订单", fr: "{n} nouvelles commandes" },
+  pendingPill: { en: "{n} pending", zh: "{n} 单待处理", fr: "{n} en attente" },
+  enableSoundTitle: { en: "New-order sound alert", zh: "新订单提示音", fr: "Alerte sonore des nouvelles commandes" },
+  enableSound: { en: "🔔 Enable sound", zh: "🔔 开启提示音", fr: "🔔 Activer le son" },
+  sampleTicketTitle: { en: "See what the ticket looks like", zh: "看看小票长什么样", fr: "Voir à quoi ressemble le ticket" },
+  sampleTicket: { en: "🖨️ Sample ticket", zh: "🖨️ 出单样张", fr: "🖨️ Ticket d'exemple" },
+  reprintAllTitle: {
+    en: "After network or printer recovers, reprint all in-progress orders in one tap",
+    zh: "网络或打印机恢复后,一键重打所有进行中的订单",
+    fr: "Après reprise du réseau ou de l'imprimante, réimprimer toutes les commandes en cours en un clic",
+  },
+  reprintAll: { en: "🖨️ Reprint all", zh: "🖨️ 补打全部", fr: "🖨️ Tout réimprimer" },
+  refresh: { en: "Refresh", zh: "刷新", fr: "Actualiser" },
+  // Empty state
+  emptyOrders: {
+    en: "No orders yet. Once customers order via the “📱 QR menu”, they show up here in real time.",
+    zh: "还没有订单。顾客通过「📱 二维码菜单」下单后,会实时出现在这里。",
+    fr: "Aucune commande. Dès qu'un client commande via le « 📱 menu QR », elle apparaît ici en temps réel.",
+  },
+  // Tab title flash
+  newOrdersTitle: { en: "{n} new orders", zh: "{n} 新订单", fr: "{n} nouvelles commandes" },
+  // Card
+  table: { en: "Table", zh: "桌号", fr: "Table" },
+  notePrefix: { en: "Note: ", zh: "备注:", fr: "Note : " },
+  tableRounds: {
+    en: "{n} rounds at this table · total {sum} (tap “Print bill” for one merged table bill)",
+    zh: "本桌共 {n} 单加餐 · 合计 {sum}(点「打印账单」出整桌合并总单)",
+    fr: "{n} tournées à cette table · total {sum} (touchez « Imprimer l'addition » pour une addition combinée)",
+  },
+  cardTotal: { en: "Total {sum}", zh: "合计 {sum}", fr: "Total {sum}" },
+  // Item row
+  marketPending: { en: "Market price pending", zh: "时价待录入", fr: "Prix du jour à saisir" },
+  marketPendingTitle: {
+    en: "Enter today's actual price before completing the order",
+    zh: "完成订单前需录入当日实价",
+    fr: "Saisir le prix réel du jour avant de terminer la commande",
+  },
+  itemCancel: { en: "Cancel", zh: "取消", fr: "Annuler" },
+  itemCancelled: { en: "Cancelled", zh: "已取消", fr: "Annulé" },
+  // ⋯ menu
+  moreActions: { en: "More actions", zh: "更多操作", fr: "Plus d'actions" },
+  ticketPreview: { en: "🖨️ Ticket preview", zh: "🖨️ 出单预览", fr: "🖨️ Aperçu du ticket" },
+  printTableBill: { en: "🧾 Print table bill", zh: "🧾 打印整桌账单", fr: "🧾 Imprimer l'addition de table" },
+  printBill: { en: "🧾 Print bill", zh: "🧾 打印账单", fr: "🧾 Imprimer l'addition" },
+  reprintKitchen: { en: "Reprint kitchen ticket", zh: "重打厨房单", fr: "Réimprimer le ticket cuisine" },
+  cancelOrder: { en: "Cancel order", zh: "取消订单", fr: "Annuler la commande" },
+  deleteOrder: { en: "Delete", zh: "删除", fr: "Supprimer" },
+  // Dialogs / alerts
+  confirmRefund: {
+    en: "This order was paid online for ${amt}. Cancelling will auto-refund the customer. Are you sure?",
+    zh: "该订单已在线支付 ${amt},取消将自动退款给顾客。确定吗?",
+    fr: "Cette commande a été payée en ligne pour {amt} $. L'annulation remboursera automatiquement le client. Confirmer ?",
+  },
+  refundFailed: { en: "Refund failed, order not cancelled: ", zh: "退款失败,未取消订单:", fr: "Remboursement échoué, commande non annulée : " },
+  refundRetry: { en: "please try again", zh: "请重试", fr: "veuillez réessayer" },
+  marketPrompt: {
+    en: "Market price: today's unit price for “{name}” ($)",
+    zh: "时价录入:「{name}」今日单价($)",
+    fr: "Prix du jour : prix unitaire d'aujourd'hui pour « {name} » ($)",
+  },
+  invalidPrice: { en: "Enter a valid price; order not completed.", zh: "请输入有效价格,订单未完成。", fr: "Saisissez un prix valide ; commande non terminée." },
+  savePriceFailed: { en: "Failed to save market price: ", zh: "保存时价失败:", fr: "Échec de l'enregistrement du prix : " },
+  statusFailed: { en: "Status update failed, please retry: ", zh: "状态更新失败,请重试:", fr: "Échec de la mise à jour du statut, réessayez : " },
+  noActive: { en: "No in-progress orders", zh: "没有进行中的订单", fr: "Aucune commande en cours" },
+  confirmReprintAll: {
+    en: "Resend {n} in-progress orders to the printer? (use after network/printer recovers)",
+    zh: "把 {n} 张进行中的订单重新发给打印机?(网络/打印机恢复后用)",
+    fr: "Renvoyer {n} commandes en cours à l'imprimante ? (à utiliser après reprise du réseau/de l'imprimante)",
+  },
+  reprintedN: {
+    en: "{n} resent; the printer will print them over the next few seconds.",
+    zh: "已补打 {n} 张,打印机将在几秒内陆续打印。",
+    fr: "{n} renvoyées ; l'imprimante les imprimera dans les prochaines secondes.",
+  },
+  printBillFailed: { en: "Print bill failed: ", zh: "打印账单失败:", fr: "Échec de l'impression de l'addition : " },
+  confirmDelete: { en: "Delete this order?", zh: "确定删除这个订单?", fr: "Supprimer cette commande ?" },
 };
 
-const NEXT: Partial<Record<Order["status"], { to: Order["status"]; label: string }>> = {
-  new: { to: "preparing", label: "开始备餐" },
-  preparing: { to: "done", label: "标记完成" }, // delivery orders get 开始配送 instead (T7)
-  delivering: { to: "done", label: "已送达" },
+const STATUS: Record<Order["status"], { key: string; cls: string }> = {
+  new: { key: "stNew", cls: "bg-amber-100 text-amber-700" },
+  preparing: { key: "stPreparing", cls: "bg-blue-100 text-blue-700" },
+  delivering: { key: "stDelivering", cls: "bg-violet-100 text-violet-700" },
+  done: { key: "stDone", cls: "bg-green-100 text-green-700" },
+  cancelled: { key: "stCancelled", cls: "bg-slate-100 text-ink-faint" },
+};
+
+const NEXT: Partial<Record<Order["status"], { to: Order["status"]; key: string }>> = {
+  new: { to: "preparing", key: "nextPreparing" },
+  preparing: { to: "done", key: "nextDone" }, // delivery orders get 开始配送 instead (T7)
+  delivering: { to: "done", key: "nextDelivered" },
 };
 
 const POLL_MS = 8000;
@@ -61,6 +155,7 @@ const SAMPLE_ORDER = {
 } as unknown as Order;
 
 export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
+  const { t } = useLang();
   const [orders, setOrders] = useState<Order[]>([]);
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
@@ -171,7 +266,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     let on = false;
     const flip = setInterval(() => {
       on = !on;
-      document.title = on ? `🔔 ${unread} 新订单` : baseTitle.current;
+      document.title = on ? `🔔 ${t(T.newOrdersTitle).replace("{n}", String(unread))}` : baseTitle.current;
     }, 1000);
     return () => {
       clearInterval(flip);
@@ -209,7 +304,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       // lets a paid order be cancelled, so an un-refunded cancel keeps the
       // diner's cash). Refund server-side, then fall through to set 'cancelled'.
       if (to === "cancelled" && o.payment_status === "paid" && (o.order_type === "togo" || o.order_type === "delivery")) {
-        if (!confirm(`该订单已在线支付 $${Number(o.total).toFixed(2)}，取消将自动退款给顾客。确定吗？`)) return;
+        if (!confirm(t(T.confirmRefund).replace("{amt}", Number(o.total).toFixed(2)))) return;
         const { data: sess } = await supabase.auth.getSession();
         const res = await fetch("/api/pay/refund", {
           method: "POST",
@@ -218,7 +313,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         });
         const rd = await res.json().catch(() => ({ ok: false }));
         if (!rd.ok) {
-          alert("退款失败，未取消订单：" + (rd.error ?? "请重试"));
+          alert(t(T.refundFailed) + (rd.error ?? t(T.refundRetry)));
           return;
         }
       }
@@ -235,13 +330,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           for (const it of needPricing) {
             const def = menuPrice.get(it.id);
             const raw = window.prompt(
-              `时价录入：「${it.name_zh}」今日单价（$）`,
+              t(T.marketPrompt).replace("{name}", it.name_zh),
               def != null && def > 0 ? String(def) : "",
             );
             if (raw == null) return; // staff cancelled — abort completion
             const p = parseFloat(raw);
             if (!(p > 0)) {
-              alert("请输入有效价格，订单未完成。");
+              alert(t(T.invalidPrice));
               return;
             }
             const idx = updated.indexOf(it);
@@ -252,7 +347,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
           const res = await updateOrderItems(o.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
           if (res.error) {
-            alert("保存时价失败：" + res.error);
+            alert(t(T.savePriceFailed) + res.error);
             return;
           }
           items = updated;
@@ -264,7 +359,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         // dish counts and member spend post exactly once.
         const { claimed, error } = await claimOrderDone(o.id);
         if (error) {
-          alert("状态更新失败，请重试：" + error);
+          alert(t(T.statusFailed) + error);
           return;
         }
         if (claimed) {
@@ -285,7 +380,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         }
       } else {
         const { error } = await setOrderStatus(o.id, to);
-        if (error) alert("状态更新失败，请重试：" + error);
+        if (error) alert(t(T.statusFailed) + error);
       }
       load();
     } finally {
@@ -323,14 +418,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       </span>
       <span className="flex items-center gap-2">
         {it.market && !(Number(it.price) > 0) ? (
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700" title="完成订单前需录入当日实价">时价待录入</span>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700" title={t(T.marketPendingTitle)}>{t(T.marketPending)}</span>
         ) : (
           <span className={it.cancelled ? "line-through text-ink-faint" : "text-ink-soft"}>{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
         )}
         {!it.cancelled && o.status !== "done" && o.status !== "cancelled" && (
-          <button className="text-xs text-ink-faint hover:text-red-600" onClick={async () => { await cancelOrderItem(o.id, i); load(); }}>取消</button>
+          <button className="text-xs text-ink-faint hover:text-red-600" onClick={async () => { await cancelOrderItem(o.id, i); load(); }}>{t(T.itemCancel)}</button>
         )}
-        {it.cancelled && <span className="text-xs text-red-400">已取消</span>}
+        {it.cancelled && <span className="text-xs text-red-400">{t(T.itemCancelled)}</span>}
       </span>
     </div>
   );
@@ -353,8 +448,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       <div key={o.id} className="card p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
-            {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
+            <span className={`pill ${STATUS[o.status].cls}`}>{t(T[STATUS[o.status].key])}</span>
+            {o.table_no && <span className="text-sm font-medium text-ink">{t(T.table)} {displayTable(o.table_no)}</span>}
             {o.phone && o.phone !== "N/A" ? (
               <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">📞 {fmtPhone(o.phone)}</a>
             ) : o.phone === "N/A" ? (
@@ -364,21 +459,21 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
         </div>
         <div className="divide-y divide-slate-100">{o.items.map((it: any, i: number) => itemRow(o, it, i))}</div>
-        {o.note && <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">备注：{o.note}</div>}
+        {o.note && <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">{t(T.notePrefix)}{o.note}</div>}
         {multi && o.status !== "cancelled" && (
-          <div className="mt-2 rounded bg-brand-wash px-2 py-1 text-xs text-brand-ink">本桌共 {sibs.length} 单加餐 · 合计 {fmtPrice(tableTotal)}（点「打印账单」出整桌合并总单）</div>
+          <div className="mt-2 rounded bg-brand-wash px-2 py-1 text-xs text-brand-ink">{t(T.tableRounds).replace("{n}", String(sibs.length)).replace("{sum}", fmtPrice(tableTotal))}</div>
         )}
         <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
+          <span className="font-semibold text-ink">{t(T.cardTotal).replace("{sum}", fmtPrice(o.total))}</span>
           <div className="flex items-center gap-2">
             {NEXT[o.status] && (
-              <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-4 text-sm">{NEXT[o.status]!.label}</button>
+              <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-4 text-sm">{t(T[NEXT[o.status]!.key])}</button>
             )}
             {/* secondary actions collapse into a ⋯ menu so the row never crowds on a phone */}
             <div className="relative">
               <button
                 onClick={() => setMenuFor(menuFor === o.id ? null : o.id)}
-                aria-label="更多操作"
+                aria-label={t(T.moreActions)}
                 aria-expanded={menuFor === o.id}
                 className="grid h-11 w-11 flex-none place-items-center rounded-lg border border-slate-200 text-lg leading-none text-ink-soft hover:bg-slate-50"
               >
@@ -388,17 +483,17 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />
                   <div className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                    <MenuItem onClick={() => setPreview(o)}>🖨️ 出单预览</MenuItem>
+                    <MenuItem onClick={() => setPreview(o)}>{t(T.ticketPreview)}</MenuItem>
                     {o.status !== "cancelled" && (
-                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert("打印账单失败：" + r.error); }}>
-                        🧾 {multi ? "打印整桌账单" : "打印账单"}
+                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert(t(T.printBillFailed) + r.error); }}>
+                        {multi ? t(T.printTableBill) : t(T.printBill)}
                       </MenuItem>
                     )}
-                    <MenuItem onClick={async () => { await reprintOrder(o.id); load(); }}>重打厨房单</MenuItem>
+                    <MenuItem onClick={async () => { await reprintOrder(o.id); load(); }}>{t(T.reprintKitchen)}</MenuItem>
                     {o.status !== "cancelled" && o.status !== "done" && (
-                      <MenuItem danger onClick={() => advance(o, "cancelled")}>取消订单</MenuItem>
+                      <MenuItem danger onClick={() => advance(o, "cancelled")}>{t(T.cancelOrder)}</MenuItem>
                     )}
-                    <MenuItem danger onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}>删除</MenuItem>
+                    <MenuItem danger onClick={async () => { if (confirm(t(T.confirmDelete))) { await deleteOrder(o.id); load(); } }}>{t(T.deleteOrder)}</MenuItem>
                   </div>
                 </>
               )}
@@ -411,41 +506,41 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   return (
     <main className="px-6 py-8 lg:px-10">
-      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
+      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t(T.overview)}</Link>
       <header className="mt-3 mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
           <p className="mt-1 text-sm text-ink-soft">{mod.pain.zh}</p>
         </div>
         <div className="flex items-center gap-3">
-          {unread > 0 && <span className="pill bg-red-100 text-red-700">🔔 {unread} 个新订单</span>}
-          <span className="pill bg-amber-100 text-amber-700">{active.length} 单待处理</span>
+          {unread > 0 && <span className="pill bg-red-100 text-red-700">🔔 {t(T.newOrdersPill).replace("{n}", String(unread))}</span>}
+          <span className="pill bg-amber-100 text-amber-700">{t(T.pendingPill).replace("{n}", String(active.length))}</span>
           {!soundOn && (
-            <button onClick={enableSound} className="btn-ghost border border-slate-300 text-sm" title="新订单提示音">
-              🔔 开启提示音
+            <button onClick={enableSound} className="btn-ghost border border-slate-300 text-sm" title={t(T.enableSoundTitle)}>
+              {t(T.enableSound)}
             </button>
           )}
-          <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title="看看小票长什么样">🖨️ 出单样张</button>
+          <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title={t(T.sampleTicketTitle)}>{t(T.sampleTicket)}</button>
           <button
             onClick={async () => {
-              if (active.length === 0) { alert("没有进行中的订单"); return; }
-              if (!confirm(`把 ${active.length} 张进行中的订单重新发给打印机?（网络/打印机恢复后用）`)) return;
+              if (active.length === 0) { alert(t(T.noActive)); return; }
+              if (!confirm(t(T.confirmReprintAll).replace("{n}", String(active.length)))) return;
               const n = await reprintActiveOrders(slug);
               load();
-              alert(`已补打 ${n} 张，打印机将在几秒内陆续打印。`);
+              alert(t(T.reprintedN).replace("{n}", String(n)));
             }}
             className="btn-ghost border border-slate-300 text-sm"
-            title="网络或打印机恢复后，一键重打所有进行中的订单"
+            title={t(T.reprintAllTitle)}
           >
-            🖨️ 补打全部
+            {t(T.reprintAll)}
           </button>
-          <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">刷新</button>
+          <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">{t(T.refresh)}</button>
         </div>
       </header>
 
       {orders.length === 0 ? (
         <div className="card p-10 text-center text-sm text-ink-faint">
-          还没有订单。顾客通过「📱 二维码菜单」下单后，会实时出现在这里。
+          {t(T.emptyOrders)}
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">

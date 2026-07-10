@@ -3,6 +3,19 @@
 import { useEffect, useState } from "react";
 import type { Order } from "@/lib/orders";
 import { displayTable } from "@/lib/format";
+import { useLang, type Dict } from "@/app/i18n";
+
+// Trilingual copy for the SURROUNDING CHROME only (control bar: font-size dial,
+// print, close). The ticket BODY (店名/后厨备餐单/badges/备注/份 …) mirrors the
+// physical Chinese thermal printout and is deliberately left untranslated.
+const T: Record<string, Dict> = {
+  fontSize: { en: "Size", zh: "字号", fr: "Taille" },
+  scaleL: { en: "L", zh: "大", fr: "G" },
+  scaleXL: { en: "XL", zh: "特大", fr: "TG" },
+  scaleXXL: { en: "XXL", zh: "超大", fr: "TTG" },
+  print: { en: "🖨️ Print", zh: "🖨️ 打印", fr: "🖨️ Imprimer" },
+  close: { en: "Close", zh: "关闭", fr: "Fermer" },
+};
 
 // Big-font kitchen ticket preview, sized to 80mm thermal paper (Epson TM-T88VI).
 // Large type by default so an older chef reads it at a glance; the 字号 dial
@@ -10,9 +23,9 @@ import { displayTable } from "@/lib/format";
 // scoped to just the ticket (a fallback until Epson Server Direct Print is wired).
 
 const SCALES = [
-  { k: "大", label: "大", mul: 1 },
-  { k: "特大", label: "特大", mul: 1.18 },
-  { k: "超大", label: "超大", mul: 1.36 },
+  { k: "大", labelKey: "scaleL", mul: 1 },
+  { k: "特大", labelKey: "scaleXL", mul: 1.18 },
+  { k: "超大", labelKey: "scaleXXL", mul: 1.36 },
 ] as const;
 
 function orderTypeLine(o: Order): { badge: string; sub?: string } {
@@ -39,6 +52,7 @@ function ago(iso: string) {
 }
 
 export default function KitchenTicket({ order, shopName, onClose }: { order: Order; shopName: string; onClose: () => void }) {
+  const { t } = useLang();
   const [scaleIdx, setScaleIdx] = useState(0);
 
   useEffect(() => {
@@ -81,7 +95,7 @@ export default function KitchenTicket({ order, shopName, onClose }: { order: Ord
 
       {/* controls */}
       <div className="kt-noprint mb-3 flex items-center gap-2 rounded-full bg-white/95 px-2 py-1.5 shadow" onClick={(e) => e.stopPropagation()}>
-        <span className="pl-2 text-xs font-medium text-ink-soft">字号</span>
+        <span className="pl-2 text-xs font-medium text-ink-soft">{t(T.fontSize)}</span>
         <div className="flex rounded-full bg-slate-100 p-0.5">
           {SCALES.map((sc, i) => (
             <button
@@ -89,12 +103,12 @@ export default function KitchenTicket({ order, shopName, onClose }: { order: Ord
               onClick={() => setScale(i)}
               className={`rounded-full px-3 py-1 text-xs font-semibold ${scaleIdx === i ? "bg-jade text-white" : "text-ink-soft"}`}
             >
-              {sc.label}
+              {t(T[sc.labelKey])}
             </button>
           ))}
         </div>
-        <button onClick={() => window.print()} className="rounded-full bg-jade px-4 py-1.5 text-sm font-bold text-white">🖨️ 打印</button>
-        <button onClick={onClose} className="rounded-full px-3 py-1.5 text-sm text-ink-soft hover:bg-slate-100">关闭</button>
+        <button onClick={() => window.print()} className="rounded-full bg-jade px-4 py-1.5 text-sm font-bold text-white">{t(T.print)}</button>
+        <button onClick={onClose} className="rounded-full px-3 py-1.5 text-sm text-ink-soft hover:bg-slate-100">{t(T.close)}</button>
       </div>
 
       {/* the ticket */}

@@ -2,6 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FSA_NAMES, fsaLabel, getDeliveryFsas, saveDeliveryFsas } from "@/lib/deliveryZone";
+import { useLang, type Dict } from "@/app/i18n";
+
+// Trilingual UI chrome (EN default, + 中 / FR). Geographic FSA names are data, not chrome.
+const T: Record<string, Dict> = {
+  title: { en: "🗺️ Delivery area", zh: "🗺️ 配送范围", fr: "🗺️ Zone de livraison" },
+  hint: {
+    en: "Click a postal district (first three FSA characters) on the map to turn delivery on/off. Customer addresses are validated automatically by postal code.",
+    zh: "点击地图上的邮编分区（前三位 FSA）来开启/关闭配送。顾客填地址时会按邮编自动校验。",
+    fr: "Cliquez sur un secteur postal (les trois premiers caractères FSA) pour activer/désactiver la livraison. Les adresses des clients sont validées automatiquement par code postal.",
+  },
+  saved: { en: "Saved ✓", zh: "已保存 ✓", fr: "Enregistré ✓" },
+  saving: { en: "Saving…", zh: "保存中…", fr: "Enregistrement…" },
+  save: { en: "Save delivery area", zh: "保存配送范围", fr: "Enregistrer la zone" },
+  clickToRemove: { en: "Click to remove", zh: "点击移除", fr: "Cliquer pour retirer" },
+  none: {
+    en: "No districts selected — customers can't place delivery orders",
+    zh: "未选择任何区 —— 顾客将无法下配送单",
+    fr: "Aucun secteur sélectionné — les clients ne peuvent pas commander en livraison",
+  },
+  saveFailed: { en: "Save failed:", zh: "保存失败：", fr: "Échec de l'enregistrement :" },
+  unsaved: { en: "Unsaved changes", zh: "有未保存的改动", fr: "Modifications non enregistrées" },
+};
+
+function selectedLabel(n: number, lang: string): string {
+  if (lang === "zh") return `已选 ${n} 个区：`;
+  if (lang === "fr") return `${n} secteur${n === 1 ? "" : "s"} sélectionné${n === 1 ? "" : "s"} :`;
+  return `${n} district${n === 1 ? "" : "s"} selected:`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Map editor for the delivery zone. Renders every Toronto FSA polygon
@@ -18,6 +46,7 @@ const UNSELECTED = { color: "#94A3B8", weight: 1, fillColor: "#CBD5E1", fillOpac
 const DEFAULT_FSAS = ["M4W", "M4X", "M4Y", "M5A", "M5B", "M5C", "M5E", "M5G", "M5H", "M5J", "M5K", "M5L", "M5S", "M5T", "M5V", "M5X"];
 
 export default function DeliveryZoneEditor({ slug }: { slug: string }) {
+  const { t, lang } = useLang();
   const mapRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<Map<string, any>>(new Map());
   const selectedRef = useRef<Set<string>>(new Set());
@@ -113,19 +142,19 @@ export default function DeliveryZoneEditor({ slug }: { slug: string }) {
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold text-ink">🗺️ 配送范围</div>
+          <div className="text-sm font-semibold text-ink">{t(T.title)}</div>
           <p className="mt-0.5 text-xs text-ink-soft">
-            点击地图上的邮编分区（前三位 FSA）来开启/关闭配送。顾客填地址时会按邮编自动校验。
+            {t(T.hint)}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {savedFlash && <span className="text-xs font-medium text-brand">已保存 ✓</span>}
+          {savedFlash && <span className="text-xs font-medium text-brand">{t(T.saved)}</span>}
           <button
             onClick={save}
             disabled={!dirty || saving || !loadedFromDb}
             className="btn-primary px-4 py-2 text-sm disabled:opacity-40"
           >
-            {saving ? "保存中…" : "保存配送范围"}
+            {saving ? t(T.saving) : t(T.save)}
           </button>
         </div>
       </div>
@@ -134,13 +163,13 @@ export default function DeliveryZoneEditor({ slug }: { slug: string }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-xs font-medium text-ink-faint">
-          已选 {list.length} 个区：
+          {selectedLabel(list.length, lang)}
         </span>
         {list.map((fsa) => (
           <button
             key={fsa}
             onClick={() => removeChip(fsa)}
-            title="点击移除"
+            title={t(T.clickToRemove)}
             className="group inline-flex items-center gap-1 rounded-full bg-brand-wash px-2.5 py-1 text-xs font-medium text-brand"
           >
             {fsa}
@@ -148,10 +177,10 @@ export default function DeliveryZoneEditor({ slug }: { slug: string }) {
             <span className="text-brand/50 group-hover:text-brand">✕</span>
           </button>
         ))}
-        {list.length === 0 && <span className="text-xs text-red-600">未选择任何区 —— 顾客将无法下配送单</span>}
+        {list.length === 0 && <span className="text-xs text-red-600">{t(T.none)}</span>}
       </div>
-      {err && <p className="mt-2 text-xs text-red-600">保存失败：{err}</p>}
-      {dirty && !err && <p className="mt-2 text-xs text-amber-700">有未保存的改动</p>}
+      {err && <p className="mt-2 text-xs text-red-600">{t(T.saveFailed)}{err}</p>}
+      {dirty && !err && <p className="mt-2 text-xs text-amber-700">{t(T.unsaved)}</p>}
     </div>
   );
 }

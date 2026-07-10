@@ -24,12 +24,154 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
+import { useLang, type Dict } from "@/app/i18n";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
 import SalesPortal from "@/components/SalesPortal";
 import FoodSafetyPortal from "@/components/FoodSafetyPortal";
 import SuggestInput from "@/components/SuggestInput";
+
+/** Trilingual UI chrome (EN default, + 中 / FR). Data (dish/staff/supplier names,
+ *  merchant-entered content) is never translated — only labels, buttons, headings,
+ *  hints, dialogs and fixed table chrome. */
+const T: Record<string, Dict> = {
+  // generic actions
+  save: { en: "Save", zh: "保存", fr: "Enregistrer" },
+  cancel: { en: "Cancel", zh: "取消", fr: "Annuler" },
+  edit: { en: "Edit", zh: "修改", fr: "Modifier" },
+  del: { en: "Delete", zh: "删除", fr: "Supprimer" },
+  confirmDelete: { en: "Delete this record?", zh: "删除这条记录？", fr: "Supprimer cet enregistrement ?" },
+  // not-found / access
+  unknownModule: { en: "Unknown module.", zh: "未知模块。", fr: "Module inconnu." },
+  backOverview: { en: "← Back to overview", zh: "← 返回总览", fr: "← Retour à l'aperçu" },
+  overview: { en: "← Overview", zh: "← 总览", fr: "← Aperçu" },
+  noAccess: { en: "You don't have access to this module. Please contact the owner.", zh: "你没有这个模块的访问权限，请联系店主。", fr: "Vous n'avez pas accès à ce module. Veuillez contacter le propriétaire." },
+  // header / toolbar
+  collapse: { en: "Collapse", zh: "收起", fr: "Réduire" },
+  addRecord: { en: "+ Add record", zh: "+ 新增记录", fr: "+ Ajouter" },
+  exportCsv: { en: "Export CSV", zh: "导出 CSV", fr: "Exporter CSV" },
+  importing: { en: "Importing…", zh: "导入中…", fr: "Importation…" },
+  importCsv: { en: "Import CSV", zh: "导入 CSV", fr: "Importer CSV" },
+  importFailed: { en: "Import failed: ", zh: "导入失败：", fr: "Échec de l'importation : " },
+  importOk: { en: "Imported {n} records", zh: "成功导入 {n} 条记录", fr: "{n} enregistrements importés" },
+  // enable notice
+  notEnabledPre: { en: "This module is not enabled. Open ", zh: "该模块未启用。到 ", fr: "Ce module n'est pas activé. Allez dans " },
+  settings: { en: "Settings", zh: "设置", fr: "Paramètres" },
+  notEnabledPost: { en: " to turn it on before entering data.", zh: " 中开启后即可录入。", fr: " pour l'activer avant de saisir des données." },
+  // stats
+  statsLabel: { en: "Statistics", zh: "数据统计", fr: "Statistiques" },
+  all: { en: "All", zh: "全部", fr: "Tout" },
+  lastNDays: { en: "Last {n} days", zh: "近{n}天", fr: "{n} derniers jours" },
+  custom: { en: "Custom", zh: "自定义", fr: "Personnalisé" },
+  recordCount: { en: "Records", zh: "记录数", fr: "Enregistrements" },
+  thisPeriod: { en: "This period", zh: "该时段", fr: "Cette période" },
+  cumulative: { en: "Total", zh: "累计", fr: "Total" },
+  lastNDaysShort: { en: "Last {n} days", zh: "近{n}天", fr: "{n} derniers jours" },
+  totalLabel: { en: "Total", zh: "合计", fr: "Total" },
+  cumulativeScrapValue: { en: "Cumulative scrap value", zh: "累计报废价值", fr: "Valeur de rebut cumulée" },
+  avgSuffix: { en: "{label} (avg)", zh: "{label}（均值）", fr: "{label} (moy.)" },
+  sumAvgSuffix: { en: "{label} (total / avg)", zh: "{label}（合计 / 均值）", fr: "{label} (total / moy.)" },
+  avgPrefix: { en: "Avg: ", zh: "均值: ", fr: "Moy. : " },
+  // trend
+  value: { en: "Value", zh: "数值", fr: "Valeur" },
+  trendTitle: { en: "{label} trend (last 14 days)", zh: "{label} 趋势（近14天）", fr: "Tendance {label} (14 derniers jours)" },
+  // entry form
+  newRecord: { en: "New record", zh: "新增记录", fr: "Nouvel enregistrement" },
+  computing: { en: "Computing…", zh: "汇算中…", fr: "Calcul…" },
+  shift: { en: "Shift", zh: "班次", fr: "Quart" },
+  done: { en: "Done", zh: "完成", fr: "Terminé" },
+  editDefaultShifts: { en: "Edit default shifts", zh: "修改默认班次", fr: "Modifier les quarts par défaut" },
+  saveDefaultShifts: { en: "Save default shifts", zh: "保存默认班次", fr: "Enregistrer les quarts par défaut" },
+  autoComputed: { en: " (auto-computed)", zh: " (自动计算)", fr: " (calcul auto)" },
+  fillRequired: { en: "Please fill in: ", zh: "请填写：", fr: "Veuillez remplir : " },
+  // date range / filter bar
+  prevWeek: { en: "‹ Prev week", zh: "‹ 上一周", fr: "‹ Sem. préc." },
+  nextWeek: { en: "Next week ›", zh: "下一周 ›", fr: "Sem. suiv. ›" },
+  thisWeek: { en: "This week", zh: "本周", fr: "Cette semaine" },
+  selectedCount: { en: "{a} / {b} selected", zh: "已选 {a} / {b} 条", fr: "{a} / {b} sélectionnés" },
+  copying: { en: "Copying…", zh: "复制中…", fr: "Copie…" },
+  copyNToNextWeek: { en: "Copy {n} to next week →", zh: "复制 {n} 条到下一周 →", fr: "Copier {n} vers la semaine suivante →" },
+  copyToNextWeek: { en: "Copy to next week →", zh: "复制到下一周 →", fr: "Copier vers la semaine suivante →" },
+  date: { en: "Date", zh: "日期", fr: "Date" },
+  filteredCount: { en: "Filtered: {a} / {b}", zh: "筛选中：{a} / {b} 条", fr: "Filtré : {a} / {b}" },
+  clearFilter: { en: "Clear filter", zh: "清除筛选", fr: "Effacer le filtre" },
+  clearAllFilters: { en: "Clear all filters", zh: "清除全部筛选", fr: "Tout effacer" },
+  // table
+  swipeHint: { en: "← Swipe to see more columns →", zh: "← 左右滑动查看更多列 →", fr: "← Glissez pour voir plus de colonnes →" },
+  selectAll: { en: "Select all", zh: "全选", fr: "Tout sélectionner" },
+  searchPlaceholder: { en: "Search...", zh: "搜索...", fr: "Rechercher..." },
+  confirm: { en: "OK", zh: "确定", fr: "OK" },
+  emptyEnabled: { en: "No records yet. Click \"+ Add record\" to start.", zh: "还没有记录，点「+ 新增记录」开始录入。", fr: "Aucun enregistrement. Cliquez sur « + Ajouter » pour commencer." },
+  emptyDisabled: { en: "No records yet.", zh: "还没有记录。", fr: "Aucun enregistrement." },
+  emptyFiltered: { en: "No matching records. Try adjusting the filters.", zh: "没有匹配的记录，试试调整筛选条件。", fr: "Aucun enregistrement correspondant. Ajustez les filtres." },
+  expand: { en: "Expand", zh: "展开", fr: "Développer" },
+  collapseRow: { en: "Collapse", zh: "收起", fr: "Réduire" },
+  // pagination
+  pageRange: { en: "{from}–{to} of {total}", zh: "第 {from}–{to} 条，共 {total} 条", fr: "{from}–{to} sur {total}" },
+  prevPage: { en: "‹ Prev", zh: "‹ 上一页", fr: "‹ Préc." },
+  nextPage: { en: "Next ›", zh: "下一页 ›", fr: "Suiv. ›" },
+  // attendance anomalies
+  anomalyTitle: { en: "Attendance exceptions this week", zh: "本周异常出勤", fr: "Exceptions de présence cette semaine" },
+  timesSuffix: { en: "{k} {v} times", zh: "{k} {v} 次", fr: "{k} {v} fois" },
+  anomalyEmpty: { en: "Attendance is normal this week, no exceptions.", zh: "本周出勤正常，暂无异常记录。", fr: "Présence normale cette semaine, aucune exception." },
+  // equipment monthly checklist
+  monthlyChecklist: { en: "Monthly maintenance checklist", zh: "本月保养清单", fr: "Liste d'entretien du mois" },
+  itemsPending: { en: "{n} pending", zh: "{n} 项待处理", fr: "{n} en attente" },
+  checklistHint: { en: "Equipment whose next service date falls this month (including overdue), regardless of pass/complete status", zh: "下次保养日期落在本月（含已逾期）的设备，与「是否合格/已完成」无关", fr: "Équipement dont la prochaine date d'entretien tombe ce mois-ci (y compris en retard), indépendamment du statut" },
+  equipmentFallback: { en: "Equipment", zh: "设备", fr: "Équipement" },
+  overduePrefix: { en: "Overdue · {d}", zh: "已逾期 · {d}", fr: "En retard · {d}" },
+  markServiced: { en: "Serviced this cycle", zh: "本次已保养", fr: "Entretenu ce cycle" },
+  operationFailed: { en: "Operation failed, please retry: ", zh: "操作失败，请重试：", fr: "Échec de l'opération, réessayez : " },
+  // tier settings
+  tierRules: { en: "Member tier rules", zh: "会员等级规则", fr: "Règles de niveaux de membre" },
+  tierHint: { en: "Set the cumulative spend that auto-upgrades a member; takes effect immediately on save", zh: "设定累计消费满多少自动升级，保存后立即生效", fr: "Définissez la dépense cumulée qui met à niveau automatiquement un membre ; effet immédiat à l'enregistrement" },
+  tierNamePlaceholder: { en: "Tier name", zh: "等级名称", fr: "Nom du niveau" },
+  tierAtLeast: { en: "at", zh: "满", fr: "à partir de" },
+  tierUnit: { en: "", zh: "元", fr: "$" },
+  addTier: { en: "+ Add tier", zh: "+ 新增等级", fr: "+ Ajouter un niveau" },
+  saving: { en: "Saving…", zh: "保存中…", fr: "Enregistrement…" },
+  saveAndApply: { en: "Save & apply", zh: "保存并应用", fr: "Enregistrer et appliquer" },
+  savedTiersUpdated: { en: "Saved, {n} members' tiers updated", zh: "已保存，{n} 位会员等级已更新", fr: "Enregistré, niveaux de {n} membres mis à jour" },
+  saved: { en: "Saved", zh: "已保存", fr: "Enregistré" },
+  // dish sales ranking
+  salesRanking: { en: "Sales ranking", zh: "销量排行", fr: "Classement des ventes" },
+  mostPopular: { en: "⭐ Most popular", zh: "⭐ 最受欢迎", fr: "⭐ Les plus populaires" },
+  lowestSales: { en: "🐢 Lowest sales", zh: "🐢 销量最低", fr: "🐢 Ventes les plus faibles" },
+  portionsRevenue: { en: "{n} sold · {rev}", zh: "{n} 份 · {rev}", fr: "{n} vendus · {rev}" },
+  tooFewDishes: { en: "Too few dishes, none yet", zh: "菜品太少，暂无", fr: "Trop peu de plats, aucun" },
+  dishName: { en: "Dish", zh: "菜名", fr: "Plat" },
+  price: { en: "Price", zh: "售价", fr: "Prix" },
+  monthlySales: { en: "Monthly", zh: "月销", fr: "Mensuel" },
+  revenue: { en: "Revenue", zh: "销售额", fr: "Chiffre d'affaires" },
+  // supplier compare
+  supplierCompare: { en: "Supplier price comparison", zh: "供应商比价", fr: "Comparaison des fournisseurs" },
+  supplierCompareHint: { en: "Average unit price per supplier for the same item; green is the lowest", zh: "同一品项各供应商的平均单价，绿色为最低价", fr: "Prix unitaire moyen par fournisseur pour le même article ; le vert est le plus bas" },
+  savesPerUnit: { en: "Lowest saves {amt}/unit vs highest", zh: "最低比最高省 {amt}/单位", fr: "Le plus bas économise {amt}/unité vs le plus élevé" },
+  // review topics
+  topicStats: { en: "Issue category breakdown", zh: "问题类别统计", fr: "Répartition par catégorie" },
+  countSuffix: { en: "{n}", zh: "{n} 条", fr: "{n}" },
+  // alerts (dashboard banners)
+  alertZeroStock: { en: "⚠️ Out of stock: {items}", zh: "⚠️ 零库存：{items}", fr: "⚠️ Rupture de stock : {items}" },
+  alertLowStock: { en: "📉 Low stock (≤5): {items}", zh: "📉 低库存（≤5）：{items}", fr: "📉 Stock faible (≤5) : {items}" },
+  alertHighScrap: { en: "🗑️ High scrap rate (≥10%): {items}", zh: "🗑️ 报废率偏高（≥10%）：{items}", fr: "🗑️ Taux de rebut élevé (≥10 %) : {items}" },
+  alertUpcomingBookings: { en: "📅 {n} bookings in the next 3 days: {list}", zh: "📅 近3天有 {n} 个预订：{list}", fr: "📅 {n} réservations dans les 3 prochains jours : {list}" },
+  alertGuestsSuffix: { en: "{name}({n} guests)", zh: "{name}({n}人)", fr: "{name}({n} pers.)" },
+  alertOpenIssues: { en: "🔧 {n} equipment issues pending: {list}", zh: "🔧 {n} 个设备问题待处理：{list}", fr: "🔧 {n} problèmes d'équipement en attente : {list}" },
+  alertServiceDue: { en: "🛠️ {n} equipment due for service{overdue}: {list}", zh: "🛠️ {n} 台设备保养到期{overdue}：{list}", fr: "🛠️ {n} équipements à entretenir{overdue} : {list}" },
+  alertServiceOverdue: { en: " ({n} overdue)", zh: "（{n} 台已过期）", fr: " ({n} en retard)" },
+  alertUnrepliedReviews: { en: "💬 {n} low-rating reviews unanswered", zh: "💬 {n} 条低分评价未回复", fr: "💬 {n} avis à faible note sans réponse" },
+  alertPendingPosts: { en: "📣 {n} posts pending publication", zh: "📣 {n} 条内容待发布", fr: "📣 {n} publications en attente" },
+  alertBirthdays: { en: "🎂 {n} member birthdays in the next 7 days: {list}", zh: "🎂 近7天 {n} 位会员生日：{list}", fr: "🎂 {n} anniversaires de membres dans les 7 prochains jours : {list}" },
+  alertSoldOut: { en: "🔥 Sold out {n} times: {items} (possibly under-prepped)", zh: "🔥 卖断 {n} 次：{items}（可能少备了）", fr: "🔥 Rupture {n} fois : {items} (peut-être pas assez préparé)" },
+  alertWaste: { en: "♻️ {n} leftover/scrapped in total", zh: "♻️ 累计剩余/报废 {n} 份", fr: "♻️ {n} restes/rebuts au total" },
+  alertPrepSuggest: { en: "📋 Tomorrow's prep suggestion (last 7d avg ×1.1): {list}", zh: "📋 明日备货建议（近7天均销×1.1）：{list}", fr: "📋 Suggestion de préparation pour demain (moy. 7j ×1,1) : {list}" },
+  alertPrepPortions: { en: "{dish} {n}", zh: "{dish} {n}份", fr: "{dish} {n}" },
+  // equipment suggest-input placeholders
+  phEquipment: { en: "e.g. Fridge", zh: "例：冰箱", fr: "ex : Réfrigérateur" },
+  phVendor: { en: "e.g. XX Repair Co.", zh: "例：XX 维修公司", fr: "ex : Société de réparation XX" },
+  phIssue: { en: "e.g. Compressor noise", zh: "例：压缩机异响", fr: "ex : Bruit du compresseur" },
+};
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
 const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElement> = {
@@ -251,11 +393,12 @@ function renderCell(field: Field, value: any) {
 }
 
 function EditCellInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+  const { lang } = useLang();
   if (field.type === "select") {
     return (
       <select className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">—</option>
-        {field.options?.map((o) => <option key={o.zh} value={o.zh}>{o.zh}</option>)}
+        {field.options?.map((o) => <option key={o.zh} value={o.zh}>{biLabel(o, lang)}</option>)}
       </select>
     );
   }
@@ -305,6 +448,7 @@ function GroupedRows({
   cancelEdit: () => void;
   deleteRecord: (id: string) => Promise<void>;
 }) {
+  const { t } = useLang();
   const groups = useMemo(() => {
     const map = new Map<string, RecordRow[]>();
     for (const r of rows) {
@@ -366,8 +510,8 @@ function GroupedRows({
               );
             })}
             <td className="px-2 py-1.5 text-right whitespace-nowrap">
-              <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
-              <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+              <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.save)}</button>
+              <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">{t(T.cancel)}</button>
             </td>
           </>
         ) : (
@@ -378,12 +522,12 @@ function GroupedRows({
               </td>
             ))}
             <td className="px-4 py-2.5 text-right whitespace-nowrap">
-              <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+              <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
               <button
-                onClick={async () => { if (confirm("删除这条记录？")) await doDelete(r.id); }}
+                onClick={async () => { if (confirm(t(T.confirmDelete))) await doDelete(r.id); }}
                 className="text-xs text-ink-faint hover:text-red-600"
               >
-                删除
+                {t(T.del)}
               </button>
             </td>
           </>
@@ -403,7 +547,14 @@ function GroupedRows({
   );
 }
 
+// Catalog labels are {zh,en} (no fr) — resolve by lang, falling back to en so
+// the UI never shows Chinese in EN/FR mode. Stored option VALUES stay in zh.
+function biLabel(d: { zh: string; en: string; fr?: string }, lang: string): string {
+  return (d as Record<string, string>)[lang] ?? d.en;
+}
+
 export default function ModulePage() {
+  const { t, lang } = useLang();
   const params = useParams();
   const slug = params.tenant as string;
   const moduleId = params.moduleId as string;
@@ -789,8 +940,8 @@ export default function ModulePage() {
           </td>
         ))}
         <td className="px-2 py-1.5 text-right whitespace-nowrap">
-          <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
-          <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+          <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.save)}</button>
+          <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">{t(T.cancel)}</button>
         </td>
       </>
     ) : (
@@ -801,17 +952,17 @@ export default function ModulePage() {
           </td>
         ))}
         <td className="px-4 py-2.5 text-right whitespace-nowrap">
-          <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+          <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
           <button
             onClick={async () => {
-              if (confirm("删除这条记录？")) {
+              if (confirm(t(T.confirmDelete))) {
                 await deleteRecord(r.id);
-                setTick((t) => t + 1);
+                setTick((tk) => tk + 1);
               }
             }}
             className="text-xs text-ink-faint hover:text-red-600"
           >
-            删除
+            {t(T.del)}
           </button>
         </td>
       </>
@@ -838,21 +989,21 @@ export default function ModulePage() {
       );
       const low = Object.entries(totals).filter(([, v]) => v > 0 && v <= 5);
       const zero = Object.entries(totals).filter(([, v]) => v <= 0);
-      if (zero.length) list.push({ type: "warn", text: `⚠️ 零库存：${zero.map(([k]) => k).join("、")}` });
-      if (low.length) list.push({ type: "warn", text: `📉 低库存（≤5）：${low.map(([k, v]) => `${k}(${v})`).join("、")}` });
+      if (zero.length) list.push({ type: "warn", text: t(T.alertZeroStock).replace("{items}", zero.map(([k]) => k).join("、")) });
+      if (low.length) list.push({ type: "warn", text: t(T.alertLowStock).replace("{items}", low.map(([k, v]) => `${k}(${v})`).join("、")) });
       const highScrap = Object.entries(flow)
         .filter(([, f]) => f.in > 0 && f.scrap / f.in >= 0.1)
         .map(([k, f]) => `${k}(${Math.round((f.scrap / f.in) * 100)}%)`);
-      if (highScrap.length) list.push({ type: "warn", text: `🗑️ 报废率偏高（≥10%）：${highScrap.join("、")}` });
+      if (highScrap.length) list.push({ type: "warn", text: t(T.alertHighScrap).replace("{items}", highScrap.join("、")) });
     }
     if (moduleId === "group-booking") {
       const today = localYmd(new Date());
       const upcoming = rows.filter((r) => r.date && r.date >= today && r.date <= addDays(today, 3));
-      if (upcoming.length) list.push({ type: "info", text: `📅 近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
+      if (upcoming.length) list.push({ type: "info", text: t(T.alertUpcomingBookings).replace("{n}", String(upcoming.length)).replace("{list}", upcoming.map((r) => `${r.date} ` + t(T.alertGuestsSuffix).replace("{name}", r.customer || "").replace("{n}", String(r.guests || "?"))).join("、")) });
     }
     if (moduleId === "equipment") {
       const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
-      if (open.length) list.push({ type: "warn", text: `🔧 ${open.length} 个设备问题待处理：${open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")}` });
+      if (open.length) list.push({ type: "warn", text: t(T.alertOpenIssues).replace("{n}", String(open.length)).replace("{list}", open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")) });
       // 保养到期提醒：下次保养日期已过期或在近7天内
       const today = localYmd(new Date());
       const soon = addDays(today, 7);
@@ -861,19 +1012,20 @@ export default function ModulePage() {
         const overdue = due.filter((r) => r.nextService < today);
         list.push({
           type: "warn",
-          text: `🛠️ ${due.length} 台设备保养到期${overdue.length ? `（${overdue.length} 台已过期）` : ""}：${due
-            .map((r) => `${r.equipment || "设备"}(${r.nextService})`)
-            .join("、")}`,
+          text: t(T.alertServiceDue)
+            .replace("{n}", String(due.length))
+            .replace("{overdue}", overdue.length ? t(T.alertServiceOverdue).replace("{n}", String(overdue.length)) : "")
+            .replace("{list}", due.map((r) => `${r.equipment || t(T.equipmentFallback)}(${r.nextService})`).join("、")),
         });
       }
     }
     if (moduleId === "reviews") {
       const unreplied = rows.filter((r) => r.replied !== "是" && parseFloat(r.rating) <= 3);
-      if (unreplied.length) list.push({ type: "warn", text: `💬 ${unreplied.length} 条低分评价未回复` });
+      if (unreplied.length) list.push({ type: "warn", text: t(T.alertUnrepliedReviews).replace("{n}", String(unreplied.length)) });
     }
     if (moduleId === "social") {
       const drafts = rows.filter((r) => r.status === "草稿" || r.status === "待发");
-      if (drafts.length) list.push({ type: "info", text: `📣 ${drafts.length} 条内容待发布` });
+      if (drafts.length) list.push({ type: "info", text: t(T.alertPendingPosts).replace("{n}", String(drafts.length)) });
     }
     if (moduleId === "members") {
       // 近7天（含今天）生日的会员，按 月-日 比对（忽略年份）
@@ -888,7 +1040,7 @@ export default function ModulePage() {
       if (bday.length) {
         list.push({
           type: "info",
-          text: `🎂 近7天 ${bday.length} 位会员生日：${bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")}`,
+          text: t(T.alertBirthdays).replace("{n}", String(bday.length)).replace("{list}", bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")),
         });
       }
     }
@@ -898,12 +1050,12 @@ export default function ModulePage() {
       if (soldOut.length) {
         list.push({
           type: "warn",
-          text: `🔥 卖断 ${soldOut.length} 次：${Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")}（可能少备了）`,
+          text: t(T.alertSoldOut).replace("{n}", String(soldOut.length)).replace("{items}", Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")),
         });
       }
       // 浪费提醒：剩余/报废合计
       const waste = rows.reduce((a, r) => a + (parseFloat(r.leftover) || 0), 0);
-      if (waste > 0) list.push({ type: "info", text: `♻️ 累计剩余/报废 ${Math.round(waste)} 份` });
+      if (waste > 0) list.push({ type: "info", text: t(T.alertWaste).replace("{n}", String(Math.round(waste))) });
 
       // 明日备货建议 = round(近7天该菜日均售出 × 1.1)，多备10%防卖断
       const cutoff = new Date();
@@ -918,11 +1070,11 @@ export default function ModulePage() {
       }
       const suggest = Object.entries(byDish)
         .filter(([, g]) => g.days.size > 0)
-        .map(([dish, g]) => `${dish} ${Math.round((g.sold / g.days.size) * 1.1)}份`);
-      if (suggest.length) list.push({ type: "info", text: `📋 明日备货建议（近7天均销×1.1）：${suggest.join("、")}` });
+        .map(([dish, g]) => t(T.alertPrepPortions).replace("{dish}", dish).replace("{n}", String(Math.round((g.sold / g.days.size) * 1.1))));
+      if (suggest.length) list.push({ type: "info", text: t(T.alertPrepSuggest).replace("{list}", suggest.join("、")) });
     }
     return list;
-  }, [rows, moduleId]);
+  }, [rows, moduleId, t]);
 
   const autoFields = useMemo(() => {
     if (moduleId === "dish-margin") return new Set(["revenue"]);
@@ -964,9 +1116,9 @@ export default function ModulePage() {
   const equipmentSuggestFields: Record<string, { suggestions: string[]; remove: (v: string) => void; placeholder: string }> =
     moduleId === "equipment"
       ? {
-          equipment: { suggestions: equipmentSuggestions, remove: removeEquipmentSuggestion, placeholder: "例：冰箱" },
-          vendor: { suggestions: vendorSuggestions, remove: removeVendorSuggestion, placeholder: "例：XX 维修公司" },
-          issue: { suggestions: issueSuggestions, remove: removeIssueSuggestion, placeholder: "例：压缩机异响" },
+          equipment: { suggestions: equipmentSuggestions, remove: removeEquipmentSuggestion, placeholder: t(T.phEquipment) },
+          vendor: { suggestions: vendorSuggestions, remove: removeVendorSuggestion, placeholder: t(T.phVendor) },
+          issue: { suggestions: issueSuggestions, remove: removeIssueSuggestion, placeholder: t(T.phIssue) },
         }
       : {};
 
@@ -1006,8 +1158,8 @@ export default function ModulePage() {
   if (!mod) {
     return (
       <main className="px-6 py-8">
-        <p className="text-ink-soft">未知模块。</p>
-        <Link href={`/${slug}`} className="text-brand">← 返回总览</Link>
+        <p className="text-ink-soft">{t(T.unknownModule)}</p>
+        <Link href={`/${slug}`} className="text-brand">{t(T.backOverview)}</Link>
       </main>
     );
   }
@@ -1020,8 +1172,8 @@ export default function ModulePage() {
       <main className="grid min-h-[60vh] place-items-center px-6 text-center">
         <div>
           <div className="text-3xl">🔒</div>
-          <p className="mt-2 text-sm text-ink-soft">你没有这个模块的访问权限，请联系店主。</p>
-          <Link href={`/${slug}`} className="btn-primary mt-4 inline-block">← 返回总览</Link>
+          <p className="mt-2 text-sm text-ink-soft">{t(T.noAccess)}</p>
+          <Link href={`/${slug}`} className="btn-primary mt-4 inline-block">{t(T.backOverview)}</Link>
         </div>
       </main>
     );
@@ -1037,7 +1189,7 @@ export default function ModulePage() {
   const submit = async () => {
     const missing = mod.fields.filter((f) => f.required && !form[f.key]?.trim());
     if (missing.length) {
-      alert("请填写：" + missing.map((f) => f.label.zh).join("、"));
+      alert(t(T.fillRequired) + missing.map((f) => biLabel(f.label, lang)).join(lang === "zh" ? "、" : ", "));
       return;
     }
     await addRecord(slug, moduleId, form);
@@ -1100,29 +1252,29 @@ export default function ModulePage() {
 
   return (
     <main className="px-6 py-8 lg:px-10">
-      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
+      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">{t(T.overview)}</Link>
 
       <header className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-ink">
-            {mod.icon} {mod.label.zh}
+            {mod.icon} {biLabel(mod.label, lang)}
           </h1>
-          <p className="mt-1 max-w-xl text-sm text-ink-soft">{mod.pain.zh}</p>
+          <p className="mt-1 max-w-xl text-sm text-ink-soft">{biLabel(mod.pain, lang)}</p>
         </div>
         {enabled && (
           <div className="flex flex-wrap gap-2">
             <button className="btn-primary" onClick={() => setOpen((o) => !o)}>
-              {open ? "收起" : "+ 新增记录"}
+              {open ? t(T.collapse) : t(T.addRecord)}
             </button>
             <button
               className="btn-ghost border border-slate-300"
               onClick={() => exportCsv(mod, rows)}
               disabled={rows.length === 0}
             >
-              导出 CSV
+              {t(T.exportCsv)}
             </button>
             <label className={`btn-ghost border border-slate-300 cursor-pointer ${importing ? "opacity-50" : ""}`}>
-              {importing ? "导入中…" : "导入 CSV"}
+              {importing ? t(T.importing) : t(T.importCsv)}
               <input
                 ref={fileRef}
                 type="file"
@@ -1137,10 +1289,10 @@ export default function ModulePage() {
                   setImporting(false);
                   if (fileRef.current) fileRef.current.value = "";
                   if (error) {
-                    alert("导入失败：" + error);
+                    alert(t(T.importFailed) + error);
                   } else {
-                    alert(`成功导入 ${count} 条记录`);
-                    setTick((t) => t + 1);
+                    alert(t(T.importOk).replace("{n}", String(count)));
+                    setTick((tk) => tk + 1);
                   }
                 }}
               />
@@ -1151,14 +1303,14 @@ export default function ModulePage() {
 
       {!enabled && (
         <div className="card mb-6 border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          该模块未启用。到 <Link href={`/${slug}/settings`} className="underline">设置</Link> 中开启后即可录入。
+          {t(T.notEnabledPre)}<Link href={`/${slug}/settings`} className="underline">{t(T.settings)}</Link>{t(T.notEnabledPost)}
         </div>
       )}
 
       {/* ── Stats section ── */}
       <section className="mb-6">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">数据统计</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t(T.statsLabel)}</span>
           <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
             {([0, 7, 30] as const).map((d) => (
               <button
@@ -1166,14 +1318,14 @@ export default function ModulePage() {
                 onClick={() => setStatsRange(d)}
                 className={`rounded-md px-2.5 py-1 ${statsRange === d ? "bg-white font-medium shadow-sm text-ink" : "text-ink-faint"}`}
               >
-                {d === 0 ? "全部" : `近${d}天`}
+                {d === 0 ? t(T.all) : t(T.lastNDays).replace("{n}", String(d))}
               </button>
             ))}
             <button
               onClick={() => setStatsRange("custom")}
               className={`rounded-md px-2.5 py-1 ${statsRange === "custom" ? "bg-white font-medium shadow-sm text-ink" : "text-ink-faint"}`}
             >
-              自定义
+              {t(T.custom)}
             </button>
           </div>
           {statsRange === "custom" && (
@@ -1197,15 +1349,15 @@ export default function ModulePage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* record count */}
           <div className="card p-4">
-            <div className="text-xs text-ink-faint">记录数</div>
+            <div className="text-xs text-ink-faint">{t(T.recordCount)}</div>
             <div className="mt-1 text-xl font-bold text-ink">{statsRows.length}</div>
           </div>
           {/* KPI total */}
           {mod.amountKey && (
             <div className="card p-4">
               <div className="text-xs text-ink-faint">
-                {statsRange === "custom" ? "该时段" : statsRange === 0 ? "累计" : `近${statsRange}天`}
-                {mod.amountLabel?.zh ?? "合计"}
+                {statsRange === "custom" ? t(T.thisPeriod) : statsRange === 0 ? t(T.cumulative) : t(T.lastNDaysShort).replace("{n}", String(statsRange))}
+                {mod.amountLabel?.zh ?? t(T.totalLabel)}
               </div>
               <div className="mt-1 text-xl font-bold text-ink">
                 {mod.amountKind === "money" ? money(sum(statsRows, mod.amountKey)) : num(sum(statsRows, mod.amountKey))}
@@ -1214,7 +1366,7 @@ export default function ModulePage() {
           )}
           {moduleId === "stock-loss" && (
             <div className="card p-4">
-              <div className="text-xs text-ink-faint">累计报废价值</div>
+              <div className="text-xs text-ink-faint">{t(T.cumulativeScrapValue)}</div>
               <div className="mt-1 text-xl font-bold text-red-600">{money(sum(statsRows, "scrapValue"))}</div>
             </div>
           )}
@@ -1228,16 +1380,16 @@ export default function ModulePage() {
               if (f.unit) {
                 return (
                   <div key={f.key} className="card p-4">
-                    <div className="text-xs text-ink-faint">{f.label.zh}（均值）</div>
+                    <div className="text-xs text-ink-faint">{t(T.avgSuffix).replace("{label}", biLabel(f.label, lang))}</div>
                     <div className="mt-1 text-xl font-bold text-ink">{fmt(avg(statsRows, f.key))}</div>
                   </div>
                 );
               }
               return (
                 <div key={f.key} className="card p-4">
-                  <div className="text-xs text-ink-faint">{f.label.zh}（合计 / 均值）</div>
+                  <div className="text-xs text-ink-faint">{t(T.sumAvgSuffix).replace("{label}", biLabel(f.label, lang))}</div>
                   <div className="mt-1 text-xl font-bold text-ink">{fmt(sum(statsRows, f.key))}</div>
-                  <div className="text-xs text-ink-faint">均值: {fmt(avg(statsRows, f.key))}</div>
+                  <div className="text-xs text-ink-faint">{t(T.avgPrefix)}{fmt(avg(statsRows, f.key))}</div>
                 </div>
               );
             })}
@@ -1271,7 +1423,7 @@ export default function ModulePage() {
           <TrendChart
             rows={rows}
             valueKey={mod.amountKey}
-            label={mod.amountLabel?.zh ?? "数值"}
+            label={mod.amountLabel?.zh ?? t(T.value)}
             isMoney={mod.amountKind === "money"}
           />
         </div>
@@ -1280,21 +1432,21 @@ export default function ModulePage() {
       {/* entry form */}
       {open && enabled && (
         <section className="card mb-6 p-5">
-          <div className="mb-3 text-sm font-semibold text-ink">新增记录</div>
+          <div className="mb-3 text-sm font-semibold text-ink">{t(T.newRecord)}</div>
           {moduleId === "daily-close" && autoFilling && (
-            <div className="mb-4 text-xs text-ink-faint">汇算中…</div>
+            <div className="mb-4 text-xs text-ink-faint">{t(T.computing)}</div>
           )}
 
           {moduleId === "scheduling" && (
             <div className="mb-4">
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="label !mb-0">班次</label>
+                <label className="label !mb-0">{t(T.shift)}</label>
                 <button
                   type="button"
                   onClick={() => (editingPresets ? setEditingPresets(false) : openPresetEditor())}
                   className="text-xs font-medium text-brand hover:text-brand-soft"
                 >
-                  {editingPresets ? "完成" : "修改默认班次"}
+                  {editingPresets ? t(T.done) : t(T.editDefaultShifts)}
                 </button>
               </div>
 
@@ -1319,7 +1471,7 @@ export default function ModulePage() {
                     </div>
                   ))}
                   <button type="button" onClick={savePresets} className="btn-primary !py-1.5 !text-xs">
-                    保存默认班次
+                    {t(T.saveDefaultShifts)}
                   </button>
                 </div>
               ) : (
@@ -1347,7 +1499,7 @@ export default function ModulePage() {
                       shiftPreset === "custom" ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"
                     }`}
                   >
-                    自定义
+                    {t(T.custom)}
                   </button>
                 </div>
               )}
@@ -1362,7 +1514,7 @@ export default function ModulePage() {
                 {equipmentSuggestFields[f.key] ? (
                   <div>
                     <label className="label">
-                      {f.label.zh}
+                      {biLabel(f.label, lang)}
                       {f.required && <span className="text-red-500"> *</span>}
                     </label>
                     <SuggestInput
@@ -1389,8 +1541,8 @@ export default function ModulePage() {
             ))}
           </div>
           <div className="mt-4 flex gap-2">
-            <button className="btn-primary" onClick={submit}>保存</button>
-            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>取消</button>
+            <button className="btn-primary" onClick={submit}>{t(T.save)}</button>
+            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>{t(T.cancel)}</button>
           </div>
         </section>
       )}
@@ -1403,7 +1555,7 @@ export default function ModulePage() {
               className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
               onClick={() => setWeekAnchor((d) => addDays(d, -7))}
             >
-              ‹ 上一周
+              {t(T.prevWeek)}
             </button>
             <span className="min-w-[9.5rem] text-center font-medium text-ink">
               {fmtMonthDay(dateFrom)} – {fmtMonthDay(dateTo)}
@@ -1412,26 +1564,26 @@ export default function ModulePage() {
               className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
               onClick={() => setWeekAnchor((d) => addDays(d, 7))}
             >
-              下一周 ›
+              {t(T.nextWeek)}
             </button>
             <button
               className="text-brand hover:text-brand-soft"
               onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}
             >
-              本周
+              {t(T.thisWeek)}
             </button>
             {copyMode ? (
               <>
-                <span className="text-ink-faint">已选 {selectedForCopy.size} / {filteredRows.length} 条</span>
+                <span className="text-ink-faint">{t(T.selectedCount).replace("{a}", String(selectedForCopy.size)).replace("{b}", String(filteredRows.length))}</span>
                 <button
                   disabled={selectedForCopy.size === 0 || copyingWeek}
                   onClick={confirmCopySelection}
                   className="rounded-full border border-brand bg-brand px-3 py-1 font-semibold text-white hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {copyingWeek ? "复制中…" : `复制 ${selectedForCopy.size} 条到下一周 →`}
+                  {copyingWeek ? t(T.copying) : t(T.copyNToNextWeek).replace("{n}", String(selectedForCopy.size))}
                 </button>
                 <button onClick={cancelCopySelection} className="text-ink-faint hover:text-ink">
-                  取消
+                  {t(T.cancel)}
                 </button>
               </>
             ) : (
@@ -1440,13 +1592,13 @@ export default function ModulePage() {
                 onClick={startCopySelection}
                 className="rounded-full border border-brand px-3 py-1 font-semibold text-brand hover:bg-brand-wash disabled:cursor-not-allowed disabled:opacity-40"
               >
-                复制到下一周 →
+                {t(T.copyToNextWeek)}
               </button>
             )}
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-ink-faint">
-            <span>日期</span>
+            <span>{t(T.date)}</span>
             <input
               type="date"
               className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
@@ -1465,20 +1617,20 @@ export default function ModulePage() {
         {moduleId === "scheduling"
           ? Object.values(colFilters).some((s) => s.size > 0) && (
               <>
-                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <span className="text-ink-faint">{t(T.filteredCount).replace("{a}", String(filteredRows.length)).replace("{b}", String(rows.length))}</span>
                 <button className="text-brand hover:text-brand-soft" onClick={() => { setColFilters({}); setPage(1); }}>
-                  清除筛选
+                  {t(T.clearFilter)}
                 </button>
               </>
             )
           : hasAnyFilter && (
               <>
-                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <span className="text-ink-faint">{t(T.filteredCount).replace("{a}", String(filteredRows.length)).replace("{b}", String(rows.length))}</span>
                 <button
                   className="text-brand hover:text-brand-soft"
                   onClick={() => { setColFilters({}); setDateFrom(""); setDateTo(""); setPage(1); }}
                 >
-                  清除全部筛选
+                  {t(T.clearAllFilters)}
                 </button>
               </>
             )}
@@ -1489,7 +1641,7 @@ export default function ModulePage() {
       {/* records table — dense grid; scrolls within the card on mobile (contained,
           never breaks the page). Card-ify is a separate larger effort (T2). */}
       <section className="card overflow-hidden">
-        <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-ink-faint sm:hidden">← 左右滑动查看更多列 →</div>
+        <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-ink-faint sm:hidden">{t(T.swipeHint)}</div>
         <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -1503,7 +1655,7 @@ export default function ModulePage() {
                         className="h-3.5 w-3.5 accent-brand"
                         checked={filteredRows.length > 0 && selectedForCopy.size === filteredRows.length}
                         onChange={toggleSelectAllForCopy}
-                        aria-label="全选"
+                        aria-label={t(T.selectAll)}
                       />
                     )}
                   </th>
@@ -1522,7 +1674,7 @@ export default function ModulePage() {
                         className="flex items-center gap-1 hover:text-ink"
                         onClick={() => { setFilterOpen(isOpen ? null : f.key); setFilterSearch(""); }}
                       >
-                        {f.label.zh}
+                        {biLabel(f.label, lang)}
                         <span className={`text-[10px] ${active ? "text-brand" : "text-slate-400"}`}>
                           {active ? "▼" : "▽"}
                         </span>
@@ -1536,7 +1688,7 @@ export default function ModulePage() {
                             <div className="border-b border-slate-100 p-2">
                               <input
                                 className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
-                                placeholder="搜索..."
+                                placeholder={t(T.searchPlaceholder)}
                                 value={filterSearch}
                                 onChange={(e) => setFilterSearch(e.target.value)}
                                 autoFocus
@@ -1557,7 +1709,7 @@ export default function ModulePage() {
                                   });
                                 }}
                               />
-                              全选
+                              {t(T.selectAll)}
                             </label>
                             {searched.map((v) => {
                               const checked = !active || (colFilters[f.key]?.has(v) ?? false);
@@ -1594,7 +1746,7 @@ export default function ModulePage() {
                               className="text-xs text-brand hover:text-brand-soft px-2 py-0.5"
                               onClick={() => setFilterOpen(null)}
                             >
-                              确定
+                              {t(T.confirm)}
                             </button>
                           </div>
                         </div>
@@ -1643,7 +1795,7 @@ export default function ModulePage() {
                                 <button
                                   onClick={() => toggleStaffExpanded(g.name)}
                                   className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-ink-soft hover:border-brand hover:bg-brand-wash hover:text-brand-ink"
-                                  aria-label={isExpanded ? "收起" : "展开"}
+                                  aria-label={isExpanded ? t(T.collapseRow) : t(T.expand)}
                                 >
                                   {isExpanded ? "▾" : "▸"}
                                 </button>
@@ -1680,8 +1832,8 @@ export default function ModulePage() {
                 <tr>
                   <td colSpan={mod.fields.length + 1 + (groupByStaff ? 1 : 0)} className="px-4 py-10 text-center text-sm text-ink-faint">
                     {rows.length === 0
-                      ? (enabled ? "还没有记录，点「+ 新增记录」开始录入。" : "还没有记录。")
-                      : "没有匹配的记录，试试调整筛选条件。"}
+                      ? (enabled ? t(T.emptyEnabled) : t(T.emptyDisabled))
+                      : t(T.emptyFiltered)}
                   </td>
                 </tr>
               )}
@@ -1692,7 +1844,10 @@ export default function ModulePage() {
         {!groupByStaff && totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-ink-faint">
             <span>
-              第 {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredRows.length)} 条，共 {filteredRows.length} 条
+              {t(T.pageRange)
+                .replace("{from}", String((safePage - 1) * PAGE_SIZE + 1))
+                .replace("{to}", String(Math.min(safePage * PAGE_SIZE, filteredRows.length)))
+                .replace("{total}", String(filteredRows.length))}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -1707,7 +1862,7 @@ export default function ModulePage() {
                 disabled={safePage <= 1}
                 onClick={() => setPage((p) => p - 1)}
               >
-                ‹ 上一页
+                {t(T.prevPage)}
               </button>
               <span className="px-2 font-medium text-ink">{safePage} / {totalPages}</span>
               <button
@@ -1715,7 +1870,7 @@ export default function ModulePage() {
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
-                下一页 ›
+                {t(T.nextPage)}
               </button>
               <button
                 className="rounded px-2 py-1 hover:bg-slate-100 disabled:opacity-30"
@@ -1745,14 +1900,15 @@ function FieldInput({
   readOnly?: boolean;
   suggestions?: string[];
 }) {
+  const { t, lang } = useLang();
   const listId = suggestions?.length ? `dl-${field.key}` : undefined;
   return (
     <div>
       <label className="label">
-        {field.label.zh}
+        {biLabel(field.label, lang)}
         {field.required && <span className="text-red-500"> *</span>}
         {field.suffix && <span className="text-ink-faint"> ({field.suffix})</span>}
-        {readOnly && <span className="text-brand"> (自动计算)</span>}
+        {readOnly && <span className="text-brand">{t(T.autoComputed)}</span>}
       </label>
       {field.type === "textarea" ? (
         <textarea className="input min-h-[72px]" value={value} onChange={(e) => onChange(e.target.value)} readOnly={readOnly} />
@@ -1760,7 +1916,7 @@ function FieldInput({
         <select className="input" value={value} onChange={(e) => onChange(e.target.value)} disabled={readOnly}>
           <option value="">—</option>
           {field.options?.map((o) => (
-            <option key={o.zh} value={o.zh}>{o.zh}</option>
+            <option key={o.zh} value={o.zh}>{biLabel(o, lang)}</option>
           ))}
         </select>
       ) : (
@@ -1798,6 +1954,7 @@ function FieldInput({
  *  迟到/请假 this week (计划内的 休息/正常 不算异常). `rows` is expected to
  *  already be scoped to the selected week. */
 function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const groups = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
     for (const r of rows) {
@@ -1824,13 +1981,13 @@ function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
   return (
     <section className="card mb-4 p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-ink">本周异常出勤</h2>
+        <h2 className="text-sm font-semibold text-ink">{t(T.anomalyTitle)}</h2>
         {groups.length > 0 && (
-          <span className="text-xs text-ink-faint">{Object.entries(totals).map(([k, v]) => `${k} ${v} 次`).join(" · ")}</span>
+          <span className="text-xs text-ink-faint">{Object.entries(totals).map(([k, v]) => t(T.timesSuffix).replace("{k}", k).replace("{v}", String(v))).join(" · ")}</span>
         )}
       </div>
       {groups.length === 0 ? (
-        <p className="text-sm text-ink-faint">本周出勤正常，暂无异常记录。</p>
+        <p className="text-sm text-ink-faint">{t(T.anomalyEmpty)}</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => (
@@ -1864,6 +2021,7 @@ function ModuleInsights({ moduleId, rows, slug, refresh }: { moduleId: string; r
  *  是否处理好了"，跟"下次保养提醒是否还没到"是两码事：同一台设备可以问题已解决
  *  （status=已完成）但下次保养日期仍落在本月，这时候仍然要出现在清单里。 */
 function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[]; slug: string; refresh: () => void }) {
+  const { t } = useLang();
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const due = useMemo(() => {
@@ -1901,7 +2059,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       // Don't refresh on failure — it would just reload the same unchanged
       // row, making it look like the action silently did nothing.
       setSavingId(null);
-      alert("操作失败，请重试：" + error);
+      alert(t(T.operationFailed) + error);
       return;
     }
     // Only spawn the next cycle when there's a fixed 保养周期 to compute it
@@ -1930,24 +2088,24 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
   return (
     <section className="card mb-6 p-5">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-sm font-semibold text-ink">本月保养清单</div>
-        <span className="text-xs text-ink-faint">{due.length} 项待处理</span>
+        <div className="text-sm font-semibold text-ink">{t(T.monthlyChecklist)}</div>
+        <span className="text-xs text-ink-faint">{t(T.itemsPending).replace("{n}", String(due.length))}</span>
       </div>
-      <p className="mb-3 text-xs text-ink-faint">下次保养日期落在本月（含已逾期）的设备，与「是否合格/已完成」无关</p>
+      <p className="mb-3 text-xs text-ink-faint">{t(T.checklistHint)}</p>
       <div className="space-y-1.5">
         {due.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
-            <span className="font-medium text-ink">{r.equipment || "设备"}</span>
+            <span className="font-medium text-ink">{r.equipment || t(T.equipmentFallback)}</span>
             {r.issue && <span className="text-ink-soft">{r.issue}</span>}
             <span className={`ml-auto text-xs font-medium tabular-nums ${r.overdue ? "text-red-600" : "text-ink-faint"}`}>
-              {r.overdue ? `已逾期 · ${r.nextService}` : r.nextService}
+              {r.overdue ? t(T.overduePrefix).replace("{d}", String(r.nextService)) : r.nextService}
             </span>
             <button
               className="btn-primary !py-1 !text-xs"
               disabled={savingId === r.id}
               onClick={() => markServiced(r)}
             >
-              {savingId === r.id ? "…" : "本次已保养"}
+              {savingId === r.id ? "…" : t(T.markServiced)}
             </button>
           </div>
         ))}
@@ -1957,6 +2115,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
 }
 
 function TierSettings({ slug }: { slug: string }) {
+  const { t } = useLang();
   const [tiers, setTiers] = useState<TierRule[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1980,14 +2139,14 @@ function TierSettings({ slug }: { slug: string }) {
   const remove = (i: number) => setTiers((prev) => prev.filter((_, j) => j !== i));
 
   const save = async () => {
-    const valid = tiers.filter((t) => t.name.trim());
+    const valid = tiers.filter((tier) => tier.name.trim());
     if (!valid.length) return;
     setSaving(true);
     setMsg("");
     await saveTierRules(slug, valid);
     const updated = await reapplyTiers(slug);
     setTiers(valid.sort((a, b) => a.minSpend - b.minSpend));
-    setMsg(updated > 0 ? `已保存，${updated} 位会员等级已更新` : "已保存");
+    setMsg(updated > 0 ? t(T.savedTiersUpdated).replace("{n}", String(updated)) : t(T.saved));
     setSaving(false);
   };
 
@@ -1999,41 +2158,41 @@ function TierSettings({ slug }: { slug: string }) {
         className="flex w-full items-center justify-between text-sm font-semibold text-ink"
         onClick={() => setExpanded((v) => !v)}
       >
-        <span>会员等级规则</span>
+        <span>{t(T.tierRules)}</span>
         <span className={`text-xl leading-none transition-transform ${expanded ? "rotate-180" : ""}`}>▾</span>
       </button>
       {expanded && (
         <>
-          <p className="mt-3 mb-3 text-xs text-ink-faint">设定累计消费满多少自动升级，保存后立即生效</p>
+          <p className="mt-3 mb-3 text-xs text-ink-faint">{t(T.tierHint)}</p>
           <div className="space-y-2">
-            {tiers.map((t, i) => (
+            {tiers.map((tier, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input
                   className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
-                  placeholder="等级名称"
-                  value={t.name}
+                  placeholder={t(T.tierNamePlaceholder)}
+                  value={tier.name}
                   onChange={(e) => update(i, "name", e.target.value)}
                 />
-                <span className="text-xs text-ink-faint">满</span>
+                <span className="text-xs text-ink-faint">{t(T.tierAtLeast)}</span>
                 <input
                   className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm text-right outline-none focus:border-brand"
                   type="number"
                   min={0}
                   placeholder="0"
-                  value={t.minSpend || ""}
+                  value={tier.minSpend || ""}
                   onChange={(e) => update(i, "minSpend", e.target.value)}
                 />
-                <span className="text-xs text-ink-faint">元</span>
+                <span className="text-xs text-ink-faint">{t(T.tierUnit)}</span>
                 {tiers.length > 1 && (
-                  <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(i)}>删除</button>
+                  <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(i)}>{t(T.del)}</button>
                 )}
               </div>
             ))}
           </div>
           <div className="mt-3 flex items-center gap-2">
-            <button className="btn-ghost border border-slate-300 text-xs" onClick={add}>+ 新增等级</button>
+            <button className="btn-ghost border border-slate-300 text-xs" onClick={add}>{t(T.addTier)}</button>
             <button className="btn-primary text-xs" onClick={save} disabled={saving}>
-              {saving ? "保存中…" : "保存并应用"}
+              {saving ? t(T.saving) : t(T.saveAndApply)}
             </button>
             {msg && <span className="text-xs text-emerald-600">{msg}</span>}
           </div>
@@ -2044,6 +2203,7 @@ function TierSettings({ slug }: { slug: string }) {
 }
 
 function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const ranked = useMemo(() => {
     return rows
       .map((r) => {
@@ -2062,35 +2222,35 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">销量排行</div>
+      <div className="mb-3 text-sm font-semibold text-ink">{t(T.salesRanking)}</div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 最受欢迎</div>
+          <div className="mb-1.5 text-xs font-semibold text-emerald-700">{t(T.mostPopular)}</div>
           {top.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
+              <span className="font-medium">{t(T.portionsRevenue).replace("{n}", String(d.sold)).replace("{rev}", money(d.revenue))}</span>
             </div>
           ))}
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 销量最低</div>
+          <div className="mb-1.5 text-xs font-semibold text-amber-700">{t(T.lowestSales)}</div>
           {bottom.length ? bottom.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-amber-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
+              <span className="font-medium">{t(T.portionsRevenue).replace("{n}", String(d.sold)).replace("{rev}", money(d.revenue))}</span>
             </div>
-          )) : <div className="text-xs text-amber-700/60">菜品太少，暂无</div>}
+          )) : <div className="text-xs text-amber-700/60">{t(T.tooFewDishes)}</div>}
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[320px] text-xs">
           <thead>
             <tr className="border-b border-slate-200 text-left text-ink-faint">
-              <th className="py-1.5 pr-3 font-medium">菜名</th>
-              <th className="py-1.5 px-3 font-medium text-right">售价</th>
-              <th className="py-1.5 px-3 font-medium text-right">月销</th>
-              <th className="py-1.5 pl-3 font-medium text-right">销售额</th>
+              <th className="py-1.5 pr-3 font-medium">{t(T.dishName)}</th>
+              <th className="py-1.5 px-3 font-medium text-right">{t(T.price)}</th>
+              <th className="py-1.5 px-3 font-medium text-right">{t(T.monthlySales)}</th>
+              <th className="py-1.5 pl-3 font-medium text-right">{t(T.revenue)}</th>
             </tr>
           </thead>
           <tbody>
@@ -2111,6 +2271,7 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
 
 /** 供应商比价：同一品项跨供应商的均价对比，标出最低价。 */
 function SupplierCompare({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const items = useMemo(() => {
     // item → supplier → {sum, n}
     const map: Record<string, Record<string, { sum: number; n: number }>> = {};
@@ -2137,8 +2298,8 @@ function SupplierCompare({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-1 text-sm font-semibold text-ink">供应商比价</div>
-      <div className="mb-3 text-xs text-ink-faint">同一品项各供应商的平均单价，绿色为最低价</div>
+      <div className="mb-1 text-sm font-semibold text-ink">{t(T.supplierCompare)}</div>
+      <div className="mb-3 text-xs text-ink-faint">{t(T.supplierCompareHint)}</div>
       <div className="space-y-3">
         {items.map(({ item, list }) => {
           const cheapest = list[0].avg;
@@ -2149,7 +2310,7 @@ function SupplierCompare({ rows }: { rows: RecordRow[] }) {
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-medium text-ink">{item}</span>
                 {save > 0 && (
-                  <span className="text-xs text-emerald-600">最低比最高省 {money(save)}/单位</span>
+                  <span className="text-xs text-emerald-600">{t(T.savesPerUnit).replace("{amt}", money(save))}</span>
                 )}
               </div>
               <div className="space-y-1">
@@ -2180,6 +2341,7 @@ function SupplierCompare({ rows }: { rows: RecordRow[] }) {
 
 /** 评价问题类别统计：各 topic 的条数与平均分。 */
 function ReviewTopics({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const topics = useMemo(() => {
     const map: Record<string, { n: number; ratingSum: number; ratingN: number }> = {};
     for (const r of rows) {
@@ -2200,20 +2362,20 @@ function ReviewTopics({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">问题类别统计</div>
+      <div className="mb-3 text-sm font-semibold text-ink">{t(T.topicStats)}</div>
       <div className="space-y-2">
-        {topics.map((t) => (
-          <div key={t.topic} className="flex items-center gap-2 text-xs">
-            <span className="w-16 shrink-0 text-ink-soft">{t.topic}</span>
+        {topics.map((topic) => (
+          <div key={topic.topic} className="flex items-center gap-2 text-xs">
+            <span className="w-16 shrink-0 text-ink-soft">{topic.topic}</span>
             <div className="h-3 flex-1 rounded bg-slate-100">
               <div
-                className={`h-3 rounded ${t.topic === "好评" ? "bg-emerald-400" : "bg-brand/60"}`}
-                style={{ width: `${(t.n / max) * 100}%` }}
+                className={`h-3 rounded ${topic.topic === "好评" ? "bg-emerald-400" : "bg-brand/60"}`}
+                style={{ width: `${(topic.n / max) * 100}%` }}
               />
             </div>
-            <span className="w-10 shrink-0 text-right font-medium text-ink">{t.n} 条</span>
+            <span className="w-10 shrink-0 text-right font-medium text-ink">{t(T.countSuffix).replace("{n}", String(topic.n))}</span>
             <span className="w-14 shrink-0 text-right text-ink-faint">
-              {t.avg != null ? `${(Math.round(t.avg * 10) / 10)}★` : "—"}
+              {topic.avg != null ? `${(Math.round(topic.avg * 10) / 10)}★` : "—"}
             </span>
           </div>
         ))}
@@ -2223,6 +2385,7 @@ function ReviewTopics({ rows }: { rows: RecordRow[] }) {
 }
 
 function TrendChart({ rows, valueKey, label, isMoney }: { rows: RecordRow[]; valueKey: string; label: string; isMoney?: boolean }) {
+  const { t } = useLang();
   const grouped = useMemo(() => {
     const map: Record<string, number> = {};
     for (const r of rows) {
@@ -2262,7 +2425,7 @@ function TrendChart({ rows, valueKey, label, isMoney }: { rows: RecordRow[]; val
 
   return (
     <div className="card p-4">
-      <div className="text-xs font-semibold text-ink-faint mb-2">{label} 趋势（近14天）</div>
+      <div className="text-xs font-semibold text-ink-faint mb-2">{t(T.trendTitle).replace("{label}", label)}</div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 180 }}>
         <defs>
           <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">

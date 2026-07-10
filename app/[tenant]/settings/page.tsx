@@ -14,14 +14,107 @@ import {
 import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategoriesInDomain, readyDomains } from "@/lib/catalog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
+import { useLang, type Dict } from "@/app/i18n";
 
-const ROLE_LABEL: Record<Role, string> = {
-  owner: "老板（全部权限）",
-  manager: "主管",
-  staff: "员工",
+const ROLE_LABEL: Record<Role, Dict> = {
+  owner: { en: "Owner (full access)", zh: "老板（全部权限）", fr: "Propriétaire (accès complet)" },
+  manager: { en: "Manager", zh: "主管", fr: "Gérant" },
+  staff: { en: "Staff", zh: "员工", fr: "Employé" },
 };
 
+// Trilingual UI chrome (EN default, + 中 / FR). Merchant data (store name,
+// staff names/emails, tenant slug) is never translated. Supabase auth errors
+// come back in English and are shown as-is.
+const T: Record<string, Dict> = {
+  back: { en: "← Overview", zh: "← 总览", fr: "← Aperçu" },
+  title: { en: "Settings", zh: "设置", fr: "Paramètres" },
+
+  // Users section
+  staffAccounts: { en: "Staff accounts", zh: "员工账号", fr: "Comptes du personnel" },
+  staffBlurb: {
+    en: "Add multiple staff sub-accounts under the main account, assigning visible feature modules by role.",
+    zh: "主账号下可添加多个员工子账号，按岗位分配可见的功能模块。",
+    fr: "Ajoutez plusieurs sous-comptes de personnel sous le compte principal, en attribuant les modules visibles par rôle.",
+  },
+  pending: { en: "Pending", zh: "待加入", fr: "En attente" },
+  visible: { en: "sees", zh: "可见", fr: "voit" },
+  all: { en: "All", zh: "全部", fr: "Tout" },
+  copyInviteLink: { en: "Copy invite link", zh: "复制邀请链接", fr: "Copier le lien d'invitation" },
+  remove: { en: "Remove", zh: "移除", fr: "Retirer" },
+
+  inviteStaff: { en: "+ Invite staff (by email)", zh: "+ 邀请员工（邮箱）", fr: "+ Inviter du personnel (courriel)" },
+  emailRequired: { en: "Email (required)", zh: "邮箱（必填）", fr: "Courriel (obligatoire)" },
+  nameOptional: { en: "Name (optional)", zh: "姓名（可选）", fr: "Nom (facultatif)" },
+  namePlaceholder: { en: "Staff name", zh: "员工姓名", fr: "Nom de l'employé" },
+  role: { en: "Role", zh: "岗位", fr: "Rôle" },
+  roleStaff: { en: "Staff", zh: "员工", fr: "Employé" },
+  roleManager: { en: "Manager", zh: "主管", fr: "Gérant" },
+  visibleModules: {
+    en: "Visible modules (none = all enabled modules)",
+    zh: "可见模块（不选 = 全部已启用模块）",
+    fr: "Modules visibles (aucun = tous les modules activés)",
+  },
+  sending: { en: "Sending…", zh: "发送中…", fr: "Envoi…" },
+  sendInvite: { en: "Send invite", zh: "发送邀请", fr: "Envoyer l'invitation" },
+  copy: { en: "Copy", zh: "复制", fr: "Copier" },
+  inviteHint: {
+    en: "Once they register with this email and set a password, they can sign in and see this store's back office (with the modules checked above).",
+    zh: "对方用此邮箱注册并设置密码后，即可登录看到本店后台（按上面勾选的模块）。",
+    fr: "Une fois inscrit avec ce courriel et un mot de passe défini, l'utilisateur peut se connecter et voir l'arrière-guichet de ce magasin (avec les modules cochés ci-dessus).",
+  },
+
+  // Invite alert/status messages
+  invalidEmail: { en: "Please enter a valid email", zh: "请输入有效邮箱", fr: "Veuillez saisir un courriel valide" },
+  inviteFailed: { en: "Invite failed: {x}", zh: "邀请失败：{x}", fr: "Échec de l'invitation : {x}" },
+  inviteEmailSent: { en: "Invite email sent ✓", zh: "已发送邀请邮件 ✓", fr: "Courriel d'invitation envoyé ✓" },
+  inviteCreated: {
+    en: "Invite created — copy the link and send it over",
+    zh: "邀请已创建 —— 复制链接发给对方",
+    fr: "Invitation créée — copiez le lien et envoyez-le",
+  },
+  linkCopied: { en: "Link copied ✓", zh: "链接已复制 ✓", fr: "Lien copié ✓" },
+
+  // Modules section
+  modules: { en: "Feature modules", zh: "功能模块", fr: "Modules de fonctionnalités" },
+  modulesBlurb: {
+    en: "Add or remove features anytime — check a box to generate its entry forms and reports, no rebuild needed. Need something not listed? We can build a custom fit for you.",
+    zh: "随时增减功能 —— 勾选即生成对应录入与报表，无需重建系统。需要清单外的功能？我们可以为你定制适配。",
+    fr: "Ajoutez ou retirez des fonctionnalités à tout moment — cochez une case pour générer ses formulaires et rapports, sans reconstruction. Besoin d'autre chose ? Nous pouvons créer une solution sur mesure.",
+  },
+  frontOffice: { en: "🛎️ Front", zh: "🛎️ 前台", fr: "🛎️ Front" },
+  backOffice: { en: "🗄️ Back", zh: "🗄️ 后台", fr: "🗄️ Arrière" },
+  selectedCount: { en: "Selected", zh: "已选", fr: "Sélectionnés" },
+  featuresUnit: { en: "features", zh: "个功能", fr: "fonctionnalités" },
+  unsavedChanges: { en: "· Unsaved changes", zh: "· 有未保存的更改", fr: "· Modifications non enregistrées" },
+  generating: { en: "Generating…", zh: "生成中…", fr: "Génération…" },
+  generate: { en: "Generate back office →", zh: "生成后台 →", fr: "Générer l'arrière-guichet →" },
+
+  // Account & login
+  accountLogin: { en: "Account & login", zh: "账户与登录", fr: "Compte et connexion" },
+  accountBlurb: {
+    en: "Your current login. You can change your password anytime.",
+    zh: "当前登录账号，可随时修改密码。",
+    fr: "Votre connexion actuelle. Vous pouvez changer votre mot de passe à tout moment.",
+  },
+  loginUsername: { en: "Login username", zh: "登录用户名", fr: "Nom d'utilisateur" },
+  newPassword: { en: "New password", zh: "新密码", fr: "Nouveau mot de passe" },
+  pwPlaceholder: { en: "At least 6 characters", zh: "至少 6 位", fr: "Au moins 6 caractères" },
+  confirmPassword: { en: "Confirm new password", zh: "确认新密码", fr: "Confirmer le nouveau mot de passe" },
+  updating: { en: "Updating…", zh: "更新中…", fr: "Mise à jour…" },
+  changePassword: { en: "Change password", zh: "修改密码", fr: "Changer le mot de passe" },
+  pwTooShort: { en: "Password must be at least 6 characters", zh: "密码至少 6 位", fr: "Le mot de passe doit comporter au moins 6 caractères" },
+  pwMismatch: { en: "Passwords don't match", zh: "两次输入不一致", fr: "Les mots de passe ne correspondent pas" },
+  pwUpdated: { en: "Password updated ✓", zh: "密码已更新 ✓", fr: "Mot de passe mis à jour ✓" },
+};
+
+/** Localize a catalog label ({ zh, en } only — no fr; fr falls back to en). */
+function moduleLabel(bi: { zh: string; en: string } | undefined, lang: "zh" | "en" | "fr"): string {
+  if (!bi) return "";
+  return lang === "zh" ? bi.zh : bi.en;
+}
+
 export default function Settings() {
+  const { t, lang } = useLang();
   const slug = useParams().tenant as string;
   const router = useRouter();
   const [tenant, setTenant] = useState<Tenant | undefined>();
@@ -77,7 +170,7 @@ export default function Settings() {
   const inviteUser = async () => {
     const email = uEmail.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      setInviteMsg("请输入有效邮箱");
+      setInviteMsg(t(T.invalidEmail));
       return;
     }
     setInviteBusy(true);
@@ -86,7 +179,7 @@ export default function Settings() {
     const { error } = await inviteMember(slug, { name: uName.trim() || email, email, role: uRole, access: Array.from(uAccess) });
     if (error) {
       setInviteBusy(false);
-      setInviteMsg(`邀请失败：${error}`);
+      setInviteMsg(t(T.inviteFailed).replace("{x}", error));
       return;
     }
     const link = inviteLinkFor(email);
@@ -108,7 +201,7 @@ export default function Settings() {
     }
     setInviteBusy(false);
     setInviteLink(link);
-    setInviteMsg(emailed ? "已发送邀请邮件 ✓" : "邀请已创建 —— 复制链接发给对方");
+    setInviteMsg(emailed ? t(T.inviteEmailSent) : t(T.inviteCreated));
     setUName("");
     setUEmail("");
     setURole("staff");
@@ -120,7 +213,7 @@ export default function Settings() {
     const link = inviteLinkFor(email);
     navigator.clipboard?.writeText(link).catch(() => {});
     setInviteLink(link);
-    setInviteMsg("链接已复制 ✓");
+    setInviteMsg(t(T.linkCopied));
   };
 
   const removeUser = async (id: string) => {
@@ -130,17 +223,17 @@ export default function Settings() {
 
   return (
     <main className="px-6 py-8 lg:px-10">
-      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
-      <h1 className="mt-3 mb-6 text-2xl font-bold text-ink">设置</h1>
+      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">{t(T.back)}</Link>
+      <h1 className="mt-3 mb-6 text-2xl font-bold text-ink">{t(T.title)}</h1>
 
       {/* ── Account & login ─────────────────────────────────── */}
       <AccountLogin />
 
       {/* ── Users ─────────────────────────────────────────── */}
       <section className="card mb-8 p-5">
-        <h2 className="mb-1 text-lg font-semibold text-ink">员工账号</h2>
+        <h2 className="mb-1 text-lg font-semibold text-ink">{t(T.staffAccounts)}</h2>
         <p className="mb-4 text-sm text-ink-soft">
-          主账号下可添加多个员工子账号，按岗位分配可见的功能模块。
+          {t(T.staffBlurb)}
         </p>
 
         <div className="mb-5 divide-y divide-slate-100">
@@ -150,23 +243,23 @@ export default function Settings() {
                 <div className="flex items-center gap-2 text-sm font-medium text-ink">
                   {u.name}
                   {u.pending && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">待加入</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">{t(T.pending)}</span>
                   )}
                 </div>
                 <div className="truncate text-xs text-ink-faint">
-                  {ROLE_LABEL[u.role]}
+                  {t(ROLE_LABEL[u.role])}
                   {u.email && <> · {u.email}</>}
                   {u.role !== "owner" && (
-                    <> · 可见 {u.access.length === 0 ? "全部" : u.access.map((id) => MODULE_BY_ID[id]?.label.zh).filter(Boolean).join("、")}</>
+                    <> · {t(T.visible)} {u.access.length === 0 ? t(T.all) : u.access.map((id) => moduleLabel(MODULE_BY_ID[id]?.label, lang)).filter(Boolean).join("、")}</>
                   )}
                 </div>
               </div>
               <div className="flex flex-none items-center gap-3">
                 {u.pending && u.email && (
-                  <button onClick={() => copyInvite(u.email!)} className="text-xs font-medium text-brand hover:underline">复制邀请链接</button>
+                  <button onClick={() => copyInvite(u.email!)} className="text-xs font-medium text-brand hover:underline">{t(T.copyInviteLink)}</button>
                 )}
                 {u.role !== "owner" && (
-                  <button onClick={() => removeUser(u.id)} className="text-xs text-ink-faint hover:text-red-600">移除</button>
+                  <button onClick={() => removeUser(u.id)} className="text-xs text-ink-faint hover:text-red-600">{t(T.remove)}</button>
                 )}
               </div>
             </div>
@@ -175,26 +268,26 @@ export default function Settings() {
 
         {/* invite staff by email */}
         <div className="rounded-xl border border-dashed border-slate-300 p-4">
-          <div className="mb-3 text-sm font-medium text-ink">+ 邀请员工（邮箱）</div>
+          <div className="mb-3 text-sm font-medium text-ink">{t(T.inviteStaff)}</div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <label className="label">邮箱（必填）</label>
+              <label className="label">{t(T.emailRequired)}</label>
               <input className="input" type="email" value={uEmail} onChange={(e) => setUEmail(e.target.value)} placeholder="staff@example.com" />
             </div>
             <div>
-              <label className="label">姓名（可选）</label>
-              <input className="input" value={uName} onChange={(e) => setUName(e.target.value)} placeholder="员工姓名" />
+              <label className="label">{t(T.nameOptional)}</label>
+              <input className="input" value={uName} onChange={(e) => setUName(e.target.value)} placeholder={t(T.namePlaceholder)} />
             </div>
             <div>
-              <label className="label">岗位</label>
+              <label className="label">{t(T.role)}</label>
               <select className="input" value={uRole} onChange={(e) => setURole(e.target.value as Role)}>
-                <option value="staff">员工</option>
-                <option value="manager">主管</option>
+                <option value="staff">{t(T.roleStaff)}</option>
+                <option value="manager">{t(T.roleManager)}</option>
               </select>
             </div>
           </div>
           <div className="mt-3">
-            <label className="label">可见模块（不选 = 全部已启用模块）</label>
+            <label className="label">{t(T.visibleModules)}</label>
             <div className="flex flex-wrap gap-2">
               {tenant.enabled.map((id) => {
                 const m = MODULE_BY_ID[id];
@@ -213,14 +306,14 @@ export default function Settings() {
                     }
                     className={`pill border ${on ? "border-brand bg-brand-wash text-brand" : "border-slate-300 text-ink-soft"}`}
                   >
-                    {m.icon} {m.label.zh}
+                    {m.icon} {moduleLabel(m.label, lang)}
                   </button>
                 );
               })}
             </div>
           </div>
           <button className="btn-primary mt-4" onClick={inviteUser} disabled={inviteBusy || !uEmail.trim()}>
-            {inviteBusy ? "发送中…" : "发送邀请"}
+            {inviteBusy ? t(T.sending) : t(T.sendInvite)}
           </button>
           {inviteMsg && <div className="mt-3 text-sm text-brand">{inviteMsg}</div>}
           {inviteLink && (
@@ -230,33 +323,33 @@ export default function Settings() {
                 onClick={() => navigator.clipboard?.writeText(inviteLink).catch(() => {})}
                 className="flex-none rounded-md bg-brand px-2.5 py-1 text-xs font-semibold text-white"
               >
-                复制
+                {t(T.copy)}
               </button>
             </div>
           )}
-          <p className="mt-2 text-xs text-ink-faint">对方用此邮箱注册并设置密码后，即可登录看到本店后台（按上面勾选的模块）。</p>
+          <p className="mt-2 text-xs text-ink-faint">{t(T.inviteHint)}</p>
         </div>
       </section>
 
       {/* ── Modules ───────────────────────────────────────── */}
       <section className="card p-5">
-        <h2 className="mb-1 text-lg font-semibold text-ink">功能模块</h2>
+        <h2 className="mb-1 text-lg font-semibold text-ink">{t(T.modules)}</h2>
         <p className="mb-4 text-sm text-ink-soft">
-          随时增减功能 —— 勾选即生成对应录入与报表，无需重建系统。需要清单外的功能？我们可以为你定制适配。
+          {t(T.modulesBlurb)}
         </p>
         <div className="space-y-6">
           {readyDomains().map((dom) => (
             <div key={dom.id} className="rounded-xl border border-slate-200 p-4">
               <div className="mb-3 flex items-baseline gap-2">
                 <span className={`pill ${dom.id === "frontend" ? "bg-amber-100 text-amber-700" : "bg-brand-wash text-brand"}`}>
-                  {dom.id === "frontend" ? "🛎️ 前台" : "🗄️ 后台"}
+                  {dom.id === "frontend" ? t(T.frontOffice) : t(T.backOffice)}
                 </span>
-                <span className="text-xs text-ink-faint">{dom.blurb.zh}</span>
+                <span className="text-xs text-ink-faint">{moduleLabel(dom.blurb, lang)}</span>
               </div>
               <div className="space-y-4">
                 {readyCategoriesInDomain(dom.id).map((c) => (
                   <div key={c.id}>
-                    <div className="mb-2 text-sm font-semibold text-ink">{c.label.zh}</div>
+                    <div className="mb-2 text-sm font-semibold text-ink">{moduleLabel(c.label, lang)}</div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {readyByCategory(c.id).map((m) => {
                   const on = picked.has(m.id);
@@ -268,7 +361,7 @@ export default function Settings() {
                       }`}
                     >
                       <input type="checkbox" checked={on} onChange={() => togglePick(m.id)} className="h-4 w-4 accent-brand" />
-                      <span className="text-ink">{m.icon} {m.label.zh}</span>
+                      <span className="text-ink">{m.icon} {moduleLabel(m.label, lang)}</span>
                     </label>
                   );
                       })}
@@ -283,15 +376,15 @@ export default function Settings() {
         {/* generate */}
         <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
           <span className="text-sm text-ink-faint">
-            已选 <b className="text-ink">{picked.size}</b> 个功能
-            {dirty && <span className="ml-2 text-amber-600">· 有未保存的更改</span>}
+            {t(T.selectedCount)} <b className="text-ink">{picked.size}</b> {t(T.featuresUnit)}
+            {dirty && <span className="ml-2 text-amber-600">{t(T.unsavedChanges)}</span>}
           </span>
           <button
             className="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={generate}
             disabled={!dirty || genBusy}
           >
-            {genBusy ? "生成中…" : "生成后台 →"}
+            {genBusy ? t(T.generating) : t(T.generate)}
           </button>
         </div>
       </section>
@@ -301,6 +394,7 @@ export default function Settings() {
 
 /** Account & login: shows the current login and lets the user change the password anytime. */
 function AccountLogin() {
+  const { t } = useLang();
   const { email } = useAuth();
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -308,38 +402,38 @@ function AccountLogin() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const change = async () => {
-    if (pw.length < 6) { setMsg({ ok: false, text: "密码至少 6 位" }); return; }
-    if (pw !== pw2) { setMsg({ ok: false, text: "两次输入不一致" }); return; }
+    if (pw.length < 6) { setMsg({ ok: false, text: t(T.pwTooShort) }); return; }
+    if (pw !== pw2) { setMsg({ ok: false, text: t(T.pwMismatch) }); return; }
     setBusy(true); setMsg(null);
     const { error } = await supabase.auth.updateUser({ password: pw });
     setBusy(false);
     if (error) { setMsg({ ok: false, text: error.message }); return; }
     setPw(""); setPw2("");
-    setMsg({ ok: true, text: "密码已更新 ✓" });
+    setMsg({ ok: true, text: t(T.pwUpdated) });
   };
 
   return (
     <section className="card mb-8 p-5">
-      <h2 className="mb-1 text-lg font-semibold text-ink">账户与登录</h2>
-      <p className="mb-4 text-sm text-ink-soft">当前登录账号，可随时修改密码。</p>
+      <h2 className="mb-1 text-lg font-semibold text-ink">{t(T.accountLogin)}</h2>
+      <p className="mb-4 text-sm text-ink-soft">{t(T.accountBlurb)}</p>
 
       <div className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-        <div className="text-xs text-ink-faint">登录用户名</div>
+        <div className="text-xs text-ink-faint">{t(T.loginUsername)}</div>
         <div className="font-medium text-ink">{email ?? "…"}</div>
       </div>
 
       <div className="grid gap-3 sm:max-w-sm">
         <div>
-          <label className="label">新密码</label>
-          <input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="至少 6 位" />
+          <label className="label">{t(T.newPassword)}</label>
+          <input className="input" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t(T.pwPlaceholder)} />
         </div>
         <div>
-          <label className="label">确认新密码</label>
+          <label className="label">{t(T.confirmPassword)}</label>
           <input className="input" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === "Enter" && change()} />
         </div>
         {msg && <div className={`text-sm ${msg.ok ? "text-brand" : "text-red-600"}`}>{msg.text}</div>}
         <button className="btn-primary w-fit" onClick={change} disabled={busy || !pw || !pw2}>
-          {busy ? "更新中…" : "修改密码"}
+          {busy ? t(T.updating) : t(T.changePassword)}
         </button>
       </div>
     </section>
