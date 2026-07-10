@@ -65,6 +65,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
   const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
+  const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
   // starts as the slug, replaced by the tenant's real name once fetched —
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
@@ -334,6 +335,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     </div>
   );
 
+  // One row in the ⋯ overflow menu — full-width, ≥44px tap target.
+  const MenuItem = ({ onClick, danger, children }: { onClick: () => void; danger?: boolean; children: React.ReactNode }) => (
+    <button
+      onClick={() => { setMenuFor(null); onClick(); }}
+      className={`flex w-full items-center gap-2 px-3.5 py-3 text-left text-sm ${danger ? "text-red-600 hover:bg-red-50" : "text-ink hover:bg-slate-50"}`}
+    >
+      {children}
+    </button>
+  );
+
   const renderCard = (o: Order) => {
     const sibs = siblingsOf(o);          // this table's active rounds (self if none)
     const multi = sibs.length > 1;       // part of a multi-round tab (加餐)
@@ -357,27 +368,41 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         {multi && o.status !== "cancelled" && (
           <div className="mt-2 rounded bg-brand-wash px-2 py-1 text-xs text-brand-ink">本桌共 {sibs.length} 单加餐 · 合计 {fmtPrice(tableTotal)}（点「打印账单」出整桌合并总单）</div>
         )}
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
-          <div className="flex gap-2">
-            <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
-            {o.status !== "cancelled" && (
-              <button
-                onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert("打印账单失败：" + r.error); }}
-                className="text-xs text-ink-faint hover:text-brand-ink"
-                title={multi ? "打印整桌合并账单（含税）" : "打印带价格和税的顾客账单"}
-              >
-                {multi ? "打印整桌账单" : "打印账单"}
-              </button>
-            )}
-            <button onClick={async () => { await reprintOrder(o.id); load(); }} className="text-xs text-ink-faint hover:text-brand-ink" title="让打印机重新出这单（厨房单）">重打</button>
-            <button className="text-xs text-ink-faint hover:text-red-600" onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}>删除</button>
-            {o.status !== "cancelled" && o.status !== "done" && (
-              <button onClick={() => advance(o, "cancelled")} className="text-xs text-ink-faint hover:text-red-600">取消</button>
-            )}
+          <div className="flex items-center gap-2">
             {NEXT[o.status] && (
-              <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-3 py-1.5 text-xs">{NEXT[o.status]!.label}</button>
+              <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-4 text-sm">{NEXT[o.status]!.label}</button>
             )}
+            {/* secondary actions collapse into a ⋯ menu so the row never crowds on a phone */}
+            <div className="relative">
+              <button
+                onClick={() => setMenuFor(menuFor === o.id ? null : o.id)}
+                aria-label="更多操作"
+                aria-expanded={menuFor === o.id}
+                className="grid h-11 w-11 flex-none place-items-center rounded-lg border border-slate-200 text-lg leading-none text-ink-soft hover:bg-slate-50"
+              >
+                ⋯
+              </button>
+              {menuFor === o.id && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />
+                  <div className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                    <MenuItem onClick={() => setPreview(o)}>🖨️ 出单预览</MenuItem>
+                    {o.status !== "cancelled" && (
+                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert("打印账单失败：" + r.error); }}>
+                        🧾 {multi ? "打印整桌账单" : "打印账单"}
+                      </MenuItem>
+                    )}
+                    <MenuItem onClick={async () => { await reprintOrder(o.id); load(); }}>重打厨房单</MenuItem>
+                    {o.status !== "cancelled" && o.status !== "done" && (
+                      <MenuItem danger onClick={() => advance(o, "cancelled")}>取消订单</MenuItem>
+                    )}
+                    <MenuItem danger onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}>删除</MenuItem>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
