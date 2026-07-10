@@ -63,13 +63,13 @@ export default function Login() {
         <div className="card p-6">
           <div className="mb-4 flex rounded-lg bg-slate-100 p-1 text-sm">
             <button
-              className={`flex-1 rounded-md py-1.5 ${mode === "signin" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
+              className={`flex-1 rounded-md min-h-11 py-1.5 ${mode === "signin" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
               onClick={() => setMode("signin")}
             >
               登录
             </button>
             <button
-              className={`flex-1 rounded-md py-1.5 ${mode === "signup" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
+              className={`flex-1 rounded-md min-h-11 py-1.5 ${mode === "signup" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
               onClick={() => setMode("signup")}
             >
               注册

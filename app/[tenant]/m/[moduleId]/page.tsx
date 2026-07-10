@@ -1486,9 +1486,11 @@ export default function ModulePage() {
 
       {moduleId === "scheduling" && <AttendanceAnomalies rows={filteredRows} />}
 
-      {/* records table */}
+      {/* records table — dense grid; scrolls within the card on mobile (contained,
+          never breaks the page). Card-ify is a separate larger effort (T2). */}
       <section className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-ink-faint sm:hidden">← 左右滑动查看更多列 →</div>
+        <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
