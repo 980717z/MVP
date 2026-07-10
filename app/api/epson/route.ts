@@ -119,15 +119,37 @@ async function handle(req: Request): Promise<Response> {
       .limit(1);
     const bill = (bills as Order[] | null)?.[0];
     if (!bill) return empty();
+    const now = new Date().toISOString();
+
+    if (bill.order_type === "dine_in" && bill.table_no) {
+      // Merge the whole table's pending tab (all 加餐 rounds) into ONE bill and
+      // claim them all at once — the CAS on bill_printed_at IS the gather, so a
+      // concurrent poll gets 0 rows and idles instead of double-printing.
+      const { data: claimed } = await db
+        .from("orders")
+        .update({ bill_printed_at: now })
+        .eq("tenant_slug", slug)
+        .eq("order_type", "dine_in")
+        .eq("table_no", bill.table_no)
+        .not("bill_at", "is", null)
+        .is("bill_printed_at", null)
+        .select("*");
+      const rows = (claimed as Order[] | null) ?? [];
+      if (rows.length === 0) return empty();
+      rows.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+      return new Response(buildEposReceiptXml(rows, shopName), { headers: XML_HEADERS });
+    }
+
+    // togo / delivery (or dine-in with no table): a single-order bill.
     const { data: bclaimed } = await db
       .from("orders")
-      .update({ bill_printed_at: new Date().toISOString() })
+      .update({ bill_printed_at: now })
       .eq("id", bill.id)
       .is("bill_printed_at", null)
-      .select("id")
+      .select("*")
       .maybeSingle();
     if (!bclaimed) return empty(); // another poll claimed this bill
-    return new Response(buildEposReceiptXml(bill, shopName), { headers: XML_HEADERS });
+    return new Response(buildEposReceiptXml(bclaimed as Order, shopName), { headers: XML_HEADERS });
   } catch (e) {
     console.error("[epson]", e);
     return empty();

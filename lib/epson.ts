@@ -162,11 +162,14 @@ function padRow(l: string, r: string, width = 32): string {
   return shown + " ".repeat(pad) + right;
 }
 
-/** Build the priced customer bill (账单) for one order: line prices, 小计, GST,
- *  PST, 合计. Menu prices are pre-tax → HST added on top (matches togo checkout). */
-export function buildEposReceiptXml(o: Order, shopName: string): string {
+/** Build the priced customer bill (账单). Pass one order, or several rounds of a
+ *  dine-in table (加餐) to merge into ONE bill: all items, one 小计/GST/PST/合计.
+ *  Menu prices are pre-tax → HST added on top (matches togo checkout). */
+export function buildEposReceiptXml(orders: Order | Order[], shopName: string): string {
+  const list = Array.isArray(orders) ? orders : [orders];
+  const o = list[0];
   // Preferred: render the whole bill (中文 + prices) to a raster <image>.
-  const img = renderReceiptImage(o, shopName);
+  const img = renderReceiptImage(list, shopName);
   if (img) {
     return wrapPrintJob(
       `<text align="center"/>` +
@@ -177,7 +180,7 @@ export function buildEposReceiptXml(o: Order, shopName: string): string {
 
   // Fallback: ASCII bill (only if canvas/font is unavailable). Prices still print.
   const t = typeBadge(o);
-  const items = o.items.filter((it: any) => !it.cancelled);
+  const items = list.flatMap((r) => r.items.filter((it: any) => !it.cancelled));
   const subtotal = Math.round(items.reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * 100) / 100;
   const tax = computeTax(subtotal, false);
   const usd = (n: number) => "$" + (Math.round(n * 100) / 100).toFixed(2);

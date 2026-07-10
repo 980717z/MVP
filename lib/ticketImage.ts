@@ -189,24 +189,30 @@ function drawTicket(o: Order, shopName: string): { canvas: Canvas; height: numbe
 }
 
 // ── CUSTOMER BILL ──────────────────────────────────────────────────────────
-function drawReceipt(o: Order, shopName: string): { canvas: Canvas; height: number } | null {
-  if (!ensureFont()) return null;
-  const t = typeBadge(o);
-  const items = o.items.filter((it: any) => !it.cancelled);
-  const subtotal = Math.round(items.reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * 100) / 100;
+// Accepts one OR several orders. Multiple = a dine-in table's rounds (加餐)
+// merged into ONE bill: every round's items, one 小计 / GST / PST / 合计.
+function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; height: number } | null {
+  if (!ensureFont() || orders.length === 0) return null;
+  const first = orders[0];
+  const t = typeBadge(first);
+  const rounds = orders.length; // >1 → 加餐 (multiple rounds on this tab)
+  // latest order time — closest to when the bill is settled
+  const latest = orders.reduce((m, o) => (o.created_at > m ? o.created_at : m), first.created_at);
+  const lines = orders.flatMap((o) => o.items.filter((it: any) => !it.cancelled).map((it: any) => ({ it })));
+  const subtotal = Math.round(lines.reduce((a, { it }) => a + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * 100) / 100;
   const tax = computeTax(subtotal, false); // menu prices are pre-tax → add HST on top
 
   const mc = createCanvas(W, 10).getContext("2d");
   const b = newBuilder(mc);
   b.centered(shopName, SHOP, true, LH_SHOP);
-  b.left(`账单  ${t.badge}`, MID, true, LH_MID);
-  b.left(fmtTime(o.created_at), SM, false, LH_SM);
+  b.left(`账单  ${t.badge}${rounds > 1 ? `  (${rounds}单合并)` : ""}`, MID, true, LH_MID);
+  b.left(fmtTime(latest), SM, false, LH_SM);
   b.rule(true);
-  for (const it of items) {
+  for (const { it } of lines) {
     const qty = Number(it.qty) || 1;
     const name = (it.name_zh || it.name_en || "菜品").trim();
-    const lineTotal = (Number(it.price) || 0) * qty;
-    b.row(`${name} ×${qty}`, money(lineTotal), MID, false, LH_MID);
+    // Item rows are read up close on the bill → SM keeps long names on one line.
+    b.row(`${name} ×${qty}`, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
   }
   b.rule();
   b.row("小计", money(subtotal), MID, false, LH_MID);
@@ -229,17 +235,18 @@ function raster(drawn: { canvas: Canvas; height: number } | null): { width: numb
 export function renderTicketImage(o: Order, shopName: string): { width: number; height: number; base64: string } | null {
   try { return raster(drawTicket(o, shopName)); } catch { return null; }
 }
-/** Customer bill raster (prices + GST/PST + total). Null → no bill printed. */
-export function renderReceiptImage(o: Order, shopName: string): { width: number; height: number; base64: string } | null {
-  try { return raster(drawReceipt(o, shopName)); } catch { return null; }
+/** Customer bill raster (prices + GST/PST + total) for one order or a merged
+ *  table (multiple rounds). Null → no bill printed. */
+export function renderReceiptImage(orders: Order | Order[], shopName: string): { width: number; height: number; base64: string } | null {
+  try { return raster(drawReceipt(Array.isArray(orders) ? orders : [orders], shopName)); } catch { return null; }
 }
 /** Kitchen ticket as base64 PNG — preview without a printer. */
 export function renderTicketPngBase64(o: Order, shopName: string): string | null {
   try { const d = drawTicket(o, shopName); return d ? d.canvas.toBuffer("image/png").toString("base64") : null; } catch { return null; }
 }
 /** Customer bill as base64 PNG — preview without a printer. */
-export function renderReceiptPngBase64(o: Order, shopName: string): string | null {
-  try { const d = drawReceipt(o, shopName); return d ? d.canvas.toBuffer("image/png").toString("base64") : null; } catch { return null; }
+export function renderReceiptPngBase64(orders: Order | Order[], shopName: string): string | null {
+  try { const d = drawReceipt(Array.isArray(orders) ? orders : [orders], shopName); return d ? d.canvas.toBuffer("image/png").toString("base64") : null; } catch { return null; }
 }
 
 function packRaster(c: SKRSContext2D, w: number, h: number): { width: number; height: number; base64: string } {

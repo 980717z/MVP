@@ -185,13 +185,17 @@ export async function reprintOrder(id: string): Promise<void> {
   if (error) console.error("reprintOrder", error);
 }
 
-/** Queue the customer bill (priced 账单) for the printer. Setting bill_printed_at
- *  back to null also serves as a reprint. */
-export async function requestBill(id: string): Promise<{ error?: string }> {
+/** Queue the customer bill (priced 账单) for the printer. Pass several ids to bill
+ *  a whole dine-in table's rounds (加餐) as ONE merged bill — the printer poll
+ *  combines every pending-bill order at that table. Nulling bill_printed_at also
+ *  serves as a reprint. */
+export async function requestBill(ids: string | string[]): Promise<{ error?: string }> {
+  const list = Array.isArray(ids) ? ids : [ids];
+  if (list.length === 0) return {};
   const { error } = await supabase
     .from("orders")
     .update({ bill_at: new Date().toISOString(), bill_printed_at: null })
-    .eq("id", id);
+    .in("id", list);
   if (error) {
     console.error("requestBill", error);
     return { error: error.message };
