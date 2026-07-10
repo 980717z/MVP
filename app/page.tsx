@@ -266,8 +266,8 @@ export default function Landing() {
       </header>
 
       {/* hero — asymmetric, text left / real dashboard right */}
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-16 pt-10 lg:grid-cols-5 lg:gap-10 lg:pt-14">
-        <div className="text-center lg:col-span-2 lg:text-left">
+      <section className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-6 pb-16 pt-10 lg:grid-cols-5 lg:gap-10 lg:pt-14">
+        <div className="min-w-0 text-center lg:col-span-2 lg:text-left">
           <Reveal>
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-xs font-medium text-emerald-700 backdrop-blur">
               <span className="relative flex h-1.5 w-1.5">
@@ -313,7 +313,7 @@ export default function Landing() {
           </Reveal>
         </div>
 
-        <div className="relative mx-auto w-full max-w-2xl lg:col-span-3">
+        <div className="relative mx-auto w-full min-w-0 max-w-2xl lg:col-span-3">
           <div className="absolute -right-4 -top-9 z-20 hidden w-44 rotate-3 overflow-hidden rounded-xl border-4 border-white shadow-2xl shadow-slate-900/20 sm:block">
             <img src="/toronto.jpg" alt="Toronto · CN Tower" className="aspect-[4/3] w-full object-cover" />
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/60 to-transparent px-2 py-1">

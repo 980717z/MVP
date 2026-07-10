@@ -23,7 +23,8 @@ body {
     @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition;
+    /* ≥44px tap target on phones (DESIGN-PLATFORM.md), 40px on desktop. */
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition md:min-h-10;
   }
   .btn-primary {
     @apply btn bg-brand text-white hover:bg-brand-soft;
