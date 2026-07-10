@@ -267,8 +267,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           return;
         }
         if (claimed) {
-          // Dine-in: print the customer bill (items + GST/PST + 合计) on complete.
-          if (o.order_type === "dine_in") requestBill(o.id).catch(() => {});
+          // Billing is explicit (打印账单), NOT auto-on-complete — otherwise a
+          // table's rounds completing one by one would each print a partial bill
+          // instead of one merged bill at checkout.
           const activeItems = items.filter((it: any) => !it.cancelled);
           const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
           try {
@@ -298,41 +299,20 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   const active = orders.filter((o) => o.status === "new" || o.status === "preparing");
 
-  // ── Group active dine-in orders by table into one "tab" card. Each round
-  //    (加餐) stays a separate order (kitchen fires per round); the card merges
-  //    them and the bill combines them. Everything else renders on its own.
-  const tableMap = new Map<string, Order[]>();
-  const singles: Order[] = [];
+  // Active dine-in orders grouped by table — for the COMBINED BILL and the
+  // "本桌共 N 单" hint. Cards stay PER-ROUND (the kitchen fires per round); only
+  // the BILL merges by table, on 打印账单 / checkout — never the kitchen cards.
+  const tableSiblings = new Map<string, Order[]>();
   for (const o of orders) {
-    const groupable = (o.status === "new" || o.status === "preparing") && o.order_type === "dine_in" && (o.table_no || "").trim() !== "";
-    if (groupable) {
+    if ((o.status === "new" || o.status === "preparing") && o.order_type === "dine_in" && (o.table_no || "").trim() !== "") {
       const k = (o.table_no || "").trim();
-      const arr = tableMap.get(k);
-      if (arr) arr.push(o); else tableMap.set(k, [o]);
-    } else singles.push(o);
-  }
-  type Row = { kind: "table"; tableNo: string; rounds: Order[]; t: string } | { kind: "single"; order: Order; t: string };
-  const rows: Row[] = [
-    ...[...tableMap.entries()].map(([tableNo, rs]) => {
-      rs.sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-      return { kind: "table" as const, tableNo, rounds: rs, t: rs[rs.length - 1].created_at };
-    }),
-    ...singles.map((o) => ({ kind: "single" as const, order: o, t: o.created_at })),
-  ].sort((a, b) => (a.t < b.t ? 1 : -1));
-
-  // Advance every round of a table (skip already-done/cancelled). 'done' reuses
-  // advance() per round so 时价 pricing + sales posting stay correct; each dine-in
-  // round sets bill_at, and the printer route merges them into ONE bill.
-  const bulkAdvance = async (rounds: Order[], to: Order["status"]) => {
-    for (const o of rounds) {
-      if (o.status === "done" || o.status === "cancelled") continue;
-      if (to === "preparing" && o.status !== "new") continue;
-      await advance(o, to);
+      const arr = tableSiblings.get(k);
+      if (arr) arr.push(o); else tableSiblings.set(k, [o]);
     }
-  };
-  const printTableBill = async (rounds: Order[]) => {
-    const r = await requestBill(rounds.map((o) => o.id));
-    if (r.error) alert("打印账单失败：" + r.error);
+  }
+  const siblingsOf = (o: Order): Order[] => {
+    if (o.order_type !== "dine_in" || !(o.table_no || "").trim()) return [o];
+    return tableSiblings.get((o.table_no || "").trim()) ?? [o];
   };
 
   const itemRow = (o: Order, it: any, i: number) => (
@@ -354,81 +334,50 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     </div>
   );
 
-  const renderCard = (o: Order) => (
-    <div key={o.id} className="card p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
-          {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
-          {o.phone && o.phone !== "N/A" ? (
-            <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">📞 {fmtPhone(o.phone)}</a>
-          ) : o.phone === "N/A" ? (
-            <span className="text-sm text-slate-400">📞 N/A</span>
-          ) : null}
-        </div>
-        <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
-      </div>
-      <div className="divide-y divide-slate-100">{o.items.map((it: any, i: number) => itemRow(o, it, i))}</div>
-      {o.note && <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">备注：{o.note}</div>}
-      <div className="mt-3 flex items-center justify-between">
-        <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
-        <div className="flex gap-2">
-          <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
-          {o.status !== "cancelled" && (
-            <button onClick={async () => { const r = await requestBill(o.id); if (r.error) alert("打印账单失败：" + r.error); }} className="text-xs text-ink-faint hover:text-brand-ink" title="打印带价格和税的顾客账单">打印账单</button>
-          )}
-          <button onClick={async () => { await reprintOrder(o.id); load(); }} className="text-xs text-ink-faint hover:text-brand-ink" title="让打印机重新出这单（厨房单）">重打</button>
-          <button className="text-xs text-ink-faint hover:text-red-600" onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}>删除</button>
-          {o.status !== "cancelled" && o.status !== "done" && (
-            <button onClick={() => advance(o, "cancelled")} className="text-xs text-ink-faint hover:text-red-600">取消</button>
-          )}
-          {NEXT[o.status] && (
-            <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-3 py-1.5 text-xs">{NEXT[o.status]!.label}</button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderTableCard = (tableNo: string, rounds: Order[]) => {
-    const anyNew = rounds.some((o) => o.status === "new");
-    const total = rounds.reduce((s, o) => s + Number(o.total || 0), 0);
-    const phone = rounds[0].phone;
+  const renderCard = (o: Order) => {
+    const sibs = siblingsOf(o);          // this table's active rounds (self if none)
+    const multi = sibs.length > 1;       // part of a multi-round tab (加餐)
+    const tableTotal = sibs.reduce((s, x) => s + Number(x.total || 0), 0);
     return (
-      <div key={"table:" + tableNo} className="card p-4">
+      <div key={o.id} className="card p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`pill ${anyNew ? STATUS.new.cls : STATUS.preparing.cls}`}>{anyNew ? "新单" : "备餐中"}</span>
-            <span className="text-sm font-medium text-ink">桌号 {displayTable(tableNo)}</span>
-            {rounds.length > 1 && <span className="pill bg-slate-100 text-ink-faint">{rounds.length} 单加餐</span>}
-            {phone && phone !== "N/A" ? (
-              <a href={`tel:${phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">📞 {fmtPhone(phone)}</a>
-            ) : phone === "N/A" ? (
+            <span className={`pill ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
+            {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
+            {o.phone && o.phone !== "N/A" ? (
+              <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">📞 {fmtPhone(o.phone)}</a>
+            ) : o.phone === "N/A" ? (
               <span className="text-sm text-slate-400">📞 N/A</span>
             ) : null}
           </div>
-          <span className="text-xs text-ink-faint">{fmtTime(rounds[rounds.length - 1].created_at)}</span>
+          <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
         </div>
-        {rounds.map((o, ri) => (
-          <div key={o.id}>
-            {rounds.length > 1 && (
-              <div className="mt-1 flex items-center justify-between border-t border-slate-100 pt-1.5 text-xs text-ink-faint">
-                <span>第 {ri + 1} 单 · {STATUS[o.status].label}</span>
-                <span>{fmtTime(o.created_at)}</span>
-              </div>
-            )}
-            <div className="divide-y divide-slate-100">{o.items.map((it: any, i: number) => itemRow(o, it, i))}</div>
-            {o.note && <div className="mt-1 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">备注：{o.note}</div>}
-          </div>
-        ))}
+        <div className="divide-y divide-slate-100">{o.items.map((it: any, i: number) => itemRow(o, it, i))}</div>
+        {o.note && <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">备注：{o.note}</div>}
+        {multi && o.status !== "cancelled" && (
+          <div className="mt-2 rounded bg-brand-wash px-2 py-1 text-xs text-brand-ink">本桌共 {sibs.length} 单加餐 · 合计 {fmtPrice(tableTotal)}（点「打印账单」出整桌合并总单）</div>
+        )}
         <div className="mt-3 flex items-center justify-between">
-          <span className="font-semibold text-ink">合计 {fmtPrice(total)}</span>
+          <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
           <div className="flex gap-2">
-            <button onClick={() => printTableBill(rounds)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink" title="打印整桌合并账单（含税）">🖨️ 打印账单</button>
-            <button onClick={async () => { for (const o of rounds) await reprintOrder(o.id); load(); }} className="text-xs text-ink-faint hover:text-brand-ink" title="重打整桌的厨房单">重打</button>
-            {anyNew && <button onClick={() => bulkAdvance(rounds, "preparing")} className="text-xs text-ink-faint hover:text-brand-ink">开始备餐</button>}
-            <button onClick={async () => { if (confirm(`取消整桌 ${rounds.length} 单？`)) await bulkAdvance(rounds, "cancelled"); }} className="text-xs text-ink-faint hover:text-red-600">取消</button>
-            <button onClick={() => bulkAdvance(rounds, "done")} className="btn-primary px-3 py-1.5 text-xs" title="结账：打印合并账单并收掉整桌">标记完成</button>
+            <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
+            {o.status !== "cancelled" && (
+              <button
+                onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert("打印账单失败：" + r.error); }}
+                className="text-xs text-ink-faint hover:text-brand-ink"
+                title={multi ? "打印整桌合并账单（含税）" : "打印带价格和税的顾客账单"}
+              >
+                {multi ? "打印整桌账单" : "打印账单"}
+              </button>
+            )}
+            <button onClick={async () => { await reprintOrder(o.id); load(); }} className="text-xs text-ink-faint hover:text-brand-ink" title="让打印机重新出这单（厨房单）">重打</button>
+            <button className="text-xs text-ink-faint hover:text-red-600" onClick={async () => { if (confirm("确定删除这个订单？")) { await deleteOrder(o.id); load(); } }}>删除</button>
+            {o.status !== "cancelled" && o.status !== "done" && (
+              <button onClick={() => advance(o, "cancelled")} className="text-xs text-ink-faint hover:text-red-600">取消</button>
+            )}
+            {NEXT[o.status] && (
+              <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-3 py-1.5 text-xs">{NEXT[o.status]!.label}</button>
+            )}
           </div>
         </div>
       </div>
@@ -475,7 +424,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {rows.map((row) => (row.kind === "single" ? renderCard(row.order) : renderTableCard(row.tableNo, row.rounds)))}
+          {orders.map((o) => renderCard(o))}
         </div>
       )}
 
