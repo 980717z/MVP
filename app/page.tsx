@@ -17,14 +17,23 @@ import HeroDemo from "@/components/HeroDemo";
 const T = {
   nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, how: { zh: "怎么用", en: "How it works", fr: "Fonctionnement" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" } },
   badge: { zh: "多伦多真实门店正在使用", en: "Live in a real Toronto restaurant", fr: "En service dans un vrai resto de Toronto" },
+  promo: { zh: "开业优惠 · 免费配置 + 首月免费", en: "Launch offer · free setup + first month free", fr: "Offre de lancement · installation gratuite + 1er mois offert" },
   slogan: {
     lead: { zh: "一个后台，管好", en: "One dashboard for your ", fr: "Un tableau de bord pour " },
     hi: { zh: "整间店", en: "whole shop", fr: "tout le commerce" },
   },
   sub: {
-    zh: "扫码点餐、厨房出票、销售税务、员工权限——勾选你需要的功能，我们为你生成专属管理系统。",
-    en: "QR ordering, kitchen tickets, sales & tax, staff roles — pick what you need and we generate a back-office built for you.",
-    fr: "Commande par QR, tickets cuisine, ventes et taxes, rôles du personnel — choisissez vos fonctions, nous générons votre back-office.",
+    zh: "扫码点餐、厨房出票、销售税务、员工权限——为餐厅和咖啡/奶茶店而做。勾选你需要的功能，用你现有的设备就能跑，不绑定 POS。",
+    en: "QR ordering, kitchen tickets, sales & tax, staff roles — for restaurants and cafés. Pick what you need; it runs on the devices you already have, no bundled POS.",
+    fr: "Commande QR, tickets cuisine, ventes et taxes, rôles du personnel — pour restos et cafés. Choisissez vos fonctions; ça tourne sur vos appareils, sans caisse imposée.",
+  },
+  diff: {
+    title: { zh: "不锁你的设备", en: "We don't lock you to hardware", fr: "Aucun matériel imposé" },
+    body: {
+      zh: "那些捆绑式 POS 系统要你买他们的机器、把你锁死。BentoOS 用你现有的手机、平板、电脑就能跑——想要打印机等硬件，按成本价，不加价。",
+      en: "The big bundled POS systems make you buy their machines and lock you in. BentoOS runs on the phones, tablets, and computers you already have — want a printer or other hardware? At cost, no markup.",
+      fr: "Les gros systèmes de caisse tout-en-un vous obligent à acheter leurs machines et vous enferment. BentoOS tourne sur vos appareils actuels — du matériel comme une imprimante ? Au prix coûtant, sans marge.",
+    },
   },
   ctaStart: { zh: "免费开始", en: "Get started", fr: "Commencer" },
   ctaEnter: { zh: "进入后台", en: "Enter dashboard", fr: "Tableau de bord" },
@@ -98,7 +107,7 @@ const T = {
   },
   ctaBand: {
     title: { zh: "把你的店也装进 BentoOS", en: "Put your shop on BentoOS", fr: "Mettez votre commerce sur BentoOS" },
-    body: { zh: "每家店的需求不一样，我们按你的店量身配置，并给出专属报价。联系我们聊聊。", en: "Every shop is different — we tailor your OS to how you run, with pricing to match. Talk to us.", fr: "Chaque commerce est différent — nous configurons votre OS sur mesure, avec un tarif adapté. Parlons-en." },
+    body: { zh: "每家店的需求不一样，我们按你的店量身配置，并给出专属报价。开业优惠：免费配置 + 首月免费。联系我们聊聊。", en: "Every shop is different — we tailor your OS to how you run, with pricing to match. Launch offer: free setup + first month free. Talk to us.", fr: "Chaque commerce est différent — nous configurons votre OS sur mesure, avec un tarif adapté. Offre de lancement : installation gratuite + 1er mois offert. Parlons-en." },
   },
   footer: { zh: "为中小商家打造的轻量管理系统", en: "A lightweight back-office for small businesses", fr: "Un back-office léger pour les petits commerces" },
 };
@@ -225,8 +234,7 @@ export default function Landing() {
       className="relative min-h-screen overflow-hidden bg-white text-slate-900"
       style={{ fontFamily: '"Plus Jakarta Sans","Noto Sans SC",system-ui,-apple-system,"PingFang SC",sans-serif' }}
     >
-      {/* landing font + motion styles */}
-      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+      {/* landing motion styles (fonts load in the root layout <head>) */}
       <style>{`
         .rv { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
         .rv.on { opacity: 1; transform: none; }
@@ -269,12 +277,17 @@ export default function Landing() {
       <section className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-6 pb-16 pt-10 lg:grid-cols-5 lg:gap-10 lg:pt-14">
         <div className="min-w-0 text-center lg:col-span-2 lg:text-left">
           <Reveal>
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-xs font-medium text-emerald-700 backdrop-blur">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <div className="mb-5 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-xs font-medium text-emerald-700 backdrop-blur">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                </span>
+                {t(T.badge)}
               </span>
-              {t(T.badge)}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
+                🎁 {t(T.promo)}
+              </span>
             </div>
             <h1 className="text-balance text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
               {t(T.slogan.lead)}
@@ -481,6 +494,19 @@ export default function Landing() {
             </div>
           </Reveal>
         </div>
+      </section>
+
+      {/* ── differentiator: no bundled POS / hardware at cost ── */}
+      <section className="mx-auto max-w-6xl px-6 py-8">
+        <Reveal>
+          <div className="flex flex-col items-start gap-4 rounded-3xl border border-emerald-100 bg-emerald-50/50 p-6 sm:flex-row sm:items-center sm:gap-6">
+            <span className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-white text-2xl shadow-sm">🔓</span>
+            <div>
+              <div className="text-lg font-extrabold tracking-tight">{t(T.diff.title)}</div>
+              <p className="mt-1 text-pretty text-sm leading-relaxed text-slate-600">{t(T.diff.body)}</p>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       {/* ── trust strip ── */}

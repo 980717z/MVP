@@ -1,6 +1,19 @@
 import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import { DemoChrome, DemoFootnote } from "./chrome";
 import { DemoSidebar, DemoTabs } from "./nav";
+
+export const metadata: Metadata = {
+  title: "Live Demo — Try the Dashboard",
+  description:
+    "Click through a real BentoOS back-office: live orders, kitchen tickets, sales & tax. See how a restaurant or café runs on BentoOS before you sign up.",
+  alternates: { canonical: "/demo" },
+  openGraph: {
+    title: "BentoOS Live Demo",
+    description: "Click through a real back-office: live orders, kitchen tickets, sales & tax.",
+    url: "/demo",
+  },
+};
 
 export default function DemoLayout({ children }: { children: ReactNode }) {
   return (

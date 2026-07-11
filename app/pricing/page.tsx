@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
 import { useLang, LangToggle } from "@/app/i18n";
+import { PRICING_FAQ } from "./faq";
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Public pricing is intentionally HIDDEN: BentoOS sells personalized OS
-//  solutions, quoted per shop. This page keeps the /pricing URL alive
-//  (bookmarks, old links) but shows no dollar amounts — it explains the
-//  personalized model and routes people to email or /get-started.
+//  Public pricing is intentionally HIDDEN: BentoOS sells personalized
+//  solutions, quoted per shop. This page shows NO dollar amounts — it explains
+//  the personalized model, the differentiators (no bundled POS, hardware at
+//  cost, commission-free), the launch offer, and routes people to email or
+//  /get-started. The only comparative claim lives on the websites line, kept
+//  generic ("~half the cost of a hosted store platform") — no competitor names.
 // ─────────────────────────────────────────────────────────────────────────
 
 const T = {
@@ -16,75 +19,56 @@ const T = {
     login: { zh: "登录", en: "Log in", fr: "Connexion" },
     enter: { zh: "进入后台", en: "Dashboard", fr: "Tableau de bord" },
   },
+  promo: { zh: "🎁 开业优惠：免费上门配置 + 首月免费", en: "🎁 Launch offer: free setup + first month free", fr: "🎁 Offre de lancement : installation gratuite + premier mois offert" },
   badge: { zh: "量身定制 · 按店报价", en: "Personalized · quoted per shop", fr: "Sur mesure · tarif par commerce" },
   title: {
     lead: { zh: "你的店独一无二，", en: "Your shop is one of a kind. ", fr: "Votre commerce est unique. " },
-    hi: { zh: "你的 OS 也是", en: "So is your OS", fr: "Votre OS aussi" },
+    hi: { zh: "你的系统也是", en: "So is your system", fr: "Votre système aussi" },
   },
   sub: {
-    zh: "BentoOS 不卖千篇一律的套餐。我们按你的店拼装模块 —— 扫码点餐、厨房出票、对账、会员 —— 再给出一个匹配你规模的报价。零抽成、无合同、无需专用设备。",
-    en: "BentoOS doesn't sell one-size-fits-all plans. We assemble your OS from the modules you actually need — QR ordering, kitchen tickets, reconciliation, members — and quote a price that fits your size. No commission, no contract, no hardware.",
-    fr: "BentoOS ne vend pas de forfaits uniformes. Nous assemblons votre OS à partir des modules dont vous avez besoin — commande QR, tickets cuisine, rapprochement, membres — avec un tarif adapté à votre taille. Sans commission, sans contrat, sans matériel.",
+    zh: "BentoOS 不卖千篇一律的套餐，也不逼你买一整套 POS 或专用机器。我们按你的店拼装模块——扫码点餐、厨房出票、对账、会员——用你现有的设备就能跑，再给出匹配你规模的报价。零抽成、无合同。",
+    en: "BentoOS doesn't sell one-size-fits-all plans — and doesn't make you buy a bundled POS or proprietary hardware. We assemble your system from the modules you need — QR ordering, kitchen tickets, reconciliation, members — running on the devices you already have, then quote a price that fits your size. No commission, no contract, no lock-in.",
+    fr: "BentoOS ne vend pas de forfaits uniformes — et ne vous oblige pas à acheter une caisse ou du matériel propriétaire. Nous assemblons votre système à partir des modules dont vous avez besoin — commande QR, tickets cuisine, rapprochement, membres — sur les appareils que vous avez déjà, avec un tarif adapté à votre taille. Sans commission, sans contrat, sans enfermement.",
   },
   points: [
     {
       icon: "🍱",
       title: { zh: "按需拼装", en: "Built from modules", fr: "Assemblé sur mesure" },
       body: {
-        zh: "只为你用得上的模块付费 —— 一家奶茶店和一家海鲜酒楼，不该是同一个价。",
+        zh: "只为你用得上的模块付费——一家奶茶店和一家海鲜酒楼，不该是同一个价。",
         en: "Pay only for the modules you use — a bubble-tea stand and a seafood house shouldn't cost the same.",
         fr: "Payez seulement les modules que vous utilisez — un comptoir à thé et un restaurant de fruits de mer ne devraient pas coûter pareil.",
       },
     },
     {
-      icon: "🤝",
-      title: { zh: "白手套上线", en: "White-glove setup", fr: "Mise en place accompagnée" },
+      icon: "🔓",
+      title: { zh: "不绑定 POS 或硬件", en: "No bundled POS or hardware", fr: "Sans caisse ni matériel imposé" },
       body: {
-        zh: "我们帮你录菜单、印桌码、接打印机，当天就能用。",
-        en: "We enter your menu, print your table QRs, and hook up your printer — live the same day.",
-        fr: "Nous saisissons votre menu, imprimons vos QR de table et connectons votre imprimante — en ligne le jour même.",
+        zh: "不像那些捆绑式 POS 系统把你锁在他们的机器上。想要打印机等硬件？按成本价采购市面最好的，不加价。",
+        en: "Unlike the big bundled POS systems, we don't lock you to their machines. Want hardware like a printer? We source the best on the market at cost — no markup.",
+        fr: "Contrairement aux gros systèmes de caisse tout-en-un, nous ne vous enfermons pas dans leurs machines. Besoin de matériel ? Au prix coûtant, sans marge.",
       },
     },
     {
       icon: "🔒",
       title: { zh: "零抽成承诺", en: "Commission-free promise", fr: "Promesse sans commission" },
       body: {
-        zh: "我们永远不按订单抽成 —— 每一单收入 100% 归你。",
+        zh: "我们永远不按订单抽成——每一单收入 100% 归你。",
         en: "We will never take a cut of your orders — 100% of every order is yours.",
         fr: "Nous ne prendrons jamais de commission — 100% de chaque commande vous revient.",
       },
     },
   ],
+  webTitle: { zh: "也做网站和网上下单", en: "Websites & online ordering too", fr: "Sites et commande en ligne aussi" },
+  webBody: {
+    zh: "想要自己的网站或网上商店？我们按你的店定制，通常只要主流建站平台一半左右的价钱。",
+    en: "Want your own website or online store? We build it custom to your shop — typically about half the cost of a hosted store platform.",
+    fr: "Vous voulez votre propre site ou boutique en ligne ? Nous le créons sur mesure — généralement environ la moitié du coût d'une plateforme de boutique hébergée.",
+  },
   ctaTitle: { zh: "想知道你的店需要多少？", en: "Curious what it'd cost for your shop?", fr: "Curieux du tarif pour votre commerce ?" },
   ctaStart: { zh: "开始使用", en: "Get started", fr: "Commencer" },
   ctaTalk: { zh: "联系我们获取报价", en: "Contact us for pricing", fr: "Contactez-nous pour un tarif" },
   faqTitle: { zh: "常见问题", en: "Questions", fr: "Questions" },
-  faq: [
-    {
-      q: { zh: "报价是怎么定的？", en: "How is the price decided?", fr: "Comment le tarif est-il fixé ?" },
-      a: {
-        zh: "看两件事：你需要哪些模块，以及店的规模。给出的是一个简单的固定月费 —— 不按订单抽成，没有隐藏费用。一次对话就能给你确切数字。",
-        en: "Two things: which modules you need, and the size of your shop. You get one simple flat monthly price — no per-order commission, no hidden fees. One conversation gets you an exact number.",
-        fr: "Deux choses : les modules dont vous avez besoin et la taille de votre commerce. Vous obtenez un tarif mensuel fixe et simple — sans commission par commande, sans frais cachés. Une conversation suffit pour un chiffre exact.",
-      },
-    },
-    {
-      q: { zh: "需要签合同吗？", en: "Is there a contract?", fr: "Y a-t-il un contrat ?" },
-      a: {
-        zh: "不需要。随时可以停用，你的数据随时可以导出带走。",
-        en: "No. Leave anytime, and export your data whenever you want.",
-        fr: "Non. Partez quand vous voulez, et exportez vos données à tout moment.",
-      },
-    },
-    {
-      q: { zh: "需要专用设备吗？", en: "Do I need special hardware?", fr: "Faut-il du matériel spécial ?" },
-      a: {
-        zh: "不需要。手机、平板、电脑都能用；小票打印机可选。",
-        en: "No. It runs on any phone, tablet, or computer; a receipt printer is optional.",
-        fr: "Non. Ça fonctionne sur tout téléphone, tablette ou ordinateur ; l'imprimante à reçus est optionnelle.",
-      },
-    },
-  ],
   footer: {
     zh: "为中小商家打造的轻量管理系统",
     en: "A lightweight back-office for small businesses",
@@ -121,9 +105,14 @@ export default function Pricing() {
 
       {/* heading */}
       <section className="mx-auto max-w-3xl px-6 pt-10 text-center sm:pt-16">
-        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs text-slate-500 backdrop-blur">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          {t(T.badge)}
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-sm font-semibold text-emerald-700">
+          {t(T.promo)}
+        </div>
+        <div className="mb-5 flex justify-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs text-slate-500 backdrop-blur">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {t(T.badge)}
+          </div>
         </div>
         <h1 className="text-balance text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 sm:text-5xl">
           {t(T.title.lead)}
@@ -159,11 +148,25 @@ export default function Pricing() {
         ))}
       </section>
 
+      {/* websites — generic ~half-cost comparison, no competitor named */}
+      <section className="mx-auto mt-6 max-w-5xl px-6">
+        <div className="flex flex-col items-start justify-between gap-4 rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50/70 to-white p-6 sm:flex-row sm:items-center">
+          <div className="flex items-start gap-4">
+            <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-sky-100 text-xl">🌐</span>
+            <div>
+              <div className="font-semibold text-slate-900">{t(T.webTitle)}</div>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-600">{t(T.webBody)}</p>
+            </div>
+          </div>
+          <span className="flex-none rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">≈ ½ the cost</span>
+        </div>
+      </section>
+
       {/* FAQ */}
       <section className="mx-auto mt-14 max-w-3xl px-6 pb-24">
         <h2 className="text-center text-xl font-bold tracking-tight text-slate-900">{t(T.faqTitle)}</h2>
         <div className="mt-6 space-y-3">
-          {T.faq.map((item) => (
+          {PRICING_FAQ.map((item) => (
             <div key={item.q.en} className="rounded-2xl border border-slate-100 bg-white/70 p-5 text-left backdrop-blur">
               <div className="font-semibold text-slate-800">{t(item.q)}</div>
               <p className="mt-1 text-sm text-slate-600">{t(item.a)}</p>
