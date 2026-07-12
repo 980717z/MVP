@@ -44,6 +44,8 @@ const T: Record<string, Dict> = {
 // Browsing or with cookies/storage blocked, writes throw or are dropped — login
 // then "succeeds" but bounces straight back to /login with empty fields. Detect
 // it so we can tell the user instead of looping silently.
+const BUILD_TAG = "diag-2026-07-11a";
+
 function storageWorks(): boolean {
   try {
     const k = "__bento_probe__";
@@ -61,6 +63,10 @@ export default function Login() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // TEMP diagnostic line (remove once the iPad login issue is resolved). Proves
+  // which build is loaded + whether this device can persist a session, so a
+  // single screenshot tells us the state without a Mac/Web Inspector.
+  const [diag, setDiag] = useState<string>("");
   // Uncontrolled inputs (ref + read at submit). iPad/iOS Safari (iCloud Keychain)
   // autofills without firing React's onChange; with controlled inputs a re-render
   // would then wipe the autofilled text back to empty state. Uncontrolled keeps it.
@@ -72,7 +78,9 @@ export default function Login() {
       if (data.session) router.replace("/app");
     });
     // Warn up front if the browser won't persist the session (private mode etc.).
-    if (!storageWorks()) setMsg(t(T.storageBlocked));
+    const stg = storageWorks();
+    if (!stg) setMsg(t(T.storageBlocked));
+    setDiag(`build:${BUILD_TAG} · storage:${stg ? "ok" : "BLOCKED"}`);
     // Invite link: /login?invite=1&email=… → prefill email, default to sign-up.
     const params = new URLSearchParams(window.location.search);
     const inviteEmail = params.get("email");
@@ -111,10 +119,14 @@ export default function Login() {
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: emailVal, password: passwordVal });
-        if (error) throw error;
+        if (error) {
+          setDiag(`build:${BUILD_TAG} · signin:ERR(${error.message})`);
+          throw error;
+        }
         // Confirm the session actually landed in storage before redirecting; if
         // not, the /app guard would bounce us right back to an empty login form.
         const { data } = await supabase.auth.getSession();
+        setDiag(`build:${BUILD_TAG} · signin:ok · session:${data.session ? "yes" : "NONE"} · storage:${storageWorks() ? "ok" : "BLOCKED"}`);
         if (!data.session) {
           setMsg(t(T.storageBlocked));
           return;
@@ -188,6 +200,8 @@ export default function Login() {
         </div>
 
         <p className="mt-4 text-center text-xs text-ink-faint">{t(T.footer)}</p>
+        {/* TEMP: remove once iPad login is fixed. Screenshot this line to diagnose. */}
+        {diag && <p className="mt-2 break-all text-center text-[10px] text-slate-400">{diag}</p>}
       </div>
     </main>
   );
