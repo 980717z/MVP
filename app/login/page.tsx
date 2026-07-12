@@ -38,7 +38,7 @@ const T: Record<string, Dict> = {
 // ⚠️ TEMP DIAGNOSTIC BUILD — remove this whole block + the modal once the iPad
 // login issue is pinned down. Bump the tag on every deploy so a screenshot proves
 // which build the device actually loaded (rules out Safari caching an old page).
-const BUILD_TAG = "diag-2026-07-11d";
+const BUILD_TAG = "diag-2026-07-11e";
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -105,6 +105,11 @@ export default function Login() {
   // would then wipe the autofilled text back to empty. Uncontrolled keeps it.
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  // TEMP: flips to true only once React actually hydrates on the device. If it
+  // stays false on the iPad, JS isn't running there (blocker / stale cache /
+  // restriction) — which is exactly why the tap never reaches Supabase.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
   // Catch ANY mysterious failure (crashes outside the submit flow) and surface it
   // in the same modal — nothing fails silently.
@@ -253,6 +258,18 @@ export default function Login() {
           <LangToggle />
         </div>
 
+        {/* ⚠️ TEMP hydration badge — proves whether JS is actually running on this
+            device. If it stays red on the iPad, the page never became interactive
+            (script blocked / stale cache / restriction) → that's why taps do nothing
+            and never reach Supabase. Server renders it red; React flips it green. */}
+        <div
+          className={`mb-3 rounded-lg px-3 py-2 text-center text-sm font-semibold ${
+            hydrated ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"
+          }`}
+        >
+          {hydrated ? "✅ 页面已就绪，可以登录 (JS ready)" : "○ 页面未就绪 / JS 未运行 (loading…)"}
+        </div>
+
         <div className="card p-6">
           <div className="mb-4 flex rounded-lg bg-slate-100 p-1 text-sm">
             <button
@@ -269,7 +286,12 @@ export default function Login() {
             </button>
           </div>
 
-          <form onSubmit={submit}>
+          {/* No <form>: a native form submit reloads the page (GET with the creds
+              in the URL) if a tap lands before React hydrates — which looks exactly
+              like the "it just refreshes" symptom and never reaches Supabase. Using
+              a plain button + explicit onClick means a pre-hydration tap does nothing
+              (safe) instead of reloading; keyboard Enter is handled per-input. */}
+          <div>
             <label className="label">{t(T.email)}</label>
             <input
               ref={emailRef}
@@ -278,6 +300,7 @@ export default function Login() {
               name="email"
               autoComplete="username"
               placeholder="you@example.com"
+              onKeyDown={(e) => e.key === "Enter" && submit()}
             />
             <label className="label">{t(T.password)}</label>
             <input
@@ -287,17 +310,15 @@ export default function Login() {
               name="password"
               autoComplete="current-password"
               placeholder={t(T.pwPlaceholder)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
             />
 
             {msg && <div className="mt-3 text-sm text-amber-700">{msg}</div>}
 
-            {/* type="submit" → iPad keyboard "return/Go" and taps both fire the form.
-                Only disabled while a request is in flight (not on empty state, which
-                autofill leaves stale). */}
-            <button className="btn-primary mt-4 w-full" type="submit" disabled={busy}>
+            <button className="btn-primary mt-4 w-full" type="button" onClick={() => submit()} disabled={busy}>
               {busy ? t(T.wait) : mode === "signin" ? t(T.ctaSignin) : t(T.ctaSignup)}
             </button>
-          </form>
+          </div>
         </div>
 
         <p className="mt-4 text-center text-xs text-ink-faint">{t(T.footer)}</p>
