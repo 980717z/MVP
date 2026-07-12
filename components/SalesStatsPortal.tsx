@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { supabase } from "@/lib/supabase";
+import { getTrackPayments } from "@/lib/store";
 import { listSessionsInRange } from "@/lib/tableSessions";
 import { aggregateSales, torontoToday, shiftDate, METHODS, type SessionRow, type Method } from "@/lib/salesStats";
 import { money } from "@/lib/format";
@@ -38,6 +39,8 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   const [togoCount, setTogoCount] = useState<number | null>(null);
   const [filter, setFilter] = useState<Method | "all">("all");
   const [loading, setLoading] = useState(true);
+  const [trackPay, setTrackPay] = useState(true); // off → hide method breakdown, everything as sales
+  useEffect(() => { getTrackPayments(slug).then(setTrackPay).catch(() => {}); }, [slug]);
 
   // range preset → concrete [from, to] business dates
   const [f, to2] = useMemo<[string, string]>(() => {
@@ -82,9 +85,9 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
         collected: (Number(r.total) || 0) + (Number(r.tip) || 0),
       };
     });
-    const filtered = filter === "all" ? list : list.filter((x) => x.methods.includes(filter));
+    const filtered = !trackPay || filter === "all" ? list : list.filter((x) => x.methods.includes(filter));
     return filtered.sort((a, b) => (a.at < b.at ? 1 : -1));
-  }, [rows, filter]);
+  }, [rows, filter, trackPay]);
 
   const bi = (d: Dict) => t(d);
   const fmtTime = (iso: string) => new Date(iso).toLocaleString(lang === "zh" ? "zh-CN" : lang === "fr" ? "fr-CA" : "en-CA", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -130,7 +133,8 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
         <Kpi label={t({ zh: "自取 / 外送单", en: "Togo / delivery", fr: "À emporter / livraison" })} value={togoCount == null ? "—" : String(togoCount)} sub={t({ zh: "线下结算", en: "settled offline", fr: "réglé hors ligne" })} muted />
       </div>
 
-      {/* payment method breakdown */}
+      {/* payment method breakdown — hidden when method tracking is off */}
+      {trackPay && (
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-bold text-ink">{t({ zh: "按付款方式", en: "By payment method", fr: "Par mode de paiement" })}</h2>
         <div className="space-y-2.5">
@@ -155,26 +159,29 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
           })}
         </div>
       </div>
+      )}
 
       {/* transactions */}
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-bold text-ink">{t({ zh: "交易明细", en: "Transactions", fr: "Transactions" })}</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {(["all", ...METHODS] as const).map((m) => (
-              <button key={m} onClick={() => setFilter(m)}
-                className={`min-h-8 rounded-full px-2.5 text-xs font-medium transition ${filter === m ? "bg-brand text-white" : "border border-slate-200 text-ink-soft hover:bg-slate-50"}`}>
-                {m === "all" ? t({ zh: "全部", en: "All", fr: "Tout" }) : bi(METHOD_META[m].label)}
-              </button>
-            ))}
-          </div>
+          {trackPay && (
+            <div className="flex flex-wrap gap-1.5">
+              {(["all", ...METHODS] as const).map((m) => (
+                <button key={m} onClick={() => setFilter(m)}
+                  className={`min-h-8 rounded-full px-2.5 text-xs font-medium transition ${filter === m ? "bg-brand text-white" : "border border-slate-200 text-ink-soft hover:bg-slate-50"}`}>
+                  {m === "all" ? t({ zh: "全部", en: "All", fr: "Tout" }) : bi(METHOD_META[m].label)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-sm">
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-ink-faint">
                 <th className="py-2 pr-2 font-medium">{t({ zh: "时间", en: "Time", fr: "Heure" })}</th>
-                <th className="py-2 px-2 font-medium">{t({ zh: "方式", en: "Method", fr: "Mode" })}</th>
+                {trackPay && <th className="py-2 px-2 font-medium">{t({ zh: "方式", en: "Method", fr: "Mode" })}</th>}
                 <th className="py-2 px-2 text-right font-medium">{t({ zh: "营业额", en: "Sales", fr: "Ventes" })}</th>
                 <th className="py-2 px-2 text-right font-medium">HST</th>
                 <th className="py-2 px-2 text-right font-medium">{t({ zh: "小费", en: "Tip", fr: "Pourb." })}</th>
@@ -185,12 +192,14 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
               {txnRows.map((r, i) => (
                 <tr key={i} className="border-b border-slate-50">
                   <td className="whitespace-nowrap py-2 pr-2 text-ink-soft">{fmtTime(r.at)}</td>
-                  <td className="py-2 px-2">
-                    <span className="flex flex-wrap items-center gap-1">
-                      {r.split && <span className="rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-soft">{t({ zh: "分单", en: "Split", fr: "Partagé" })}</span>}
-                      {r.methods.map((m) => <span key={m} className="h-2 w-2 rounded-full" style={{ background: METHOD_META[m].dot }} title={bi(METHOD_META[m].label)} />)}
-                    </span>
-                  </td>
+                  {trackPay && (
+                    <td className="py-2 px-2">
+                      <span className="flex flex-wrap items-center gap-1">
+                        {r.split && <span className="rounded bg-slate-100 px-1 text-[10px] font-semibold text-ink-soft">{t({ zh: "分单", en: "Split", fr: "Partagé" })}</span>}
+                        {r.methods.map((m) => <span key={m} className="h-2 w-2 rounded-full" style={{ background: METHOD_META[m].dot }} title={bi(METHOD_META[m].label)} />)}
+                      </span>
+                    </td>
+                  )}
                   <td className="py-2 px-2 text-right tabular-nums text-ink">{money(r.sales)}</td>
                   <td className="py-2 px-2 text-right tabular-nums text-ink-faint">{money(r.tax)}</td>
                   <td className="py-2 px-2 text-right tabular-nums text-jade">{r.tip > 0 ? money(r.tip) : "—"}</td>
@@ -198,7 +207,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
                 </tr>
               ))}
               {txnRows.length === 0 && (
-                <tr><td colSpan={6} className="py-10 text-center text-sm text-ink-faint">{loading ? t({ zh: "加载中…", en: "Loading…", fr: "Chargement…" }) : t({ zh: "该区间还没有结账记录", en: "No checkouts in this range yet", fr: "Aucun encaissement sur cette période" })}</td></tr>
+                <tr><td colSpan={trackPay ? 6 : 5} className="py-10 text-center text-sm text-ink-faint">{loading ? t({ zh: "加载中…", en: "Loading…", fr: "Chargement…" }) : t({ zh: "该区间还没有结账记录", en: "No checkouts in this range yet", fr: "Aucun encaissement sur cette période" })}</td></tr>
               )}
             </tbody>
           </table>

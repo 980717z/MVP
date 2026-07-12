@@ -46,6 +46,7 @@ export interface Tenant {
   enabled: string[];
   tables: string[]; // printed QR table labels (permanent contract)
   tableLayout: TableSpot[]; // floor-plan positions (additive; keyed by label)
+  trackPayments: boolean; // record cash/EMT/card at checkout + show method stats; off → everything is plain sales
   users: User[];
   records: Record<string, RecordRow[]>;
 }
@@ -65,6 +66,7 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     enabled: Array.isArray(row.enabled) ? row.enabled : [],
     tables: Array.isArray(row.tables) ? row.tables : [],
     tableLayout: Array.isArray(row.table_layout) ? row.table_layout : [],
+    trackPayments: row.track_payments ?? true, // default ON (method tracking)
     users,
     records,
   };
@@ -156,6 +158,18 @@ export async function setEnabled(slug: string, enabled: string[]): Promise<void>
     .update({ enabled: orderEnabled(enabled) })
     .eq("slug", slug);
   if (error) console.error("setEnabled", error);
+}
+
+/** Toggle payment-method tracking (cash/EMT/card) for a tenant. */
+export async function setTrackPayments(slug: string, on: boolean): Promise<void> {
+  const { error } = await supabase.from("tenants").update({ track_payments: on }).eq("slug", slug);
+  if (error) console.error("setTrackPayments", error);
+}
+
+/** Light read of just the track_payments flag (default true). */
+export async function getTrackPayments(slug: string): Promise<boolean> {
+  const { data } = await supabase.from("tenants").select("track_payments").eq("slug", slug).maybeSingle();
+  return (data as { track_payments?: boolean } | null)?.track_payments ?? true;
 }
 
 export async function addMember(

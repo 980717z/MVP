@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
-import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, type Tenant } from "@/lib/store";
+import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
 import { supabase } from "@/lib/supabase";
@@ -41,6 +41,10 @@ const T: Record<string, Dict> = {
   },
   reprintAll: { en: "🖨️ Reprint all", zh: "🖨️ 补打全部", fr: "🖨️ Tout réimprimer" },
   refresh: { en: "Refresh", zh: "刷新", fr: "Actualiser" },
+  trackPay: { en: "Payment methods", zh: "记录付款方式", fr: "Modes de paiement" },
+  trackPayOn: { en: "On", zh: "开", fr: "Activé" },
+  trackPayOff: { en: "Off", zh: "关", fr: "Désactivé" },
+  trackPayHint: { en: "Off → no cash/EMT/card choice; everything is plain sales.", zh: "关闭后 → 结账不选现金/EMT/刷卡,一律计为销售额。", fr: "Désactivé → aucun choix comptant/virement/carte; tout est en ventes." },
   more: { en: "More", zh: "更多", fr: "Plus" },
   viewDine: { en: "Tables", zh: "桌面", fr: "Salle" },
   viewTogo: { en: "Pickup", zh: "自取", fr: "À emporter" },
@@ -181,9 +185,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [tenant, setTenant] = useState<Tenant | undefined>();
   const [view, setView] = useState<"dine" | "togo" | "delivery" | "market">("dine");
   const [headerMenu, setHeaderMenu] = useState(false); // ⋯ overflow for the header's utility actions
+  const [trackPay, setTrackPay] = useState(true); // record cash/EMT/card at checkout + method stats (tenant setting)
+  const toggleTrackPay = () => { const next = !trackPay; setTrackPay(next); saveTrackPayments(slug, next).catch(() => {}); };
 
   useEffect(() => {
-    getTenant(slug).then((tt) => { if (tt) { setTenant(tt); if (tt.name?.zh) setShopName(tt.name.zh); } }).catch(() => {});
+    getTenant(slug).then((tt) => { if (tt) { setTenant(tt); setTrackPay(tt.trackPayments); if (tt.name?.zh) setShopName(tt.name.zh); } }).catch(() => {});
   }, [slug]);
 
   // Restore/persist the selected view.
@@ -575,6 +581,20 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             </button>
           )}
           <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">{t(T.refresh)}</button>
+          {/* payment-method tracking mode — off hides cash/EMT/card everywhere, all as sales */}
+          <button
+            onClick={toggleTrackPay}
+            role="switch"
+            aria-checked={trackPay}
+            title={t(T.trackPayHint)}
+            className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${trackPay ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-300 text-ink-soft hover:bg-slate-50"}`}
+          >
+            <span>💳 {t(T.trackPay)}</span>
+            <span className={`inline-flex h-5 w-9 flex-none items-center rounded-full px-0.5 transition ${trackPay ? "justify-end bg-brand" : "justify-start bg-slate-300"}`}>
+              <span className="h-4 w-4 rounded-full bg-white shadow" />
+            </span>
+            <span className="text-xs">{trackPay ? t(T.trackPayOn) : t(T.trackPayOff)}</span>
+          </button>
           {/* rarely-used utilities collapse into a ⋯ menu so the header never crowds/clips */}
           <div className="relative">
             <button
@@ -625,7 +645,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       </div>
 
       {view === "dine" && (
-        <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} onChanged={load} />
+        <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} trackPayments={trackPay} onChanged={load} />
       )}
 
       {view === "togo" && (

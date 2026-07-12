@@ -54,12 +54,14 @@ export default function TableFloor({
   orders,
   tables,
   layout,
+  trackPayments = true,
   onChanged,
 }: {
   slug: string;
   orders: Order[]; // all orders (component filters to unpaid dine-in)
   tables: string[];
   layout: TableSpot[];
+  trackPayments?: boolean;
   onChanged: () => void | Promise<void>;
 }) {
   const { t } = useLang();
@@ -257,6 +259,7 @@ export default function TableFloor({
           slug={slug}
           tableNo={sel}
           orders={state(sel)!.orders}
+          trackPayments={trackPayments}
           onClose={() => setCheckout(false)}
           onDone={() => { setCheckout(false); setSel(null); onChanged(); }}
         />

@@ -54,12 +54,14 @@ export default function CheckoutModal({
   slug,
   tableNo,
   orders,
+  trackPayments = true,
   onClose,
   onDone,
 }: {
   slug: string;
   tableNo: string;
   orders: Order[];
+  trackPayments?: boolean; // false → no cash/EMT/card choice; everything recorded as plain sales
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -158,9 +160,9 @@ export default function CheckoutModal({
         mode: "even",
         shares: evenShares.map((sh, i) => ({
           label: t(T.share).replace("{n}", String(i + 1)),
-          method: evenPay[i].method,
+          method: trackPayments ? evenPay[i].method : "other",
           subtotal: sh.subtotal,
-          tendered: evenPay[i].method === "cash" && evenPay[i].tendered !== "" ? money(parseFloat(evenPay[i].tendered)) : null,
+          tendered: trackPayments && evenPay[i].method === "cash" && evenPay[i].tendered !== "" ? money(parseFloat(evenPay[i].tendered)) : null,
           tip: evenPay[i].tip !== "" ? money(parseFloat(evenPay[i].tip)) : 0,
           evenOfN: evenN,
         })),
@@ -170,9 +172,9 @@ export default function CheckoutModal({
       mode: "item",
       shares: people.map((p, i) => ({
         label: t(T.person).replace("{n}", String(i + 1)),
-        method: p.method,
+        method: trackPayments ? p.method : "other",
         subtotal: itemShares[i].subtotal,
-        tendered: p.method === "cash" && p.tendered !== "" ? money(parseFloat(p.tendered)) : null,
+        tendered: trackPayments && p.method === "cash" && p.tendered !== "" ? money(parseFloat(p.tendered)) : null,
         tip: p.tip !== "" ? money(parseFloat(p.tip)) : 0,
         lines: itemLinesFor(p.id),
       })),
@@ -201,8 +203,8 @@ export default function CheckoutModal({
     setBusy(true);
     setErr(null);
     const split = buildSplit();
-    const topMethod = mode === "single" ? method : "other";
-    const topTendered = mode === "single" && method === "cash" ? tNum : null;
+    const topMethod = mode === "single" && trackPayments ? method : "other";
+    const topTendered = mode === "single" && trackPayments && method === "cash" ? tNum : null;
     const topTip = mode === "single" && tipInput !== "" ? money(parseFloat(tipInput)) : null;
     const res = await checkoutTable(slug, tableNo, topMethod, topTendered, split, topTip);
     if (!res.ok) {
@@ -267,16 +269,18 @@ export default function CheckoutModal({
             {/* ── SINGLE ─────────────────────────────────────────────── */}
             {mode === "single" && (
               <>
-                <div className="mb-2.5 grid grid-cols-4 gap-1.5">
-                  {METHODS.map((m) => (
-                    <button key={m} onClick={() => setMethod(m)} className={seg(method === m)}>{t(T[m])}</button>
-                  ))}
-                </div>
+                {trackPayments && (
+                  <div className="mb-2.5 grid grid-cols-4 gap-1.5">
+                    {METHODS.map((m) => (
+                      <button key={m} onClick={() => setMethod(m)} className={seg(method === m)}>{t(T[m])}</button>
+                    ))}
+                  </div>
+                )}
                 <div className="mb-2.5 flex items-center gap-2">
                   <label className="flex-none text-sm text-ink-soft">{t(T.tip)}</label>
                   <input type="number" inputMode="decimal" value={tipInput} onChange={(e) => setTipInput(e.target.value)} className="input min-h-11 flex-1" placeholder="0.00" />
                 </div>
-                {method === "cash" && (
+                {trackPayments && method === "cash" && (
                   <>
                     <div className="mb-2 flex flex-wrap gap-1.5">
                       {chips.map((v, i) => (
@@ -325,11 +329,11 @@ export default function CheckoutModal({
                           <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
                             <span className="flex-none text-sm font-medium text-ink">{t(T.share).replace("{n}", String(i + 1))}</span>
                             <span className="flex-1 text-sm font-bold tabular-nums text-ink">{fmtPrice(sh.total)}</span>
-                            {methodSelect(evenPay[i].method, (m) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, method: m } : x))))}
+                            {trackPayments && methodSelect(evenPay[i].method, (m) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, method: m } : x))))}
                             <input type="number" inputMode="decimal" placeholder={t(T.tip)} value={evenPay[i].tip}
                               onChange={(e) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, tip: e.target.value } : x)))}
                               className="input min-h-10 !w-16 flex-none text-sm" />
-                            {evenPay[i].method === "cash" && (
+                            {trackPayments && evenPay[i].method === "cash" && (
                               <input type="number" inputMode="decimal" placeholder={t(T.tendered)} value={evenPay[i].tendered}
                                 onChange={(e) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, tendered: e.target.value } : x)))}
                                 className="input min-h-10 !w-20 flex-none text-sm" />
@@ -380,11 +384,11 @@ export default function CheckoutModal({
                             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: DOT[i % DOT.length] }} />
                             <span className="flex-none text-sm font-medium text-ink">#{i + 1}</span>
                             <span className="flex-1 text-sm font-bold tabular-nums text-ink">{fmtPrice(itemShares[i].total)}</span>
-                            {methodSelect(p.method, (m) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, method: m } : x))))}
+                            {trackPayments && methodSelect(p.method, (m) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, method: m } : x))))}
                             <input type="number" inputMode="decimal" placeholder={t(T.tip)} value={p.tip}
                               onChange={(e) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, tip: e.target.value } : x)))}
                               className="input min-h-10 !w-16 flex-none text-sm" />
-                            {p.method === "cash" && (
+                            {trackPayments && p.method === "cash" && (
                               <input type="number" inputMode="decimal" placeholder={t(T.tendered)} value={p.tendered}
                                 onChange={(e) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, tendered: e.target.value } : x)))}
                                 className="input min-h-10 !w-20 flex-none text-sm" />
