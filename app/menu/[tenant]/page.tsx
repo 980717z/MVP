@@ -56,6 +56,7 @@ export default function PublicMenu() {
   const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number; lines: PlacedLine[] } | null>(null);
   const [activeCat, setActiveCat] = useState<string>("");
   const [sheetDish, setSheetDish] = useState<MenuItem | null>(null); // open 多规格 size sheet
+  const [sidesOpen, setSidesOpen] = useState(false); // full 火锅配菜 sheet (auto-opens on hotpot)
   const railRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
@@ -255,6 +256,12 @@ export default function PublicMenu() {
   // upsell: when a 火锅 dish is in the cart, suggest 火锅配菜 add-ons
   const hasHotpot = cartLines.some((x) => x.d.category === "火锅");
   const hotpotSides = useMemo(() => dishes.filter((d) => d.category === "火锅配菜"), [dishes]);
+  const sidesCount = cartLines.filter((x) => x.d.category === "火锅配菜").reduce((a, x) => a + x.qty, 0);
+  // Ordering hotpot → picking sides IS the next step: auto-open the full 配菜 sheet
+  // once when the first hotpot lands in the cart. Won't re-nag if the diner closes it.
+  useEffect(() => {
+    if (hasHotpot && hotpotSides.length > 0) setSidesOpen(true);
+  }, [hasHotpot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
     // Required phone. +1 (default): strip formatting, drop a typed leading "1",
@@ -711,6 +718,56 @@ export default function PublicMenu() {
       )}
 
       {/* 多规格 size selector — tap 选规格 opens this */}
+      {sidesOpen && hotpotSides.length > 0 && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSidesOpen(false)}>
+          <div className="mx-auto max-h-[80vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-lg font-bold text-ink">🍲 {lang === "zh" ? "火锅配菜" : "Hot-pot sides"}</div>
+              <button onClick={() => setSidesOpen(false)} className="flex-none text-ink-faint">✕</button>
+            </div>
+            <div className="space-y-4">
+              {hotpotSides.map((d) => {
+                const hasV = (d.variants?.length ?? 0) > 0;
+                const q = hasV ? dishQty(d.id) : cart[d.id] ?? 0;
+                const market = !!d.is_market && !hasV && !(Number(d.price) > 0);
+                return (
+                  <div key={d.id} className="flex items-center gap-3">
+                    {d.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={d.image_url} alt={d.name_zh} className="h-12 w-12 flex-none rounded-lg object-cover" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[15px] font-semibold leading-snug text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+                      {(lang === "zh" ? d.name_en : d.name_zh) && <div className="truncate text-xs text-ink-faint">{lang === "zh" ? d.name_en : d.name_zh}</div>}
+                      <div className={`mt-0.5 text-sm font-bold ${market ? "text-gold" : "text-jade"}`}>
+                        {hasV ? `${isChoiceDish(d) ? "" : lang === "zh" ? "起 " : "from "}${fmtPrice(displayPrice(d))}` : market ? t("market") : fmtPrice(d.price)}
+                      </div>
+                    </div>
+                    {hasV ? (
+                      <button onClick={() => setSheetDish(d)} className="relative flex-none rounded-full border-[1.5px] border-jade bg-white px-3 py-1.5 text-sm font-medium text-jade">
+                        {isChoiceDish(d) ? (lang === "zh" ? "选择" : "Choose") : lang === "zh" ? "选规格" : "Size"} ›
+                        {q > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{q}</span>}
+                      </button>
+                    ) : q === 0 ? (
+                      <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
+                    ) : (
+                      <div className="flex flex-none items-center gap-2">
+                        <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                        <span className="w-5 text-center font-semibold text-ink">{q}</span>
+                        <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={() => setSidesOpen(false)} className="mt-5 w-full rounded-full bg-jade py-3 text-base font-semibold text-white">
+              {lang === "zh" ? "完成" : "Done"}{sidesCount > 0 ? ` · ${sidesCount} ${lang === "zh" ? "份" : "items"}` : ""}
+            </button>
+          </div>
+        </div>
+      )}
+
       {sheetDish && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSheetDish(null)}>
           <div className="mx-auto max-h-[78vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
@@ -815,39 +872,17 @@ export default function PublicMenu() {
                   ))}
                 </div>
 
-                {/* hot-pot add-on upsell */}
+                {/* hot-pot add-on: opens the full 配菜 sheet (auto-opens on first hotpot) */}
                 {hasHotpot && hotpotSides.length > 0 && (
-                  <div className="mt-4 rounded-xl bg-amber-50 p-3">
-                    <div className="mb-2 text-sm font-medium text-amber-800">
-                      🍲 {lang === "zh" ? "点了火锅，加点配菜？" : "Hot pot — add some sides?"}
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {hotpotSides.map((d) => {
-                        // multi-size sides open the size sheet (adding by bare id would sell at $0)
-                        const hasV = (d.variants?.length ?? 0) > 0;
-                        const q = hasV ? dishQty(d.id) : cart[d.id] ?? 0;
-                        return (
-                          <button
-                            key={d.id}
-                            onClick={() => (hasV ? setSheetDish(d) : inc(d.id, 1))}
-                            className={`flex-none rounded-lg border px-3 py-2 text-left transition ${
-                              q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white hover:border-slate-300"
-                            }`}
-                          >
-                            <div className="text-sm font-medium text-ink">
-                              {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
-                              {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
-                            </div>
-                            <div className="text-xs text-ink-faint">
-                              {hasV
-                                ? `${isChoiceDish(d) ? "" : lang === "zh" ? "起 " : "from "}${fmtPrice(displayPrice(d))} ›`
-                                : `${fmtPrice(d.price) || t("market")} ＋`}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => setSidesOpen(true)}
+                    className="mt-4 flex w-full items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-amber-800">🍲 {lang === "zh" ? "加火锅配菜" : "Add hot-pot sides"}</span>
+                    <span className="text-sm font-semibold text-amber-700">
+                      {sidesCount > 0 ? `${sidesCount} ${lang === "zh" ? "份 ›" : "· edit ›"}` : lang === "zh" ? "查看全部 ›" : "See all ›"}
+                    </span>
+                  </button>
                 )}
 
                 {/* togo: pickup/delivery toggle + delivery address */}
