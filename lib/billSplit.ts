@@ -31,6 +31,7 @@ export interface SplitShare {
   total: number;
   tendered?: number | null;   // cash only
   change?: number | null;     // cash only
+  tip?: number;               // this payer's tip (pass-through to staff, not sales)
   evenOfN?: number;           // even mode: this share is 1/N
   lines?: ShareLine[];        // itemized mode: this person's dishes (for the receipt)
 }
@@ -39,7 +40,7 @@ export interface SplitShare {
  *  sends only the subtotal partition + method + (itemized) lines for the receipt. */
 export interface SplitPayload {
   mode: "even" | "item";
-  shares: { label: string; method: PaymentMethod; subtotal: number; tendered?: number | null; evenOfN?: number; lines?: ShareLine[] }[];
+  shares: { label: string; method: PaymentMethod; subtotal: number; tendered?: number | null; tip?: number; evenOfN?: number; lines?: ShareLine[] }[];
 }
 
 /** Split a subtotal into n cent-exact partitions (remainder cents → earliest shares). */

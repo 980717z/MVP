@@ -236,10 +236,10 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
 // how the table was divided. Payloads come from print_jobs.payload (jsonb).
 interface SplitReceiptPayload {
   tableNo?: string; idx?: number; n?: number; evenOfN?: number; label?: string; method?: string;
-  subtotal?: number; gst?: number; pst?: number; hst?: number; total?: number;
+  subtotal?: number; gst?: number; pst?: number; hst?: number; total?: number; tip?: number;
   tendered?: number | null; change?: number | null;
   lines?: { name_zh?: string; name_en?: string; qty?: number; price?: number | null }[];
-  splits?: { label?: string; method?: string; total?: number }[];
+  splits?: { label?: string; method?: string; total?: number; tip?: number }[];
 }
 function methodZh(m?: string): string {
   return m === "cash" ? "现金" : m === "card" ? "刷卡" : m === "emt" ? "EMT" : m === "split" ? "分单" : "其他";
@@ -266,6 +266,10 @@ function drawSplitShare(p: SplitReceiptPayload, shopName: string): { canvas: Can
   b.row("HST 13%", money(hstOf(p)), SM, false, LH_SM);
   b.rule();
   b.row("合计", money(p.total || 0), BIG, true, LH_BIG);
+  if ((p.tip || 0) > 0) {
+    b.row("小费", money(p.tip || 0), SM, false, LH_SM);
+    b.row("实收", money((p.total || 0) + (p.tip || 0)), MID, true, LH_MID);
+  }
   b.left(`付款  ${methodZh(p.method)}`, MID, true, LH_MID);
   if (p.method === "cash" && p.tendered != null) {
     b.row("收", money(p.tendered), SM, false, LH_SM);
@@ -293,6 +297,10 @@ function drawSplitFull(p: SplitReceiptPayload, shopName: string): { canvas: Canv
   b.row("HST 13%", money(hstOf(p)), SM, false, LH_SM);
   b.rule();
   b.row("合计", money(p.total || 0), BIG, true, LH_BIG);
+  if ((p.tip || 0) > 0) {
+    b.row("小费", money(p.tip || 0), SM, false, LH_SM);
+    b.row("实收", money((p.total || 0) + (p.tip || 0)), MID, true, LH_MID);
+  }
   const splits = p.splits ?? [];
   if (splits.length) {
     b.rule();

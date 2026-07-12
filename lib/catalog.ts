@@ -382,6 +382,24 @@ export const MODULES: ModuleDef[] = [
     amountKind: "money",
   },
   {
+    id: "sales-stats",
+    category: "finance",
+    icon: "📈",
+    ready: true,
+    portal: true,
+    label: { zh: "销售统计", en: "Sales Stats", fr: "Statistiques de ventes" },
+    pain: {
+      zh: "不知道今天赚了多少、现金/EMT/刷卡各占多少、小费收了多少",
+      en: "No clear picture of today's revenue, the cash/EMT/card split, or tips.",
+      fr: "Aucune vue claire du revenu du jour, de la répartition comptant/virement/carte ou des pourboires.",
+    },
+    fields: [],
+    outputs: [
+      { zh: "今日营收 + 自选日期与区间", en: "Today's revenue + date & range picker", fr: "Revenu du jour + sélecteur de dates et périodes" },
+      { zh: "按现金 / EMT / 刷卡拆分,小费单列", en: "Split by cash / EMT / card, tips tracked separately", fr: "Ventilé par comptant / virement / carte, pourboires à part" },
+    ],
+  },
+  {
     id: "daily-close",
     category: "finance",
     icon: "💰",

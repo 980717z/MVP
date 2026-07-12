@@ -19,6 +19,7 @@ const T: Record<string, Dict> = {
   other: { zh: "其他", en: "Other", fr: "Autre" },
   tendered: { zh: "收款", en: "Tendered", fr: "Reçu" },
   change: { zh: "找零", en: "Change", fr: "Monnaie" },
+  tip: { zh: "小费", en: "Tip", fr: "Pourboire" },
   short: { zh: "还差 {amt}", en: "Short {amt}", fr: "Manque {amt}" },
   oneBill: { zh: "一张单", en: "One bill", fr: "Une addition" },
   split: { zh: "分单", en: "Split", fr: "Partager" },
@@ -47,7 +48,7 @@ const activeItems = (o: Order) => (o.items ?? []).filter((it) => !(it as OrderIt
 const DOT = ["#0E9F6E", "#2563EB", "#D97706", "#DB2777", "#7C3AED", "#0891B2", "#65A30D", "#DC2626", "#475569", "#CA8A04"];
 
 type Unit = { key: string; name_zh: string; name_en?: string; price: number };
-type Person = { id: string; method: PaymentMethod; tendered: string };
+type Person = { id: string; method: PaymentMethod; tendered: string; tip: string };
 
 export default function CheckoutModal({
   slug,
@@ -72,17 +73,18 @@ export default function CheckoutModal({
   // single-bill
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [tendered, setTendered] = useState("");
+  const [tipInput, setTipInput] = useState(""); // whole-bill tip (single)
 
   // even-split
   const [evenN, setEvenN] = useState(2);
-  const [evenPay, setEvenPay] = useState<{ method: PaymentMethod; tendered: string }[]>(
-    Array.from({ length: 12 }, () => ({ method: "cash" as PaymentMethod, tendered: "" })),
+  const [evenPay, setEvenPay] = useState<{ method: PaymentMethod; tendered: string; tip: string }[]>(
+    Array.from({ length: 12 }, () => ({ method: "cash" as PaymentMethod, tendered: "", tip: "" })),
   );
 
   // itemized-split
   const [people, setPeople] = useState<Person[]>([
-    { id: "p0", method: "cash", tendered: "" },
-    { id: "p1", method: "cash", tendered: "" },
+    { id: "p0", method: "cash", tendered: "", tip: "" },
+    { id: "p1", method: "cash", tendered: "", tip: "" },
   ]);
   const [assign, setAssign] = useState<Record<string, string>>({}); // unit.key → personId | "shared" | ""
 
@@ -159,6 +161,7 @@ export default function CheckoutModal({
           method: evenPay[i].method,
           subtotal: sh.subtotal,
           tendered: evenPay[i].method === "cash" && evenPay[i].tendered !== "" ? money(parseFloat(evenPay[i].tendered)) : null,
+          tip: evenPay[i].tip !== "" ? money(parseFloat(evenPay[i].tip)) : 0,
           evenOfN: evenN,
         })),
       };
@@ -170,6 +173,7 @@ export default function CheckoutModal({
         method: p.method,
         subtotal: itemShares[i].subtotal,
         tendered: p.method === "cash" && p.tendered !== "" ? money(parseFloat(p.tendered)) : null,
+        tip: p.tip !== "" ? money(parseFloat(p.tip)) : 0,
         lines: itemLinesFor(p.id),
       })),
     };
@@ -199,7 +203,8 @@ export default function CheckoutModal({
     const split = buildSplit();
     const topMethod = mode === "single" ? method : "other";
     const topTendered = mode === "single" && method === "cash" ? tNum : null;
-    const res = await checkoutTable(slug, tableNo, topMethod, topTendered, split);
+    const topTip = mode === "single" && tipInput !== "" ? money(parseFloat(tipInput)) : null;
+    const res = await checkoutTable(slug, tableNo, topMethod, topTendered, split, topTip);
     if (!res.ok) {
       setErr(res.needsPricing ? t(T.needPrice) : t(T.failed) + (res.error ?? ""));
       setBusy(false);
@@ -267,6 +272,10 @@ export default function CheckoutModal({
                     <button key={m} onClick={() => setMethod(m)} className={seg(method === m)}>{t(T[m])}</button>
                   ))}
                 </div>
+                <div className="mb-2.5 flex items-center gap-2">
+                  <label className="flex-none text-sm text-ink-soft">{t(T.tip)}</label>
+                  <input type="number" inputMode="decimal" value={tipInput} onChange={(e) => setTipInput(e.target.value)} className="input min-h-11 flex-1" placeholder="0.00" />
+                </div>
                 {method === "cash" && (
                   <>
                     <div className="mb-2 flex flex-wrap gap-1.5">
@@ -313,10 +322,13 @@ export default function CheckoutModal({
                         const tv = evenPay[i].tendered === "" ? null : money(parseFloat(evenPay[i].tendered));
                         const chg = evenPay[i].method === "cash" && tv != null ? money(tv - sh.total) : null;
                         return (
-                          <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+                          <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
                             <span className="flex-none text-sm font-medium text-ink">{t(T.share).replace("{n}", String(i + 1))}</span>
                             <span className="flex-1 text-sm font-bold tabular-nums text-ink">{fmtPrice(sh.total)}</span>
                             {methodSelect(evenPay[i].method, (m) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, method: m } : x))))}
+                            <input type="number" inputMode="decimal" placeholder={t(T.tip)} value={evenPay[i].tip}
+                              onChange={(e) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, tip: e.target.value } : x)))}
+                              className="input min-h-10 !w-16 flex-none text-sm" />
                             {evenPay[i].method === "cash" && (
                               <input type="number" inputMode="decimal" placeholder={t(T.tendered)} value={evenPay[i].tendered}
                                 onChange={(e) => setEvenPay((a) => a.map((x, k) => (k === i ? { ...x, tendered: e.target.value } : x)))}
@@ -338,7 +350,7 @@ export default function CheckoutModal({
                       <div className="flex items-center gap-3">
                         <button onClick={() => setPeople((ps) => (ps.length > 2 ? ps.slice(0, -1) : ps))} className="grid h-9 w-9 place-items-center rounded-full border border-slate-300 text-lg text-ink">−</button>
                         <span className="w-6 text-center text-lg font-bold text-ink">{people.length}</span>
-                        <button onClick={() => setPeople((ps) => (ps.length < 10 ? [...ps, { id: `p${ps.length}${Date.now() % 1000}`, method: "cash", tendered: "" }] : ps))} className="grid h-9 w-9 place-items-center rounded-full border border-slate-300 text-lg text-ink">＋</button>
+                        <button onClick={() => setPeople((ps) => (ps.length < 10 ? [...ps, { id: `p${ps.length}${Date.now() % 1000}`, method: "cash", tendered: "", tip: "" }] : ps))} className="grid h-9 w-9 place-items-center rounded-full border border-slate-300 text-lg text-ink">＋</button>
                       </div>
                     </div>
                     <p className="mb-2 text-[11px] text-ink-faint">{t(T.tapAssign)}</p>
@@ -364,11 +376,14 @@ export default function CheckoutModal({
                         const tv = p.tendered === "" ? null : money(parseFloat(p.tendered));
                         const chg = p.method === "cash" && tv != null ? money(tv - itemShares[i].total) : null;
                         return (
-                          <div key={p.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+                          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
                             <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: DOT[i % DOT.length] }} />
                             <span className="flex-none text-sm font-medium text-ink">#{i + 1}</span>
                             <span className="flex-1 text-sm font-bold tabular-nums text-ink">{fmtPrice(itemShares[i].total)}</span>
                             {methodSelect(p.method, (m) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, method: m } : x))))}
+                            <input type="number" inputMode="decimal" placeholder={t(T.tip)} value={p.tip}
+                              onChange={(e) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, tip: e.target.value } : x)))}
+                              className="input min-h-10 !w-16 flex-none text-sm" />
                             {p.method === "cash" && (
                               <input type="number" inputMode="decimal" placeholder={t(T.tendered)} value={p.tendered}
                                 onChange={(e) => setPeople((ps) => ps.map((x, k) => (k === i ? { ...x, tendered: e.target.value } : x)))}

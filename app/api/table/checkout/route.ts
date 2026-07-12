@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   const uid = auth?.user?.id;
   if (authErr || !uid) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  let body: { slug?: string; tableNo?: string; paymentMethod?: string; amountTendered?: number; split?: SplitPayload | null };
+  let body: { slug?: string; tableNo?: string; paymentMethod?: string; amountTendered?: number; split?: SplitPayload | null; tip?: number };
   try {
     body = await req.json();
   } catch {
@@ -57,6 +57,7 @@ export async function POST(req: Request) {
   const tableNo = (body.tableNo ?? "").trim();
   const method = (body.paymentMethod ?? "").trim();
   const tendered = body.amountTendered == null ? null : money(body.amountTendered);
+  const singleTip = Math.max(0, body.tip == null ? 0 : money(body.tip)); // whole-bill tip (single); split tips ride each share
   const split = body.split && Array.isArray(body.split.shares) && body.split.shares.length >= 2 ? body.split : null;
   if (!slug || !tableNo) return NextResponse.json({ ok: false, error: "缺少桌号" }, { status: 400 });
   if (!["cash", "card", "emt", "other"].includes(method)) return NextResponse.json({ ok: false, error: "付款方式无效" }, { status: 400 });
@@ -132,11 +133,13 @@ export async function POST(req: Request) {
     const taxed = reconcileShares(subtotal, split.shares.map((s) => money(s.subtotal)));
     splits = split.shares.map((s, i) => {
       const t = taxed[i];
+      const tip = Math.max(0, s.tip == null ? 0 : money(s.tip));
       const tnd = s.method === "cash" && s.tendered != null ? money(s.tendered) : null;
       return {
         label: (s.label ?? `第 ${i + 1} 份`).slice(0, 40),
         method: s.method,
-        subtotal: t.subtotal, gst: t.gst, pst: t.pst, total: t.total,
+        subtotal: t.subtotal, gst: t.gst, pst: t.pst, total: t.total, tip,
+        // change is against the BILL only; a tip is money left on top, not netted here
         tendered: tnd, change: tnd != null ? money(tnd - t.total) : null,
         evenOfN: s.evenOfN, lines: split.mode === "item" ? (s.lines ?? []) : undefined,
       };
@@ -144,6 +147,7 @@ export async function POST(req: Request) {
     splitMode = split.mode;
   }
   const isSplit = splits.length >= 2;
+  const tipTotal = isSplit ? money(splits.reduce((a, s) => a + (s.tip ?? 0), 0)) : singleTip;
 
   // 6) checkout record
   const { data: session } = await db
@@ -159,6 +163,7 @@ export async function POST(req: Request) {
       gst: tax.gst,
       pst: tax.pst,
       total: tax.total,
+      tip: tipTotal,
       business_date: shopBusinessDate(),
       splits,
       split_mode: splitMode,
@@ -178,8 +183,8 @@ export async function POST(req: Request) {
     const job = (kind: string, seq: number, payload: Record<string, unknown>) => ({ tenant_slug: slug, table_no: tableNo, kind, seq, session_id: sessionId, payload });
     const shareJobs = isSplit ? splits.map((sh, i) => job("share", i + 1, { ...sh, idx: i + 1, n: splits.length, tableNo })) : [];
     const fullJob = job("full", shareJobs.length + 1, {
-      tableNo, subtotal: tax.subtotal, gst: tax.gst, pst: tax.pst, hst: money(tax.gst + tax.pst), total: tax.total, lines: fullLines,
-      splits: splits.map((s) => ({ label: s.label, method: s.method, total: s.total })),
+      tableNo, subtotal: tax.subtotal, gst: tax.gst, pst: tax.pst, hst: money(tax.gst + tax.pst), total: tax.total, tip: tipTotal, lines: fullLines,
+      splits: splits.map((s) => ({ label: s.label, method: s.method, total: s.total, tip: s.tip })),
     });
     await db.from("print_jobs").insert([...shareJobs, fullJob]);
   }

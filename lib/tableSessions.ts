@@ -75,6 +75,24 @@ export async function listTableCheckouts(slug: string, tableNo?: string): Promis
   return (data ?? []) as TableCheckout[];
 }
 
+/** Checkout rows in a business-date range [from, to] (inclusive), for 销售统计.
+ *  Pulls the fields the aggregator needs, splits + tip included. */
+export async function listSessionsInRange(slug: string, from: string, to: string): Promise<import("./salesStats").SessionRow[]> {
+  const { data, error } = await supabase
+    .from("table_sessions")
+    .select("closed_at,business_date,payment_method,subtotal,gst,pst,total,tip,splits")
+    .eq("tenant_slug", slug)
+    .gte("business_date", from)
+    .lte("business_date", to)
+    .order("closed_at", { ascending: false })
+    .limit(5000);
+  if (error) {
+    console.error("listSessionsInRange", error);
+    return [];
+  }
+  return (data ?? []) as import("./salesStats").SessionRow[];
+}
+
 export interface CheckoutResult {
   ok: boolean;
   error?: string;
@@ -98,6 +116,7 @@ export async function checkoutTable(
   paymentMethod: PaymentMethod,
   amountTendered?: number | null,
   split?: SplitPayload | null,
+  tip?: number | null,
 ): Promise<CheckoutResult> {
   const { data: sess } = await supabase.auth.getSession();
   const token = sess.session?.access_token ?? "";
@@ -106,7 +125,7 @@ export async function checkoutTable(
     const res = await fetch("/api/table/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ slug, tableNo, paymentMethod, amountTendered: amountTendered ?? null, split: split ?? null }),
+      body: JSON.stringify({ slug, tableNo, paymentMethod, amountTendered: amountTendered ?? null, split: split ?? null, tip: tip ?? null }),
     });
     return (await res.json().catch(() => ({ ok: false, error: "解析失败" }))) as CheckoutResult;
   } catch (e) {

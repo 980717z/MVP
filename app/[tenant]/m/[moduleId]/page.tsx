@@ -29,6 +29,7 @@ import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
 import SalesPortal from "@/components/SalesPortal";
+import SalesStatsPortal from "@/components/SalesStatsPortal";
 import FoodSafetyPortal from "@/components/FoodSafetyPortal";
 import SuggestInput from "@/components/SuggestInput";
 
@@ -179,6 +180,7 @@ const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElem
   "qr-menu": QrMenuPortal,
   "online-orders": OrdersPortal,
   "sales": SalesPortal,
+  "sales-stats": SalesStatsPortal,
   "food-safety": FoodSafetyPortal,
 };
 
