@@ -33,19 +33,37 @@ const T: Record<string, Dict> = {
     zh: "请填写邮箱和密码。",
     fr: "Saisissez votre courriel et votre mot de passe.",
   },
+  storageBlocked: {
+    en: "Your browser is blocking sign-in from being saved. Turn off Private Browsing and \"Prevent Cross-Site Tracking\" (Settings → Safari), then try again.",
+    zh: "浏览器阻止了登录状态的保存，导致登录后又被退回。请关闭 Safari 的「无痕浏览」，并在「设置 → Safari」里关掉「阻止跨网站跟踪 / 屏蔽所有 Cookie」，然后重试。",
+    fr: "Votre navigateur empêche l'enregistrement de la connexion. Désactivez la navigation privée et « Empêcher le suivi intersites » (Réglages → Safari), puis réessayez.",
+  },
 };
+
+// localStorage is where supabase-js persists the session. In Safari Private
+// Browsing or with cookies/storage blocked, writes throw or are dropped — login
+// then "succeeds" but bounces straight back to /login with empty fields. Detect
+// it so we can tell the user instead of looping silently.
+function storageWorks(): boolean {
+  try {
+    const k = "__bento_probe__";
+    window.localStorage.setItem(k, "1");
+    window.localStorage.removeItem(k);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default function Login() {
   const router = useRouter();
   const { t } = useLang();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  // iPad/iOS Safari (iCloud Keychain) autofills the fields without firing React's
-  // onChange, leaving email/password state empty → the button would stay disabled
-  // and taps do nothing. Read the live DOM values from refs at submit as a fallback.
+  // Uncontrolled inputs (ref + read at submit). iPad/iOS Safari (iCloud Keychain)
+  // autofills without firing React's onChange; with controlled inputs a re-render
+  // would then wipe the autofilled text back to empty state. Uncontrolled keeps it.
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
@@ -53,21 +71,28 @@ export default function Login() {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace("/app");
     });
+    // Warn up front if the browser won't persist the session (private mode etc.).
+    if (!storageWorks()) setMsg(t(T.storageBlocked));
     // Invite link: /login?invite=1&email=… → prefill email, default to sign-up.
     const params = new URLSearchParams(window.location.search);
     const inviteEmail = params.get("email");
-    if (inviteEmail) setEmail(inviteEmail);
+    if (inviteEmail && emailRef.current) emailRef.current.value = inviteEmail;
     if (params.get("invite") === "1") setMode("signup");
-  }, [router]);
+  }, [router, t]);
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     if (busy) return;
-    // Prefer the live DOM value (survives autofill); fall back to React state.
-    const emailVal = (emailRef.current?.value ?? email).trim();
-    const passwordVal = passwordRef.current?.value ?? password;
+    const emailVal = (emailRef.current?.value ?? "").trim();
+    const passwordVal = passwordRef.current?.value ?? "";
     if (!emailVal || !passwordVal) {
       setMsg(t(T.needCreds));
+      return;
+    }
+    // If storage is blocked, login would succeed then bounce back. Stop early
+    // with a clear instruction rather than looping.
+    if (!storageWorks()) {
+      setMsg(t(T.storageBlocked));
       return;
     }
     setBusy(true);
@@ -87,6 +112,13 @@ export default function Login() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: emailVal, password: passwordVal });
         if (error) throw error;
+        // Confirm the session actually landed in storage before redirecting; if
+        // not, the /app guard would bounce us right back to an empty login form.
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) {
+          setMsg(t(T.storageBlocked));
+          return;
+        }
         await claimInvites();
         router.replace("/app");
       }
@@ -132,8 +164,6 @@ export default function Login() {
               type="email"
               name="email"
               autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
             />
             <label className="label">{t(T.password)}</label>
@@ -143,8 +173,6 @@ export default function Login() {
               type="password"
               name="password"
               autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               placeholder={t(T.pwPlaceholder)}
             />
 
