@@ -10,6 +10,9 @@ import CheckoutModal from "@/components/CheckoutModal";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
 import { useLang, type Dict } from "@/app/i18n";
 
+// Order-only mode (no payment): the table close-out is "print bill + clear", not 结账.
+const PAYMENTS_LIVE = process.env.NEXT_PUBLIC_PAYMENTS_LIVE === "1";
+
 const T: Record<string, Dict> = {
   empty: { zh: "空桌", en: "Empty table", fr: "Table libre" },
   noOrder: { zh: "还没有订单", en: "No orders yet", fr: "Aucune commande" },
@@ -17,6 +20,7 @@ const T: Record<string, Dict> = {
   round: { zh: "第 {n} 单", en: "Round {n}", fr: "Tournée {n}" },
   reprint: { zh: "重打厨房单", en: "Reprint kitchen", fr: "Réimprimer" },
   checkout: { zh: "结账", en: "Checkout", fr: "Encaisser" },
+  clear: { zh: "打印账单 · 清台", en: "Print bill · clear", fr: "Imprimer · libérer" },
   order: { zh: "点单", en: "Take order", fr: "Commander" },
   addRound: { zh: "加单", en: "Add round", fr: "Ajouter" },
   paidHistory: { zh: "今日已结", en: "Paid today", fr: "Payé aujourd'hui" },
@@ -236,7 +240,7 @@ export default function TableFloor({
                 <button onClick={() => setOrdering(true)} className="min-h-11 rounded-lg border border-brand px-4 font-medium text-brand-ink transition hover:bg-brand-wash">
                   {t(T.addRound)}
                 </button>
-                <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary flex-1">{t(T.checkout)} · {fmtPrice(state(sel)!.total)}</button>
+                <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary flex-1">{PAYMENTS_LIVE ? t(T.checkout) : t(T.clear)} · {fmtPrice(state(sel)!.total)}</button>
               </div>
             )}
           </div>

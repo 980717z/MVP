@@ -19,10 +19,10 @@ const ORDER = [
 type Lang = "zh" | "en";
 
 const T = {
-  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…",
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…", sendOrder: "送出订单", sentCallback: "订单已送出 🎉 富来会致电与您确认", callbackHint: "无需在线支付 · 富来会致电确认订单与地址", estNote: "预计金额 · 以电话确认为准",
     togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付",
     chooseMode: "怎么取餐？", pickupHint: "到店自取 · 无额外费用", deliveryHint: "满 $30 起送 · 10% 配送小费", addrTitle: "配送地址", postalHint: "先填邮编，马上告诉你能不能送", canDeliver: "可以配送到", noDeliver: "暂不配送到", switchPickup: "改为自取 →", zoneList: "查看全部配送范围", city: "Toronto, ON", deliverTo: "配送到", addrMissing: "请填写完整配送地址" },
-  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…",
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…", sendOrder: "Send order", sentCallback: "Order sent 🎉 Fulai will call to confirm", callbackHint: "No online payment — Fulai will call to confirm your order & address", estNote: "Estimate — confirmed by phone",
     togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now",
     chooseMode: "How would you like your order?", pickupHint: "Pick up at the restaurant · no fees", deliveryHint: "$30 minimum · 10% delivery tip", addrTitle: "Delivery address", postalHint: "Postal code first — we'll check your area instantly", canDeliver: "We deliver to", noDeliver: "We don't deliver to", switchPickup: "Switch to pickup →", zoneList: "See all delivery areas", city: "Toronto, ON", deliverTo: "Deliver to", addrMissing: "Please complete the delivery address" },
 };
@@ -250,7 +250,8 @@ export default function PublicMenu() {
       </div>
     </div>
   );
-  const pricing = priceOrder(total, isDelivery ? DELIVERY_TIP_RATE : 0);
+  // Order-only mode charges nothing online, so no mandatory delivery tip is applied.
+  const pricing = priceOrder(total, isDelivery && PAYMENTS_LIVE ? DELIVERY_TIP_RATE : 0);
   const shortfall = isDelivery ? deliveryShortfall(total) : 0;
 
   // upsell: when a 火锅 dish is in the cart, suggest 火锅配菜 add-ons
@@ -305,11 +306,10 @@ export default function PublicMenu() {
       setAddrErr(null);
     }
 
-    // Pay-first rule: takeout/delivery orders are only submitted once online
-    // payment is live — otherwise they'd sit invisible (pending) forever.
-    if (togoMode && !PAYMENTS_LIVE) return;
-    // 时价 items can't be pre-paid online (price unknown at checkout) — dine-in only.
-    if (togoMode && hasMarketItems) {
+    // Order-only mode (PAYMENTS_LIVE off): takeout/delivery place WITHOUT paying —
+    // staff call back to confirm. 时价 is fine here (price settled on the callback).
+    // When online payment IS live, keep the pay-first + no-market-items rules.
+    if (togoMode && PAYMENTS_LIVE && hasMarketItems) {
       setAddrErr(lang === "zh" ? "时价菜品暂不支持外卖/自取在线支付，请移除后再下单" : "Market-price items can't be pre-paid online — please remove them for takeout/delivery");
       return;
     }
@@ -339,7 +339,7 @@ export default function PublicMenu() {
       return;
     }
 
-    if (togoMode && res.id) {
+    if (togoMode && PAYMENTS_LIVE && res.id) {
       // Pay-first: show the Clover card sheet. On success the server (re-prices +)
       // charges and marks the order paid, which releases it to the kitchen/printer.
       setPayingOrder({
@@ -548,7 +548,7 @@ export default function PublicMenu() {
       )}
       {togoMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          🛵 {t("togoBadge")} · {t("payFirst")}
+          🛵 {t("togoBadge")} · {PAYMENTS_LIVE ? t("payFirst") : t("callbackHint")}
         </div>
       )}
 
@@ -711,7 +711,7 @@ export default function PublicMenu() {
               </span>
             </span>
             <span className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-bold">
-              {count > 0 ? (togoMode ? t("goPay") : t("submit")) : t("cart")} →
+              {count > 0 ? (togoMode ? (PAYMENTS_LIVE ? t("goPay") : t("sendOrder")) : t("submit")) : t("cart")} →
             </span>
           </button>
         </div>
@@ -964,10 +964,13 @@ export default function PublicMenu() {
                     <div className="mb-3 space-y-1 text-sm tabular-nums">
                       <div className="flex justify-between text-ink-soft"><span>{t("subtotal")}</span><span>${pricing.subtotal.toFixed(2)}</span></div>
                       <div className="flex justify-between text-ink-soft"><span>{t("hst")}</span><span>${(pricing.gst + pricing.pst).toFixed(2)}</span></div>
-                      {isDelivery && (
+                      {isDelivery && PAYMENTS_LIVE && (
                         <div className="flex justify-between text-ink-soft"><span>{t("tipLine")}</span><span>${pricing.tip.toFixed(2)}</span></div>
                       )}
                       <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t("total")}</span><span>${pricing.grandTotal.toFixed(2)}</span></div>
+                      {!PAYMENTS_LIVE && (
+                        <p className="text-right text-[11px] text-ink-faint">{t("estNote")}</p>
+                      )}
                       {isDelivery && shortfall > 0 && (
                         <p className="text-xs font-medium text-amber-700">{t("minShort")} ${shortfall.toFixed(2)}</p>
                       )}
@@ -992,17 +995,23 @@ export default function PublicMenu() {
                     </div>
                   )}
                   {togoMode && !PAYMENTS_LIVE && (
-                    <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">⏳ {t("paySoon")}</p>
+                    <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">📞 {t("callbackHint")}</p>
                   )}
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
                   )}
                   <button
                     onClick={submit}
-                    disabled={submitting || (togoMode && (!PAYMENTS_LIVE || (isDelivery && shortfall > 0)))}
+                    disabled={submitting || (togoMode && isDelivery && shortfall > 0)}
                     className="w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                   >
-                    {submitting ? t("submitting") : togoMode ? `${t("goPay")} · $${pricing.grandTotal.toFixed(2)}` : t("submit")}
+                    {submitting
+                      ? t("submitting")
+                      : togoMode
+                        ? PAYMENTS_LIVE
+                          ? `${t("goPay")} · $${pricing.grandTotal.toFixed(2)}`
+                          : t("sendOrder")
+                        : t("submit")}
                   </button>
                 </div>
               </>
@@ -1036,7 +1045,7 @@ export default function PublicMenu() {
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 px-6" onClick={() => { setPlaced(false); setOpen(false); }}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="text-4xl">✅</div>
-            <p className="mt-3 font-medium text-ink">{t("placed")}</p>
+            <p className="mt-3 font-medium text-ink">{togoMode && !PAYMENTS_LIVE ? t("sentCallback") : t("placed")}</p>
             <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>

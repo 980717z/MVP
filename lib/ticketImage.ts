@@ -77,14 +77,16 @@ function wrap(mc: SKRSContext2D, text: string, size: number, bold: boolean, maxW
   return out.length ? out : [text];
 }
 
-function typeBadge(o: Order): { badge: string; sub?: string } {
+function typeBadge(o: Order): { badge: string; sub?: string; tel?: string } {
   const t = (o as any).order_type ?? "dine_in";
   const phone = (o.phone || "").trim() || "N/A"; // blank phone → N/A on the ticket
+  // Off-site orders (自取/外送) are order-only + staff callback: the phone MUST be
+  // on the ticket so staff can ring back to confirm; delivery also needs the address.
   if (t === "delivery") {
     const a = (o as any).address;
-    return { badge: "外卖", sub: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : phone };
+    return { badge: "外卖", sub: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined, tel: phone };
   }
-  if (t === "togo") return { badge: "自取", sub: phone };
+  if (t === "togo") return { badge: "自取", tel: phone };
   return { badge: o.table_no ? `堂食  台号 ${displayTable(o.table_no)}` : "堂食" };
 }
 
@@ -177,6 +179,7 @@ function drawTicket(o: Order, shopName: string): { canvas: Canvas; height: numbe
   b.rule(true);
   b.left(t.badge, BIG, true, LH_BIG);
   if (t.sub) b.left(t.sub, SM, false, LH_SM);
+  if (t.tel) b.left(`电话 ${t.tel}`, MID, true, LH_MID); // callback number — staff verify by phone
   b.left(fmtTime(o.created_at), SM, false, LH_SM);
   b.rule();
   for (const it of items) b.item(Number(it.qty) || 1, (it.name_zh || it.name_en || "菜品").trim());
@@ -206,6 +209,8 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
   const b = newBuilder(mc);
   b.centered(shopName, SHOP, true, LH_SHOP);
   b.left(`账单  ${t.badge}${rounds > 1 ? `  (${rounds}单合并)` : ""}`, MID, true, LH_MID);
+  if (t.sub) b.left(t.sub, SM, false, LH_SM);      // delivery address
+  if (t.tel) b.left(`电话 ${t.tel}`, SM, false, LH_SM); // contact / callback number
   b.left(fmtTime(latest), SM, false, LH_SM);
   b.rule(true);
   for (const { it } of lines) {

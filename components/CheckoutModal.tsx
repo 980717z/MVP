@@ -7,8 +7,16 @@ import { requestBill, type Order, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
 
+// Order-only mode (fulai launch): no payment anywhere. This modal becomes a
+// payment-free "print the bill + clear the table" action. Flip PAYMENTS_LIVE=1
+// to restore the cash/card checkout.
+const PAYMENTS_LIVE = process.env.NEXT_PUBLIC_PAYMENTS_LIVE === "1";
+
 const T: Record<string, Dict> = {
   title: { zh: "结账", en: "Checkout", fr: "Encaisser" },
+  clearTitle: { zh: "清台", en: "Clear table", fr: "Libérer" },
+  clearNote: { zh: "无需收款 · 打印账单后清台", en: "No payment — prints the bill, then clears the table", fr: "Sans paiement — imprime l'addition puis libère la table" },
+  clearConfirm: { zh: "打印账单 · 清台", en: "Print bill · clear table", fr: "Imprimer · libérer" },
   table: { zh: "桌", en: "Table", fr: "Table" },
   round: { zh: "第 {n} 单", en: "Round {n}", fr: "Tournée {n}" },
   subtotal: { zh: "小计", en: "Subtotal", fr: "Sous-total" },
@@ -70,13 +78,17 @@ export default function CheckoutModal({
     .filter((v) => v >= total)
     .slice(0, 4);
 
-  const canConfirm = !busy && !hasUnpriced && (method !== "cash" || (tenderedNum != null && tenderedNum >= total));
+  const canConfirm = !busy && !hasUnpriced && (!PAYMENTS_LIVE || method !== "cash" || (tenderedNum != null && tenderedNum >= total));
 
   const confirm = async () => {
     if (!canConfirm) return;
     setBusy(true);
     setErr(null);
-    const res = await checkoutTable(slug, tableNo, method, method === "cash" ? tenderedNum : null);
+    // Order-only: settle as "other" with no tendered amount — the row still clears
+    // the table + posts the day-book, it just carries no payment method/change.
+    const res = PAYMENTS_LIVE
+      ? await checkoutTable(slug, tableNo, method, method === "cash" ? tenderedNum : null)
+      : await checkoutTable(slug, tableNo, "other", null);
     if (!res.ok) {
       setErr(res.needsPricing ? t(T.needPrice) : t(T.failed) + (res.error ?? ""));
       setBusy(false);
@@ -93,7 +105,7 @@ export default function CheckoutModal({
       <div className="relative z-10 flex max-h-[92vh] w-full max-w-sm flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
         {/* header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <span className="text-base font-bold text-ink">{t(T.title)} · {t(T.table)} {tableNo}</span>
+          <span className="text-base font-bold text-ink">{PAYMENTS_LIVE ? t(T.title) : t(T.clearTitle)} · {t(T.table)} {tableNo}</span>
           <button onClick={onClose} disabled={busy} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-faint hover:bg-slate-50">✕</button>
         </div>
 
@@ -119,8 +131,12 @@ export default function CheckoutModal({
           <div className="mt-1 flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t(T.total)}</span><span>{fmtPrice(total)}</span></div>
         </div>
 
-        {/* payment */}
+        {/* payment (hidden in order-only mode) */}
         <div className="border-t border-slate-100 px-4 py-3">
+          {!PAYMENTS_LIVE && (
+            <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-ink-soft">{t(T.clearNote)}</div>
+          )}
+          {PAYMENTS_LIVE && (<>
           <div className="mb-2.5 grid grid-cols-3 gap-1.5">
             {(["cash", "card", "other"] as PaymentMethod[]).map((m) => (
               <button
@@ -163,12 +179,13 @@ export default function CheckoutModal({
               </div>
             </>
           )}
+          </>)}
 
           {hasUnpriced && <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{t(T.needPrice)}</div>}
           {err && <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{err}</div>}
 
           <button onClick={confirm} disabled={!canConfirm} className="btn-primary mt-3 w-full disabled:opacity-50">
-            {busy ? t(T.busy) : t(T.confirm)}
+            {busy ? t(T.busy) : PAYMENTS_LIVE ? t(T.confirm) : t(T.clearConfirm)}
           </button>
         </div>
       </div>
