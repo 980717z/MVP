@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { buildEposXml, buildEposReceiptXml } from "@/lib/epson";
+import { buildEposXml, buildEposReceiptXml, buildEposSplitXml } from "@/lib/epson";
 import type { Order } from "@/lib/orders";
 
 export const runtime = "nodejs";
@@ -104,6 +104,30 @@ async function handle(req: Request): Promise<Response> {
         .maybeSingle();
       if (claimed) return new Response(buildEposXml(order, shopName), { headers: XML_HEADERS });
       // else another poll claimed it — fall through to a bill, don't idle this poll.
+    }
+
+    // Split-bill queue (分单): one sub-bill / full-bill per poll, FIFO (created_at
+    // then seq → share 1, share 2, …, full). This is the checkout the waiter is
+    // running right now, so it beats general 账单 prints. CAS on printed_at.
+    const { data: pj } = await db
+      .from("print_jobs")
+      .select("id,kind,payload")
+      .eq("tenant_slug", slug)
+      .is("printed_at", null)
+      .order("created_at", { ascending: true })
+      .order("seq", { ascending: true })
+      .limit(1);
+    const jobRow = (pj as { id: string; kind: string; payload: Record<string, unknown> }[] | null)?.[0];
+    if (jobRow) {
+      const { data: jclaimed } = await db
+        .from("print_jobs")
+        .update({ printed_at: new Date().toISOString() })
+        .eq("id", jobRow.id)
+        .is("printed_at", null)
+        .select("id")
+        .maybeSingle();
+      if (jclaimed) return new Response(buildEposSplitXml(jobRow.kind, jobRow.payload, shopName), { headers: XML_HEADERS });
+      // else another poll claimed it — fall through.
     }
 
     // No kitchen ticket to print → serve the oldest pending customer bill (账单),

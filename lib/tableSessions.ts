@@ -6,8 +6,11 @@
 
 import { supabase } from "./supabase";
 import type { Order } from "./orders";
+import type { PaymentMethod, SplitPayload } from "./billSplit";
 
-export type PaymentMethod = "cash" | "card" | "other";
+// Split money math lives in the pure ./billSplit module (importable server-side).
+export type { PaymentMethod, SplitPayload, SplitShare, ShareLine } from "./billSplit";
+export { evenPartition, reconcileShares, partitionsMatch } from "./billSplit";
 
 /** One table's live state, derived from the orders the portal already polls. */
 export interface TableState {
@@ -93,6 +96,7 @@ export async function checkoutTable(
   tableNo: string,
   paymentMethod: PaymentMethod,
   amountTendered?: number | null,
+  split?: SplitPayload | null,
 ): Promise<CheckoutResult> {
   const { data: sess } = await supabase.auth.getSession();
   const token = sess.session?.access_token ?? "";
@@ -101,7 +105,7 @@ export async function checkoutTable(
     const res = await fetch("/api/table/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ slug, tableNo, paymentMethod, amountTendered: amountTendered ?? null }),
+      body: JSON.stringify({ slug, tableNo, paymentMethod, amountTendered: amountTendered ?? null, split: split ?? null }),
     });
     return (await res.json().catch(() => ({ ok: false, error: "解析失败" }))) as CheckoutResult;
   } catch (e) {

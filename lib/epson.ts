@@ -16,7 +16,7 @@
 
 import type { Order } from "./orders";
 import { displayTable } from "./format";
-import { renderTicketImage, renderReceiptImage } from "./ticketImage";
+import { renderTicketImage, renderReceiptImage, renderSplitReceiptImage } from "./ticketImage";
 import { computeTax } from "./tax";
 
 const NS = "http://www.epson-pos.com/schemas/2011/03/epos-print";
@@ -199,6 +199,40 @@ export function buildEposReceiptXml(orders: Order | Order[], shopName: string): 
   b.push(line(padRow("HST 13%", usd(Math.round((tax.gst + tax.pst) * 100) / 100))));
   b.push(line(RULE));
   b.push(line(padRow("TOTAL", usd(tax.total)), { big: true, em: true }));
+  b.push(`<feed line="3"/><cut type="feed"/>`);
+  return wrapPrintJob(b.join(""));
+}
+
+/** Build a split sub-bill ('share') or the merged full bill ('full') for a
+ *  print_jobs row. Renders 中文 + prices to a raster <image>; ASCII fallback keeps
+ *  the totals + payment method readable if canvas/font is unavailable. */
+export function buildEposSplitXml(kind: string, payload: Record<string, unknown>, shopName: string): string {
+  const img = renderSplitReceiptImage(kind, payload, shopName);
+  if (img) {
+    return wrapPrintJob(
+      `<text align="center"/>` +
+      `<image width="${img.width}" height="${img.height}">${img.base64}</image>` +
+      `<feed line="3"/><cut type="feed"/>`,
+    );
+  }
+  // Fallback: minimal ASCII (totals + method still print).
+  const usd = (n: unknown) => "$" + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+  const mLabel = (m: unknown) => (m === "cash" ? "CASH" : m === "card" ? "CARD" : m === "emt" ? "EMT" : m === "split" ? "SPLIT" : "OTHER");
+  const p = payload as Record<string, unknown>;
+  const b: string[] = [];
+  b.push(line(ascii(shopName) || "RECEIPT", { big: true, align: "center" }));
+  if (kind === "full") {
+    b.push(line(`BILL Table ${ascii(String(p.tableNo ?? ""))} FULL`, { em: true }));
+    b.push(line(RULE));
+    b.push(line(padRow("TOTAL", usd(p.total)), { big: true, em: true }));
+    for (const s of (Array.isArray(p.splits) ? p.splits : []) as Record<string, unknown>[])
+      b.push(line(padRow(`${ascii(String(s.label ?? ""))} ${mLabel(s.method)}`, usd(s.total))));
+  } else {
+    b.push(line(`Table ${ascii(String(p.tableNo ?? ""))}  ${Number(p.idx) || 1}/${Number(p.n) || 1}`, { em: true }));
+    b.push(line(RULE));
+    b.push(line(padRow("TOTAL", usd(p.total)), { big: true, em: true }));
+    b.push(line(`PAID ${mLabel(p.method)}`));
+  }
   b.push(`<feed line="3"/><cut type="feed"/>`);
   return wrapPrintJob(b.join(""));
 }

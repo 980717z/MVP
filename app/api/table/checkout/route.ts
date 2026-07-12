@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeTax } from "@/lib/tax";
+import { reconcileShares, partitionsMatch, type SplitPayload, type SplitShare } from "@/lib/billSplit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ export const runtime = "nodejs";
 // ─────────────────────────────────────────────────────────────────────────
 
 const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const cents = (n: number) => Math.round((Number(n) || 0) * 100);
 
 // Shop-tz (Toronto) business date, so the day's books are stable for remote owners.
 function shopBusinessDate(): string {
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
   const uid = auth?.user?.id;
   if (authErr || !uid) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  let body: { slug?: string; tableNo?: string; paymentMethod?: string; amountTendered?: number };
+  let body: { slug?: string; tableNo?: string; paymentMethod?: string; amountTendered?: number; split?: SplitPayload | null };
   try {
     body = await req.json();
   } catch {
@@ -55,8 +57,9 @@ export async function POST(req: Request) {
   const tableNo = (body.tableNo ?? "").trim();
   const method = (body.paymentMethod ?? "").trim();
   const tendered = body.amountTendered == null ? null : money(body.amountTendered);
+  const split = body.split && Array.isArray(body.split.shares) && body.split.shares.length >= 2 ? body.split : null;
   if (!slug || !tableNo) return NextResponse.json({ ok: false, error: "缺少桌号" }, { status: 400 });
-  if (!["cash", "card", "other"].includes(method)) return NextResponse.json({ ok: false, error: "付款方式无效" }, { status: 400 });
+  if (!["cash", "card", "emt", "other"].includes(method)) return NextResponse.json({ ok: false, error: "付款方式无效" }, { status: 400 });
 
   // 2) caller must own or be a member of the tenant
   const { data: tenant } = await db.from("tenants").select("owner_id").eq("slug", slug).maybeSingle();
@@ -88,6 +91,20 @@ export async function POST(req: Request) {
   if (method === "cash" && tendered != null && tendered < previewTax.total)
     return NextResponse.json({ ok: false, error: "收款金额不足", total: previewTax.total }, { status: 400 });
 
+  // Split validation runs BEFORE the atomic claim so a bad split never settles a
+  // table. Shares must sum to the table subtotal to the cent; each cash share must
+  // cover its own total. (Server re-taxes authoritatively after the claim.)
+  if (split) {
+    const parts = split.shares.map((s) => money(s.subtotal));
+    if (parts.some((p) => p < 0) || !partitionsMatch(previewSubtotal, parts))
+      return NextResponse.json({ ok: false, error: "分单金额与合计不符" }, { status: 400 });
+    if (split.shares.some((s) => !["cash", "card", "emt", "other"].includes((s.method ?? "").trim())))
+      return NextResponse.json({ ok: false, error: "分单付款方式无效" }, { status: 400 });
+    const taxed = reconcileShares(previewSubtotal, parts);
+    const shortShare = split.shares.findIndex((s, i) => s.method === "cash" && s.tendered != null && money(s.tendered) < taxed[i].total);
+    if (shortShare >= 0) return NextResponse.json({ ok: false, error: `第 ${shortShare + 1} 份收款不足` }, { status: 400 });
+  }
+
   // 4) ATOMIC CLAIM — the exactly-once anchor. Only one caller's UPDATE returns rows.
   const { data: claimedRows, error: claimErr } = await db
     .from("orders")
@@ -106,6 +123,28 @@ export async function POST(req: Request) {
   const tax = computeTax(subtotal, false);
   const change = method === "cash" && tendered != null ? money(tendered - tax.total) : null;
 
+  // 5b) build the split record — ONLY if the settled subtotal still matches what
+  // the split was validated against (an order changing mid-checkout falls back to
+  // a single bill so a stale partition can never mis-record money).
+  let splits: SplitShare[] = [];
+  let splitMode = "single";
+  if (split && cents(subtotal) === cents(previewSubtotal)) {
+    const taxed = reconcileShares(subtotal, split.shares.map((s) => money(s.subtotal)));
+    splits = split.shares.map((s, i) => {
+      const t = taxed[i];
+      const tnd = s.method === "cash" && s.tendered != null ? money(s.tendered) : null;
+      return {
+        label: (s.label ?? `第 ${i + 1} 份`).slice(0, 40),
+        method: s.method,
+        subtotal: t.subtotal, gst: t.gst, pst: t.pst, total: t.total,
+        tendered: tnd, change: tnd != null ? money(tnd - t.total) : null,
+        evenOfN: s.evenOfN, lines: split.mode === "item" ? (s.lines ?? []) : undefined,
+      };
+    });
+    splitMode = split.mode;
+  }
+  const isSplit = splits.length >= 2;
+
   // 6) checkout record
   const { data: session } = await db
     .from("table_sessions")
@@ -113,24 +152,40 @@ export async function POST(req: Request) {
       tenant_slug: slug,
       table_no: tableNo,
       closed_by: uid,
-      payment_method: method,
-      amount_tendered: method === "cash" ? tendered : null,
-      change_given: change,
+      payment_method: isSplit ? "split" : method,
+      amount_tendered: !isSplit && method === "cash" ? tendered : null,
+      change_given: isSplit ? null : change,
       subtotal: tax.subtotal,
       gst: tax.gst,
       pst: tax.pst,
       total: tax.total,
       business_date: shopBusinessDate(),
+      splits,
+      split_mode: splitMode,
     })
     .select("id")
     .single();
   const sessionId = session?.id ?? null;
   if (sessionId) await db.from("orders").update({ table_session_id: sessionId }).in("id", claimed.map((o) => o.id));
 
+  // 6b) queue prints for a split: one receipt per share + a full bill (drained
+  // one-per-poll by /api/epson). Enqueued AFTER the settle so an offline printer
+  // never blocks the checkout — the jobs wait and reprint on the next poll.
+  if (sessionId && isSplit) {
+    const fullLines = claimed.flatMap((o) => activeItems(o).map((it) => ({ name_zh: it.name_zh, name_en: it.name_en, qty: it.qty, price: it.price })));
+    const job = (kind: string, seq: number, payload: Record<string, unknown>) => ({ tenant_slug: slug, table_no: tableNo, kind, seq, session_id: sessionId, payload });
+    const shareJobs = splits.map((sh, i) => job("share", i + 1, { ...sh, idx: i + 1, n: splits.length, tableNo }));
+    const fullJob = job("full", splits.length + 1, {
+      tableNo, subtotal: tax.subtotal, gst: tax.gst, pst: tax.pst, hst: money(tax.gst + tax.pst), total: tax.total, lines: fullLines,
+      splits: splits.map((s) => ({ label: s.label, method: s.method, total: s.total })),
+    });
+    await db.from("print_jobs").insert([...shareJobs, fullJob]);
+  }
+
   // 7) post sales ONCE (over the claimed set only) — mirrors lib/store posting, server-side.
   await postClaimedSales(db, slug, claimed);
 
-  return NextResponse.json({ ok: true, sessionId, subtotal: tax.subtotal, hst: money(tax.gst + tax.pst), total: tax.total, change });
+  return NextResponse.json({ ok: true, sessionId, subtotal: tax.subtotal, hst: money(tax.gst + tax.pst), total: tax.total, change, split: isSplit ? splits.length : 0 });
 }
 
 // Sales ledger + dish counts + member spend for a settled table, using the admin

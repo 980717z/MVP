@@ -10,9 +10,6 @@ import CheckoutModal from "@/components/CheckoutModal";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
 import { useLang, type Dict } from "@/app/i18n";
 
-// Order-only mode (no payment): the table close-out is "print bill + clear", not 结账.
-const PAYMENTS_LIVE = process.env.NEXT_PUBLIC_PAYMENTS_LIVE === "1";
-
 const T: Record<string, Dict> = {
   empty: { zh: "空桌", en: "Empty table", fr: "Table libre" },
   noOrder: { zh: "还没有订单", en: "No orders yet", fr: "Aucune commande" },
@@ -240,7 +237,7 @@ export default function TableFloor({
                 <button onClick={() => setOrdering(true)} className="min-h-11 rounded-lg border border-brand px-4 font-medium text-brand-ink transition hover:bg-brand-wash">
                   {t(T.addRound)}
                 </button>
-                <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary flex-1">{PAYMENTS_LIVE ? t(T.checkout) : t(T.clear)} · {fmtPrice(state(sel)!.total)}</button>
+                <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary flex-1">{t(T.checkout)} · {fmtPrice(state(sel)!.total)}</button>
               </div>
             )}
           </div>

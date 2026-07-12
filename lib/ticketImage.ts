@@ -231,6 +231,79 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
   return { canvas: paint(b.ops, height), height };
 }
 
+// ── SPLIT BILLS (分单) ───────────────────────────────────────────────────────
+// One receipt per share (each with its own 付款方式) + a full merged bill listing
+// how the table was divided. Payloads come from print_jobs.payload (jsonb).
+interface SplitReceiptPayload {
+  tableNo?: string; idx?: number; n?: number; evenOfN?: number; label?: string; method?: string;
+  subtotal?: number; gst?: number; pst?: number; hst?: number; total?: number;
+  tendered?: number | null; change?: number | null;
+  lines?: { name_zh?: string; name_en?: string; qty?: number; price?: number | null }[];
+  splits?: { label?: string; method?: string; total?: number }[];
+}
+function methodZh(m?: string): string {
+  return m === "cash" ? "现金" : m === "card" ? "刷卡" : m === "emt" ? "EMT" : m === "split" ? "分单" : "其他";
+}
+const hstOf = (p: SplitReceiptPayload) => p.hst != null ? p.hst : Math.round(((p.gst || 0) + (p.pst || 0)) * 100) / 100;
+
+function drawSplitShare(p: SplitReceiptPayload, shopName: string): { canvas: Canvas; height: number } | null {
+  if (!ensureFont()) return null;
+  const mc = createCanvas(W, 10).getContext("2d");
+  const b = newBuilder(mc);
+  b.centered(shopName, SHOP, true, LH_SHOP);
+  b.rule(true);
+  b.left(`账单 · 桌 ${p.tableNo ?? ""}`, MID, true, LH_MID);
+  b.left(`第 ${p.idx ?? 1}/${p.n ?? 1} 份${p.evenOfN ? `  均分 1/${p.evenOfN}` : ""}`, SM, false, LH_SM);
+  b.rule();
+  const lines = p.lines ?? [];
+  for (const it of lines) {
+    const qty = Number(it.qty) || 1;
+    const name = (it.name_zh || it.name_en || "菜品").trim();
+    b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+  }
+  if (lines.length) b.rule();
+  b.row("小计", money(p.subtotal || 0), MID, false, LH_MID);
+  b.row("HST 13%", money(hstOf(p)), SM, false, LH_SM);
+  b.rule();
+  b.row("合计", money(p.total || 0), BIG, true, LH_BIG);
+  b.left(`付款  ${methodZh(p.method)}`, MID, true, LH_MID);
+  if (p.method === "cash" && p.tendered != null) {
+    b.row("收", money(p.tendered), SM, false, LH_SM);
+    b.row("找", money(p.change || 0), SM, false, LH_SM);
+  }
+  b.gap(40);
+  const height = b.height();
+  return { canvas: paint(b.ops, height), height };
+}
+
+function drawSplitFull(p: SplitReceiptPayload, shopName: string): { canvas: Canvas; height: number } | null {
+  if (!ensureFont()) return null;
+  const mc = createCanvas(W, 10).getContext("2d");
+  const b = newBuilder(mc);
+  b.centered(shopName, SHOP, true, LH_SHOP);
+  b.left(`账单 · 桌 ${p.tableNo ?? ""} · 合并`, MID, true, LH_MID);
+  b.rule(true);
+  for (const it of p.lines ?? []) {
+    const qty = Number(it.qty) || 1;
+    const name = (it.name_zh || it.name_en || "菜品").trim();
+    b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+  }
+  b.rule();
+  b.row("小计", money(p.subtotal || 0), MID, false, LH_MID);
+  b.row("HST 13%", money(hstOf(p)), SM, false, LH_SM);
+  b.rule();
+  b.row("合计", money(p.total || 0), BIG, true, LH_BIG);
+  const splits = p.splits ?? [];
+  if (splits.length) {
+    b.rule();
+    b.left(`分 ${splits.length} 单`, MID, true, LH_MID);
+    splits.forEach((s, i) => b.row(`${s.label || `第 ${i + 1} 份`} · ${methodZh(s.method)}`, money(s.total || 0), SM, false, LH_SM));
+  }
+  b.gap(40);
+  const height = b.height();
+  return { canvas: paint(b.ops, height), height };
+}
+
 // ── PUBLIC: raster for ePOS-Print, or PNG for on-screen preview ─────────────
 function raster(drawn: { canvas: Canvas; height: number } | null): { width: number; height: number; base64: string } | null {
   if (!drawn) return null;
@@ -253,6 +326,21 @@ export function renderTicketPngBase64(o: Order, shopName: string): string | null
 /** Customer bill as base64 PNG — preview without a printer. */
 export function renderReceiptPngBase64(orders: Order | Order[], shopName: string): string | null {
   try { const d = drawReceipt(Array.isArray(orders) ? orders : [orders], shopName); return d ? d.canvas.toBuffer("image/png").toString("base64") : null; } catch { return null; }
+}
+/** Split sub-bill ('share') or the merged full bill ('full') for a print_jobs row. */
+export function renderSplitReceiptImage(kind: string, payload: unknown, shopName: string): { width: number; height: number; base64: string } | null {
+  try {
+    const p = (payload ?? {}) as SplitReceiptPayload;
+    return raster(kind === "full" ? drawSplitFull(p, shopName) : drawSplitShare(p, shopName));
+  } catch { return null; }
+}
+/** Split receipt as base64 PNG — preview without a printer. */
+export function renderSplitReceiptPngBase64(kind: string, payload: unknown, shopName: string): string | null {
+  try {
+    const p = (payload ?? {}) as SplitReceiptPayload;
+    const d = kind === "full" ? drawSplitFull(p, shopName) : drawSplitShare(p, shopName);
+    return d ? d.canvas.toBuffer("image/png").toString("base64") : null;
+  } catch { return null; }
 }
 
 function packRaster(c: SKRSContext2D, w: number, h: number): { width: number; height: number; base64: string } {
