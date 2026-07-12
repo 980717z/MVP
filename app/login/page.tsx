@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { claimInvites } from "@/lib/store";
@@ -28,6 +28,11 @@ const T: Record<string, Dict> = {
     fr: "Compte créé. Si la vérification par courriel est activée, consultez votre boîte avant de vous connecter.",
   },
   genericErr: { en: "Something went wrong", zh: "出错了", fr: "Une erreur s'est produite" },
+  needCreds: {
+    en: "Enter your email and password.",
+    zh: "请填写邮箱和密码。",
+    fr: "Saisissez votre courriel et votre mot de passe.",
+  },
 };
 
 export default function Login() {
@@ -38,6 +43,11 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // iPad/iOS Safari (iCloud Keychain) autofills the fields without firing React's
+  // onChange, leaving email/password state empty → the button would stay disabled
+  // and taps do nothing. Read the live DOM values from refs at submit as a fallback.
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -50,12 +60,21 @@ export default function Login() {
     if (params.get("invite") === "1") setMode("signup");
   }, [router]);
 
-  const submit = async () => {
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (busy) return;
+    // Prefer the live DOM value (survives autofill); fall back to React state.
+    const emailVal = (emailRef.current?.value ?? email).trim();
+    const passwordVal = passwordRef.current?.value ?? password;
+    if (!emailVal || !passwordVal) {
+      setMsg(t(T.needCreds));
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({ email: emailVal, password: passwordVal });
         if (error) throw error;
         // If email confirmation is OFF, a session is returned immediately.
         const { data } = await supabase.auth.getSession();
@@ -66,7 +85,7 @@ export default function Login() {
           setMsg(t(T.signupOk));
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: emailVal, password: passwordVal });
         if (error) throw error;
         await claimInvites();
         router.replace("/app");
@@ -105,29 +124,39 @@ export default function Login() {
             </button>
           </div>
 
-          <label className="label">{t(T.email)}</label>
-          <input
-            className="input mb-3"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-          />
-          <label className="label">{t(T.password)}</label>
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-            placeholder={t(T.pwPlaceholder)}
-          />
+          <form onSubmit={submit}>
+            <label className="label">{t(T.email)}</label>
+            <input
+              ref={emailRef}
+              className="input mb-3"
+              type="email"
+              name="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
+            <label className="label">{t(T.password)}</label>
+            <input
+              ref={passwordRef}
+              className="input"
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={t(T.pwPlaceholder)}
+            />
 
-          {msg && <div className="mt-3 text-sm text-amber-700">{msg}</div>}
+            {msg && <div className="mt-3 text-sm text-amber-700">{msg}</div>}
 
-          <button className="btn-primary mt-4 w-full" onClick={submit} disabled={busy || !email || !password}>
-            {busy ? t(T.wait) : mode === "signin" ? t(T.ctaSignin) : t(T.ctaSignup)}
-          </button>
+            {/* type="submit" → iPad keyboard "return/Go" and taps both fire the form.
+                Only disabled while a request is in flight (not on empty state, which
+                autofill leaves stale). */}
+            <button className="btn-primary mt-4 w-full" type="submit" disabled={busy}>
+              {busy ? t(T.wait) : mode === "signin" ? t(T.ctaSignin) : t(T.ctaSignup)}
+            </button>
+          </form>
         </div>
 
         <p className="mt-4 text-center text-xs text-ink-faint">{t(T.footer)}</p>
