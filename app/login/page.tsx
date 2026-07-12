@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { claimInvites } from "@/lib/store";
@@ -33,24 +33,12 @@ const T: Record<string, Dict> = {
     zh: "请填写邮箱和密码。",
     fr: "Saisissez votre courriel et votre mot de passe.",
   },
+  storageBlocked: {
+    en: "Your browser is blocking sign-in from being saved. Turn off Private Browsing and \"Prevent Cross-Site Tracking\" (Settings → Safari), then try again.",
+    zh: "浏览器阻止了登录状态的保存，导致登录后又被退回。请关闭 Safari 的「无痕浏览」，并在「设置 → Safari」里关掉「阻止跨网站跟踪 / 屏蔽所有 Cookie」，然后重试。",
+    fr: "Votre navigateur empêche l'enregistrement de la connexion. Désactivez la navigation privée et « Empêcher le suivi intersites » (Réglages → Safari), puis réessayez.",
+  },
 };
-
-// ⚠️ TEMP DIAGNOSTIC BUILD — remove this whole block + the modal once the iPad
-// login issue is pinned down. Bump the tag on every deploy so a screenshot proves
-// which build the device actually loaded (rules out Safari caching an old page).
-const BUILD_TAG = "diag-2026-07-11e";
-
-const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
-// Reject if a promise doesn't settle in time, so a black-holed network request
-// turns into a visible "timeout" line instead of a spinner that never resolves.
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} 超时 ${ms}ms`)), ms)),
-  ]);
-}
 
 // localStorage is where supabase-js persists the session. In Safari Private
 // Browsing or with cookies/storage blocked, writes throw or are dropped — login
@@ -66,73 +54,17 @@ function storageWorks(): boolean {
   }
 }
 
-// Snapshot of the device/browser state — every report starts with this.
-function envLines(): string[] {
-  const nav = typeof navigator !== "undefined" ? navigator : ({} as Navigator);
-  let sbKeys = "?";
-  try {
-    sbKeys =
-      Object.keys(window.localStorage)
-        .filter((k) => k.startsWith("sb-") || k.includes("supabase") || k.includes("auth"))
-        .join(", ") || "（无）";
-  } catch (e: any) {
-    sbKeys = `读取异常: ${e?.message ?? e}`;
-  }
-  return [
-    `构建 build: ${BUILD_TAG}`,
-    `时间 time: ${new Date().toString()}`,
-    `网址 url: ${typeof location !== "undefined" ? location.href : "?"}`,
-    `联网 online: ${(nav as any).onLine}`,
-    `Cookie启用: ${(nav as any).cookieEnabled}`,
-    `本地存储 storage: ${storageWorks() ? "可用 ok" : "被阻断 BLOCKED"}`,
-    `已存登录键 sb-keys: ${sbKeys}`,
-    `UA: ${(nav as any).userAgent ?? "?"}`,
-  ];
-}
-
 export default function Login() {
   const router = useRouter();
   const { t } = useLang();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  // TEMP: full-screen diagnostic report. Non-null → modal is shown. `ok` decides
-  // header color (green success vs red problem) and whether "continue" appears.
-  const [report, setReport] = useState<{ lines: string[]; ok: boolean } | null>(null);
-
   // Uncontrolled inputs (ref + read at submit). iPad/iOS Safari (iCloud Keychain)
   // autofills without firing React's onChange; with controlled inputs a re-render
   // would then wipe the autofilled text back to empty. Uncontrolled keeps it.
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  // TEMP: flips to true only once React actually hydrates on the device. If it
-  // stays false on the iPad, JS isn't running there (blocker / stale cache /
-  // restriction) — which is exactly why the tap never reaches Supabase.
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
-
-  // Catch ANY mysterious failure (crashes outside the submit flow) and surface it
-  // in the same modal — nothing fails silently.
-  useEffect(() => {
-    const onErr = (ev: ErrorEvent) =>
-      setReport({
-        ok: false,
-        lines: ["【全局 JS 错误 window.onerror】", ...envLines(), `error: ${ev.message}`, `位置: ${ev.filename}:${ev.lineno}:${ev.colno}`],
-      });
-    const onRej = (ev: PromiseRejectionEvent) => {
-      const r: any = ev.reason;
-      setReport({
-        ok: false,
-        lines: ["【未处理的 Promise 拒绝 unhandledrejection】", ...envLines(), `reason: ${r?.message ?? String(r)}`, `stack: ${r?.stack ?? "无"}`],
-      });
-    };
-    window.addEventListener("error", onErr);
-    window.addEventListener("unhandledrejection", onRej);
-    return () => {
-      window.removeEventListener("error", onErr);
-      window.removeEventListener("unhandledrejection", onRej);
-    };
-  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -145,110 +77,55 @@ export default function Login() {
     if (params.get("invite") === "1") setMode("signup");
   }, [router]);
 
-  const submit = async (e?: FormEvent) => {
-    e?.preventDefault();
+  const submit = async () => {
     if (busy) return;
-    // Progressive report: pops up the instant the tap registers, then updates
-    // after every step. If NOTHING pops up, submit() never ran (native reload /
-    // button not wired). If it hangs at a step, that's where it's stuck.
-    const lines: string[] = ["【登录诊断】点击已触发 ✔", ...envLines()];
-    const flush = (ok = false) => setReport({ ok, lines: [...lines] });
-    flush();
-
     const emailVal = (emailRef.current?.value ?? "").trim();
     const passwordVal = passwordRef.current?.value ?? "";
-    lines.push(`邮箱是否填入: ${emailVal ? `是 → ${emailVal}` : "否（空）"}`);
-    lines.push(`密码是否填入: ${passwordVal ? `是 → ${passwordVal.length} 位` : "否（空）"}`);
-    flush();
-
     if (!emailVal || !passwordVal) {
-      lines.push("结论: 邮箱或密码为空，未提交。");
       setMsg(t(T.needCreds));
-      flush();
       return;
     }
-
+    // If storage is blocked, login would succeed then bounce back. Stop early
+    // with a clear instruction rather than looping.
+    if (!storageWorks()) {
+      setMsg(t(T.storageBlocked));
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
-      // Raw network probe — independent of supabase-js. Tells us if the device
-      // can even reach Supabase (content blocker / Wi-Fi / DNS would fail here).
-      lines.push("→ 测试网络能否连到 Supabase …");
-      flush();
-      try {
-        const probe = await withTimeout(
-          fetch(`${SUPA_URL}/auth/v1/health`, { headers: { apikey: SUPA_KEY } }),
-          8000,
-          "网络探测",
-        );
-        lines.push(`网络探测: HTTP ${probe.status}（能连到 Supabase）`);
-      } catch (netErr: any) {
-        lines.push(`❌ 网络探测失败: ${netErr?.message ?? netErr}`);
-        lines.push("→ 请求发不出去：可能是 Chrome 拦截插件 / 店里 WiFi / DNS 屏蔽了 supabase.co。");
-      }
-      flush();
-
       if (mode === "signup") {
-        lines.push("→ 调用 signUp …");
-        flush();
-        const { error } = await withTimeout(supabase.auth.signUp({ email: emailVal, password: passwordVal }), 15000, "signUp");
-        if (error) {
-          lines.push(`signUp 失败: ${error.message}`);
-          flush();
+        const { error } = await supabase.auth.signUp({ email: emailVal, password: passwordVal });
+        if (error) throw error;
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          await claimInvites(); // link any pending staff invites for this email
+          router.replace("/app");
+        } else {
+          setMsg(t(T.signupOk));
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: emailVal, password: passwordVal });
+        if (error) throw error;
+        // Confirm the session actually persisted before redirecting; if not, the
+        // /app guard would bounce us right back to an empty login form.
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) {
+          setMsg(t(T.storageBlocked));
           return;
         }
-        const { data } = await supabase.auth.getSession();
-        lines.push(`signUp 成功, getSession: ${data.session ? "有 session" : "无 session（可能需邮箱验证）"}`);
-        flush(!!data.session);
-        if (!data.session) setMsg(t(T.signupOk));
-        return;
+        await claimInvites();
+        router.replace("/app");
       }
-
-      lines.push("→ 调用 signInWithPassword …");
-      flush();
-      const { data: signInData, error } = await withTimeout(
-        supabase.auth.signInWithPassword({ email: emailVal, password: passwordVal }),
-        15000,
-        "登录请求",
-      );
-      if (error) {
-        lines.push(`❌ 登录失败: ${error.message} (status ${(error as any).status ?? "?"})`);
-        lines.push("→ 多半是邮箱/密码不对（这台设备钥匙串可能存了旧密码）。");
-        flush();
-        return;
-      }
-      lines.push(`✅ signInWithPassword 成功, 返回 session: ${signInData.session ? "有" : "无"}`);
-      flush();
-
-      // Did the session actually land in storage? (the real bounce-back failure mode)
-      const { data: after } = await supabase.auth.getSession();
-      lines.push(`登录后 getSession(): ${after.session ? "有 session" : "❌ 无 session（没存住！）"}`);
-      lines.push(`登录后 storage: ${storageWorks() ? "可用" : "❌ 被阻断"}`);
-      lines.push(...envLines().filter((l) => l.startsWith("已存登录键")));
-
-      if (!after.session) {
-        lines.push("结论: 登录成功但登录态存不住 → 进后台会被立刻退回本页。");
-        lines.push("→ 关闭 Safari/Chrome「无痕」+「阻止跨网站跟踪/屏蔽所有Cookie」后重试。");
-        flush();
-        return;
-      }
-
-      lines.push("结论: 一切正常 ✅ 可进入后台（点下方绿色按钮）。");
-      flush(true);
-      // NOTE: do NOT auto-redirect — keep the success report visible/screenshot-able.
-      // The "继续进入后台" button performs the redirect.
     } catch (e: any) {
-      lines.push(`💥 异常 exception: ${e?.message ?? String(e)}`);
-      lines.push(`stack: ${e?.stack ?? "无"}`);
-      setMsg(e?.message ?? t(T.genericErr));
-      flush();
+      setMsg(e.message ?? t(T.genericErr));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <main className="grid min-h-screen place-items-center bg-gradient-to-t from-emerald-200 via-emerald-50 to-white px-6">
+    <main className="grid min-h-screen place-items-center px-6">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -256,18 +133,6 @@ export default function Login() {
             <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
           </div>
           <LangToggle />
-        </div>
-
-        {/* ⚠️ TEMP hydration badge — proves whether JS is actually running on this
-            device. If it stays red on the iPad, the page never became interactive
-            (script blocked / stale cache / restriction) → that's why taps do nothing
-            and never reach Supabase. Server renders it red; React flips it green. */}
-        <div
-          className={`mb-3 rounded-lg px-3 py-2 text-center text-sm font-semibold ${
-            hydrated ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"
-          }`}
-        >
-          {hydrated ? "✅ 页面已就绪，可以登录 (JS ready)" : "○ 页面未就绪 / JS 未运行 (loading…)"}
         </div>
 
         <div className="card p-6">
@@ -286,11 +151,10 @@ export default function Login() {
             </button>
           </div>
 
-          {/* No <form>: a native form submit reloads the page (GET with the creds
-              in the URL) if a tap lands before React hydrates — which looks exactly
-              like the "it just refreshes" symptom and never reaches Supabase. Using
-              a plain button + explicit onClick means a pre-hydration tap does nothing
-              (safe) instead of reloading; keyboard Enter is handled per-input. */}
+          {/* No <form>: a native form submit reloads the page (GET with the creds in
+              the URL) if a tap lands before React hydrates — which never reaches
+              Supabase and looks like "it just refreshes". Plain button + explicit
+              onClick means a pre-hydration tap does nothing; Enter is handled here. */}
           <div>
             <label className="label">{t(T.email)}</label>
             <input
@@ -322,43 +186,7 @@ export default function Login() {
         </div>
 
         <p className="mt-4 text-center text-xs text-ink-faint">{t(T.footer)}</p>
-        <p className="mt-1 text-center text-[10px] text-slate-400">{BUILD_TAG}</p>
       </div>
-
-      {/* ⚠️ TEMP diagnostic modal — pops up on EVERY sign-in attempt (success or
-          failure) and on any global JS error. Screenshot it and send to support.
-          Remove together with BUILD_TAG / envLines / report state once resolved. */}
-      {report && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
-          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className={`px-4 py-3 text-center text-base font-bold text-white ${report.ok ? "bg-emerald-600" : "bg-red-600"}`}>
-              {report.ok ? "✅ 登录诊断（成功）" : "⚠️ 登录诊断（有问题）"}
-              <div className="text-xs font-normal opacity-90">请把这个框截图发给技术 · Screenshot this</div>
-            </div>
-            <div className="overflow-y-auto px-4 py-3">
-              <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-slate-800">
-                {report.lines.join("\n")}
-              </pre>
-            </div>
-            <div className="flex gap-2 border-t border-slate-200 p-3">
-              <button
-                className="flex-1 rounded-lg bg-slate-200 py-2.5 text-sm font-medium text-slate-800"
-                onClick={() => setReport(null)}
-              >
-                关闭 Close
-              </button>
-              {report.ok && (
-                <button
-                  className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-sm font-medium text-white"
-                  onClick={() => router.replace("/app")}
-                >
-                  继续进入后台 →
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
