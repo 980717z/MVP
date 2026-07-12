@@ -128,7 +128,7 @@ function newBuilder(mc: SKRSContext2D) {
   };
   // Dish line for the kitchen ticket: qty prefix, name hang-indented under itself.
   const item = (qty: number, name: string) => {
-    const prefix = `${qty} x `;
+    const prefix = qty >= 2 ? `${qty} x ` : ""; // single item → no "1 x"
     setFont(mc, BIG, true);
     const hang = mc.measureText(prefix).width;
     const lines = wrap(mc, name, BIG, true, MAXW - hang);
@@ -217,7 +217,7 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
     const qty = Number(it.qty) || 1;
     const name = (it.name_zh || it.name_en || "菜品").trim();
     // Item rows are read up close on the bill → SM keeps long names on one line.
-    b.row(`${name} ×${qty}`, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
   }
   b.rule();
   b.row("小计", money(subtotal), MID, false, LH_MID);

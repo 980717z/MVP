@@ -118,7 +118,7 @@ export function buildEposXml(o: Order, shopName: string): string {
   for (const it of items) {
     const qty = Number(it.qty) || 1;
     const name = ascii(it.name_en) || ascii(it.name_zh) || "Item";
-    b.push(line(`${qty} x ${name}`, { big: true }));
+    b.push(line(qty >= 2 ? `${qty} x ${name}` : name, { big: true }));
   }
   b.push(line(RULE));
   b.push(line(`Items: ${count}`, { em: true }));
@@ -191,7 +191,7 @@ export function buildEposReceiptXml(orders: Order | Order[], shopName: string): 
   for (const it of items) {
     const qty = Number(it.qty) || 1;
     const name = ascii(it.name_en) || ascii(it.name_zh) || "Item";
-    b.push(line(padRow(`${name} x${qty}`, usd((Number(it.price) || 0) * qty))));
+    b.push(line(padRow(qty >= 2 ? `${name} x${qty}` : name, usd((Number(it.price) || 0) * qty))));
   }
   b.push(line(RULE));
   b.push(line(padRow("Subtotal", usd(subtotal))));
