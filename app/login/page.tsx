@@ -38,7 +38,7 @@ const T: Record<string, Dict> = {
 // ⚠️ TEMP DIAGNOSTIC BUILD — remove this whole block + the modal once the iPad
 // login issue is pinned down. Bump the tag on every deploy so a screenshot proves
 // which build the device actually loaded (rules out Safari caching an old page).
-const BUILD_TAG = "diag-2026-07-11b";
+const BUILD_TAG = "diag-2026-07-11c";
 
 // localStorage is where supabase-js persists the session. In Safari Private
 // Browsing or with cookies/storage blocked, writes throw or are dropped — login
@@ -203,7 +203,7 @@ export default function Login() {
   };
 
   return (
-    <main className="grid min-h-screen place-items-center px-6">
+    <main className="grid min-h-screen place-items-center bg-gradient-to-t from-emerald-200 via-emerald-50 to-white px-6">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
