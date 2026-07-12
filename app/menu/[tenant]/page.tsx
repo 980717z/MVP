@@ -60,6 +60,11 @@ export default function PublicMenu() {
   const [activeCat, setActiveCat] = useState<string>("");
   const [sheetDish, setSheetDish] = useState<MenuItem | null>(null); // open 多规格 size sheet
   const [sidesOpen, setSidesOpen] = useState(false); // full 火锅配菜 sheet (auto-opens on hotpot)
+  // staff (?staff=1) per-item customization: note + price adjustment (±), keyed by cartKey
+  const [itemMeta, setItemMeta] = useState<Record<string, { note?: string; adjust?: number }>>({});
+  const [staffEditKey, setStaffEditKey] = useState<string | null>(null); // cartKey whose editor sheet is open
+  const [editNote, setEditNote] = useState("");
+  const [editAdjust, setEditAdjust] = useState("");
   const railRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
@@ -170,9 +175,12 @@ export default function PublicMenu() {
       // priceless cooking-style variant like 生猛龙虾·清蒸). Staff prices it at
       // completion. A market dish with a today-price entered charges normally.
       const isMarket = !!d.is_market && !(unitPrice(d, vi) > 0);
-      return { key, d, variant, isMarket, unit: isMarket ? 0 : unitPrice(d, vi), qty };
+      const meta = itemMeta[key];
+      const base = isMarket ? 0 : unitPrice(d, vi);
+      const unit = Math.max(0, Math.round((base + (meta?.adjust ?? 0)) * 100) / 100); // staff ± adjustment, never negative
+      return { key, d, variant, isMarket, unit, qty, note: meta?.note };
     })
-    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number } => !!x);
+    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number; note: string | undefined } => !!x);
   const hasMarketItems = cartLines.some((x) => x.isMarket);
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
   const total = cartLines.reduce((a, x) => a + x.unit * x.qty, 0);
@@ -331,6 +339,7 @@ export default function PublicMenu() {
       price: x.isMarket ? null : x.unit,
       qty: x.qty,
       ...(x.isMarket ? { market: true } : {}),
+      ...(x.note ? { note: x.note } : {}),
     }));
     const res = await createOrder(slug, {
       items,
@@ -503,15 +512,27 @@ export default function PublicMenu() {
           <span className="flex-none rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-ink-faint" title={tri("未定价", "Not priced", "Non tarifé")}>
             {tri("请询问", "Ask staff", "Demander")}
           </span>
-        ) : qty === 0 ? (
-          <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
-            ＋
-          </button>
         ) : (
           <div className="flex flex-none items-center gap-2">
-            <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
-            <span className="w-5 text-center font-semibold text-ink">{qty}</span>
-            <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+            {/* staff-only: per-item 备注 + 加价/减价 for this dish (opens the editor sheet) */}
+            {staff && (
+              <button
+                onClick={() => { const m = itemMeta[d.id]; setEditNote(m?.note ?? ""); setEditAdjust(m?.adjust != null ? String(m.adjust) : ""); setStaffEditKey(d.id); }}
+                title={tri("备注 / 改价", "Note / price", "Note / prix")}
+                className={`grid h-7 w-7 flex-none place-items-center rounded-full border text-sm ${itemMeta[d.id]?.note || itemMeta[d.id]?.adjust ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
+              >
+                ✎
+              </button>
+            )}
+            {qty === 0 ? (
+              <button onClick={() => inc(d.id, 1)} className="rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                <span className="w-5 text-center font-semibold text-ink">{qty}</span>
+                <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -772,6 +793,49 @@ export default function PublicMenu() {
           </div>
         </div>
       )}
+
+      {/* staff per-item 备注 + 加价/减价 editor */}
+      {staffEditKey && (() => {
+        const { id, vi } = parseCartKey(staffEditKey);
+        const d = byId[id];
+        if (!d) return null;
+        const base = d.is_market && !(unitPrice(d, vi) > 0) ? 0 : unitPrice(d, vi);
+        const adj = editAdjust.trim() === "" ? 0 : parseFloat(editAdjust) || 0;
+        const newPrice = Math.max(0, Math.round((base + adj) * 100) / 100);
+        return (
+          <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setStaffEditKey(null)}>
+            <div className="mx-auto max-h-[80vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-lg font-bold text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+                <button onClick={() => setStaffEditKey(null)} className="flex-none text-ink-faint">✕</button>
+              </div>
+              <label className="mb-1 block text-sm font-medium text-ink-soft">{tri("备注（厨房 + 账单显示）", "Note (kitchen + bill)", "Note (cuisine + addition)")}</label>
+              <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder={tri("例：加一条鱼", "e.g. add a fish", "ex. ajouter un poisson")} className="input mb-4 w-full" />
+              <label className="mb-1 block text-sm font-medium text-ink-soft">{tri("加价 / 减价", "Price adjustment", "Ajustement de prix")}</label>
+              <div className="flex items-center gap-2">
+                <span className="text-ink-faint">$</span>
+                <input type="number" inputMode="decimal" value={editAdjust} onChange={(e) => setEditAdjust(e.target.value)} placeholder="+15 / -5" className="input flex-1" />
+              </div>
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-jade-wash px-3 py-2 text-sm">
+                <span className="text-ink-soft">{tri("原价", "Base", "Base")} {fmtPrice(base)}</span>
+                <span className="font-bold text-jade">→ {fmtPrice(newPrice)}</span>
+              </div>
+              <button
+                onClick={() => {
+                  const a = editAdjust.trim() === "" ? 0 : parseFloat(editAdjust) || 0;
+                  const nt = editNote.trim();
+                  setItemMeta((mm) => ({ ...mm, [staffEditKey]: { note: nt || undefined, adjust: a || undefined } }));
+                  setCart((c) => ({ ...c, [staffEditKey]: c[staffEditKey] || 1 }));
+                  setStaffEditKey(null);
+                }}
+                className="mt-4 w-full rounded-lg bg-jade py-3 font-medium text-white"
+              >
+                {tri("完成", "Done", "Terminé")}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {sheetDish && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSheetDish(null)}>

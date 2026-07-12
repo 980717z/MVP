@@ -244,7 +244,7 @@ export default function CheckoutModal({
                 <div className="mb-1 text-[11px] text-ink-faint">{t(T.round).replace("{n}", String(ri + 1))}</div>
                 {activeItems(o).map((it, i) => (
                   <div key={i} className="flex justify-between py-0.5">
-                    <span className="text-ink">{it.name_zh} <span className="text-ink-faint">×{it.qty}</span></span>
+                    <span className="text-ink">{it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}</span>
                     <span className="text-ink-soft">{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
                   </div>
                 ))}

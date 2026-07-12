@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { TableSpot } from "@/lib/store";
-import { reprintOrder, cancelOrderItem, deleteOrder, setOrderStatus, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { reprintOrder, requestBill, cancelOrderItem, deleteOrder, setOrderStatus, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { listMenuItems } from "@/lib/menu";
 import { tableOccupancy, listTableCheckouts, type TableState, type TableCheckout } from "@/lib/tableSessions";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -16,6 +16,8 @@ const T: Record<string, Dict> = {
   emptyHint: { zh: "点单即可开台", en: "Take an order to open the table", fr: "Commander pour ouvrir la table" },
   round: { zh: "第 {n} 单", en: "Round {n}", fr: "Tournée {n}" },
   reprint: { zh: "重打厨房单", en: "Reprint kitchen", fr: "Réimprimer" },
+  printBill: { zh: "打印账单", en: "Print bill", fr: "Imprimer l'addition" },
+  billSent: { zh: "账单已送打印机", en: "Bill sent to printer", fr: "Addition envoyée à l'imprimante" },
   checkout: { zh: "结账", en: "Checkout", fr: "Encaisser" },
   m_cash: { zh: "现金", en: "Cash", fr: "Comptant" },
   m_card: { zh: "刷卡", en: "Card", fr: "Carte" },
@@ -199,7 +201,7 @@ export default function TableFloor({
                     </div>
                     {(o.items ?? []).map((it: OrderItem & { cancelled?: boolean }, i: number) => (
                       <div key={i} className={`flex items-center justify-between py-0.5 text-sm ${it.cancelled ? "opacity-40" : ""}`}>
-                        <span className={it.cancelled ? "text-ink-faint line-through" : "text-ink"}>{it.name_zh} <span className="text-ink-faint">×{it.qty}</span></span>
+                        <span className={it.cancelled ? "text-ink-faint line-through" : "text-ink"}>{it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}</span>
                         <span className="flex items-center gap-2">
                           {it.market && !(Number(it.price) > 0) ? (
                             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">{t(T.marketPending)}</span>
@@ -239,11 +241,17 @@ export default function TableFloor({
             {/* Occupied → 加单 + 结账 in the footer. Empty → the CTA lives in the
                 centered empty state above, so no footer (no marooned bottom button). */}
             {state(sel)?.hasOrder && (
-              <div className="flex gap-2 border-t border-slate-100 p-4">
+              <div className="flex flex-wrap gap-2 border-t border-slate-100 p-4">
                 <button onClick={() => setOrdering(true)} className="min-h-11 rounded-lg border border-brand px-4 font-medium text-brand-ink transition hover:bg-brand-wash">
                   {t(T.addRound)}
                 </button>
-                <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary flex-1">{t(T.checkout)} · {fmtPrice(state(sel)!.total)}</button>
+                <button
+                  onClick={async () => { await requestBill(state(sel)!.orders.map((o) => o.id)).catch(() => {}); alert(t(T.billSent)); }}
+                  className="min-h-11 rounded-lg border border-slate-300 px-4 font-medium text-ink-soft transition hover:bg-slate-50"
+                >
+                  🖨️ {t(T.printBill)}
+                </button>
+                <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary min-w-[8rem] flex-1">{t(T.checkout)} · {fmtPrice(state(sel)!.total)}</button>
               </div>
             )}
           </div>

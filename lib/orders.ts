@@ -14,6 +14,8 @@ export interface OrderItem {
   /** 时价 dish: ordered without a visible price; staff enters the actual
    *  price before the order can be marked 完成. */
   market?: boolean;
+  /** Staff per-item note (e.g. 加一条鱼); prints under the dish on the bill + kitchen ticket. */
+  note?: string;
 }
 
 export interface OrderAddress {

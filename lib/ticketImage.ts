@@ -182,7 +182,11 @@ function drawTicket(o: Order, shopName: string): { canvas: Canvas; height: numbe
   if (t.tel) b.left(`电话 ${t.tel}`, MID, true, LH_MID); // callback number — staff verify by phone
   b.left(fmtTime(o.created_at), SM, false, LH_SM);
   b.rule();
-  for (const it of items) b.item(Number(it.qty) || 1, (it.name_zh || it.name_en || "菜品").trim());
+  for (const it of items) {
+    b.item(Number(it.qty) || 1, (it.name_zh || it.name_en || "菜品").trim());
+    const inote = ((it as { note?: string }).note || "").trim();
+    if (inote) b.left(`  → ${inote}`, SM, false, LH_SM); // staff per-item note (加一条鱼)
+  }
   b.rule();
   b.left(`合计 ${count} 份`, MID, true, LH_MID);
   if (note) b.left(`备注: ${note}`, SM, false, LH_SM);
@@ -218,6 +222,8 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
     const name = (it.name_zh || it.name_en || "菜品").trim();
     // Item rows are read up close on the bill → SM keeps long names on one line.
     b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    const inote = ((it as { note?: string }).note || "").trim();
+    if (inote) b.left(`  → ${inote}`, SM, false, LH_SM); // staff per-item note
   }
   b.rule();
   b.row("小计", money(subtotal), MID, false, LH_MID);
