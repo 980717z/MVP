@@ -725,38 +725,34 @@ export default function PublicMenu() {
               <div className="text-lg font-bold text-ink">🍲 {lang === "zh" ? "火锅配菜" : "Hot-pot sides"}</div>
               <button onClick={() => setSidesOpen(false)} className="flex-none text-ink-faint">✕</button>
             </div>
-            <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
               {hotpotSides.map((d) => {
                 const hasV = (d.variants?.length ?? 0) > 0;
                 const q = hasV ? dishQty(d.id) : cart[d.id] ?? 0;
                 const market = !!d.is_market && !hasV && !(Number(d.price) > 0);
                 return (
-                  <div key={d.id} className="flex items-center gap-3">
-                    {d.image_url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={d.image_url} alt={d.name_zh} className="h-12 w-12 flex-none rounded-lg object-cover" />
-                    )}
-                    <div className="min-w-0 flex-1">
+                  <div key={d.id} className={`flex flex-col justify-between rounded-xl border p-3 ${q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"}`}>
+                    <div>
                       <div className="text-[15px] font-semibold leading-snug text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
                       {(lang === "zh" ? d.name_en : d.name_zh) && <div className="truncate text-xs text-ink-faint">{lang === "zh" ? d.name_en : d.name_zh}</div>}
-                      <div className={`mt-0.5 text-sm font-bold ${market ? "text-gold" : "text-jade"}`}>
-                        {hasV ? `${isChoiceDish(d) ? "" : lang === "zh" ? "起 " : "from "}${fmtPrice(displayPrice(d))}` : market ? t("market") : fmtPrice(d.price)}
-                      </div>
                     </div>
-                    {hasV ? (
-                      <button onClick={() => setSheetDish(d)} className="relative flex-none rounded-full border-[1.5px] border-jade bg-white px-3 py-1.5 text-sm font-medium text-jade">
-                        {isChoiceDish(d) ? (lang === "zh" ? "选择" : "Choose") : lang === "zh" ? "选规格" : "Size"} ›
-                        {q > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{q}</span>}
-                      </button>
-                    ) : q === 0 ? (
-                      <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
-                    ) : (
-                      <div className="flex flex-none items-center gap-2">
-                        <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
-                        <span className="w-5 text-center font-semibold text-ink">{q}</span>
-                        <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
-                      </div>
-                    )}
+                    <div className="mt-2 flex items-center justify-between gap-1">
+                      <span className={`text-sm font-bold ${market ? "text-gold" : "text-jade"}`}>{hasV ? fmtPrice(displayPrice(d)) : market ? t("market") : fmtPrice(d.price)}</span>
+                      {hasV ? (
+                        <button onClick={() => setSheetDish(d)} className="relative flex-none rounded-full border-[1.5px] border-jade bg-white px-2.5 py-1 text-xs font-medium text-jade">
+                          {lang === "zh" ? "规格" : "Size"} ›
+                          {q > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-0.5 text-[10px] font-bold text-white">{q}</span>}
+                        </button>
+                      ) : q === 0 ? (
+                        <button onClick={() => inc(d.id, 1)} className="grid h-8 w-8 flex-none place-items-center rounded-full bg-jade text-lg font-bold text-white">＋</button>
+                      ) : (
+                        <div className="flex flex-none items-center gap-1">
+                          <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                          <span className="w-4 text-center text-sm font-semibold text-ink">{q}</span>
+                          <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
