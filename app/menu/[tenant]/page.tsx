@@ -44,6 +44,8 @@ export default function PublicMenu() {
   const [open, setOpen] = useState(false);
   const [tableNo, setTableNo] = useState("");
   const [lockedTable, setLockedTable] = useState<string | null>(null);
+  const [tables, setTables] = useState<string[]>([]); // real table labels for the 整店一码 dropdown
+  const [tableErr, setTableErr] = useState(false);
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("1"); // country code, +1 default
   const [phoneErr, setPhoneErr] = useState(false);
@@ -120,6 +122,10 @@ export default function PublicMenu() {
         const z = publicDeliveryFsas(data);
         if (z) setZoneFsas(z);
       });
+    // Separate query (like delivery_fsas): a pre-migration storefront view with
+    // no `tables` column errors quietly here instead of breaking the whole menu.
+    supabase.from("storefront").select("tables").eq("slug", slug).maybeSingle()
+      .then(({ data }) => { const tb = (data as { tables?: unknown } | null)?.tables; if (Array.isArray(tb)) setTables(tb as string[]); });
     Promise.all([
       supabase.from("storefront").select("name, cat_order").eq("slug", slug).maybeSingle(),
       listMenuItems(slug),
@@ -189,6 +195,9 @@ export default function PublicMenu() {
   // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
   // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
   const isDelivery = togoMode && togoType === "delivery";
+  // Phone required for togo/delivery and per-table (每桌一码) customer scans.
+  // Optional only for the whole-store QR (整店一码) and staff-placed orders.
+  const phoneRequired = togoMode || (!!lockedTable && !staff);
 
   // Delivery address fields — postal FIRST with an instant in-zone check.
   // Rendered in the up-front chooser panel AND in the checkout sheet (same
@@ -253,9 +262,8 @@ export default function PublicMenu() {
     // codes: 7-12 digits, stored as +<code><digits>.
     let phoneToSave = "";
     const phoneDigits = phone.replace(/\D/g, "");
-    if (!togoMode && phoneDigits.length === 0) {
-      // Dine-in: phone is OPTIONAL (facultative) — left blank, stored as N/A.
-      // Togo/delivery still require it (contact for pickup/delivery).
+    if (!phoneRequired && phoneDigits.length === 0) {
+      // Optional (整店一码 or staff-placed): left blank, stored as N/A.
       phoneToSave = "";
     } else if (phoneCode === "1") {
       const digits = phoneDigits.replace(/^1(\d{10})$/, "$1");
@@ -272,6 +280,13 @@ export default function PublicMenu() {
       phoneToSave = `+${phoneCode}${phoneDigits}`;
     }
     setPhoneErr(false);
+
+    // 整店一码: a customer-typed table number must be a REAL table (can't invent one).
+    if (!togoMode && !lockedTable && tableNo.trim() && tables.length > 0 && !tables.includes(tableNo.trim())) {
+      setTableErr(true);
+      return;
+    }
+    setTableErr(false);
 
     // Delivery: validate address + downtown zone + $30 minimum before anything else.
     // (Client-side hint only — the checkout server re-validates authoritatively.)
@@ -868,7 +883,18 @@ export default function PublicMenu() {
                       🪑 {displayTable(lockedTable)} 号桌
                     </div>
                   ) : (
-                    <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />
+                    <div>
+                      <input
+                        className={`input w-full ${tableErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
+                        placeholder={t("table")}
+                        value={tableNo}
+                        list="bento-tables"
+                        autoComplete="off"
+                        onChange={(e) => { setTableNo(e.target.value); if (tableErr) setTableErr(false); }}
+                      />
+                      <datalist id="bento-tables">{tables.map((n) => <option key={n} value={n} />)}</datalist>
+                      {tableErr && <p className="mt-1 text-xs text-[#C0392B]">{lang === "zh" ? "请选择列表中已有的桌号" : "Pick a table from the list"}</p>}
+                    </div>
                   ))}
                   <div>
                     <div className="flex gap-2">
@@ -887,7 +913,7 @@ export default function PublicMenu() {
                         className={`input min-w-0 flex-1 ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
                         type="tel"
                         inputMode="tel"
-                        placeholder={togoMode ? t("phone") : lang === "zh" ? "电话号码（可选）" : "Phone (optional)"}
+                        placeholder={phoneRequired ? t("phone") : lang === "zh" ? "电话号码（可选）" : "Phone (optional)"}
                         value={phone}
                         onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
                       />
