@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tableOccupancy, evenPartition, reconcileShares } from "./tableSessions";
+import { tableOccupancy, evenPartition, reconcileShares, itemizePartitions } from "./tableSessions";
 import { computeTax } from "./tax";
 import type { Order } from "./orders";
 
@@ -49,6 +49,47 @@ describe("bill split reconciles to the cent", () => {
     expect(shares.every((s) => s.subtotal >= 0 && s.total >= 0)).toBe(true);
     // share 0 carries the extra cent from 100.01/3
     expect(shares[0].subtotal).toBeGreaterThanOrEqual(shares[1].subtotal);
+  });
+});
+
+describe("itemizePartitions (按菜分 assignment → per-guest subtotals)", () => {
+  const U = (key: string, price: number) => ({ key, price });
+  // 火锅 65.99 (shared), 白饭 ×2 @1.50, 肥牛片 30.00 → subtotal 98.99
+  const units = [U("a", 65.99), U("b", 1.5), U("c", 1.5), U("d", 30.0)];
+  const subtotal = 98.99;
+  const ids = ["p0", "p1", "p2"];
+
+  it("assigns whole/per-unit dishes and balances to the cent", () => {
+    // p0: 白饭×1, p1: 白饭×1, p2: 肥牛片; hotpot shared 3-ways
+    const a = { a: "shared", b: "p0", c: "p1", d: "p2" };
+    const r = itemizePartitions(units, a, ids, subtotal);
+    expect(r.unassigned).toBe(0);
+    expect(r.balanced).toBe(true);
+    expect(Math.round(r.personSubtotals.reduce((x, y) => x + y, 0) * 100) / 100).toBeCloseTo(subtotal, 2);
+    expect(r.sharedTotal).toBeCloseTo(65.99, 2);
+    // shared 65.99/3 = 21.9966… → 22.00 / 21.99 / 21.99, remainder cent to earliest
+    expect(r.personSubtotals[0]).toBeGreaterThanOrEqual(r.personSubtotals[1]);
+  });
+
+  it("flags unassigned units and refuses to balance", () => {
+    const r = itemizePartitions(units, { a: "p0" }, ids, subtotal); // b,c,d unassigned
+    expect(r.unassigned).toBe(3);
+    expect(r.balanced).toBe(false);
+  });
+
+  it("treats a removed guest's dishes as unassigned (they resurface)", () => {
+    const a = { a: "p0", b: "p1", c: "p2", d: "p2" };
+    const r = itemizePartitions(units, a, ["p0", "p1"], subtotal); // p2 removed
+    expect(r.unassigned).toBe(2); // c,d were on the removed p2
+    expect(r.balanced).toBe(false);
+  });
+
+  it("all-shared splits evenly and still balances", () => {
+    const a = { a: "shared", b: "shared", c: "shared", d: "shared" };
+    const r = itemizePartitions(units, a, ids, subtotal);
+    expect(r.balanced).toBe(true);
+    expect(r.sharedTotal).toBeCloseTo(subtotal, 2);
+    expect(Math.round(r.personSubtotals.reduce((x, y) => x + y, 0) * 100) / 100).toBeCloseTo(subtotal, 2);
   });
 });
 

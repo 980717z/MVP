@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { computeTax } from "@/lib/tax";
-import { checkoutTable, evenPartition, reconcileShares, type PaymentMethod, type SplitPayload, type ShareLine } from "@/lib/tableSessions";
+import { checkoutTable, evenPartition, reconcileShares, itemizePartitions, type PaymentMethod, type SplitPayload, type ShareLine } from "@/lib/tableSessions";
 import { requestBill, type Order, type OrderItem } from "@/lib/orders";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
@@ -42,7 +42,6 @@ const T: Record<string, Dict> = {
 
 const METHODS: PaymentMethod[] = ["cash", "card", "emt", "other"];
 const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
-const cents = (n: number) => Math.round((Number(n) || 0) * 100);
 const activeItems = (o: Order) => (o.items ?? []).filter((it) => !(it as OrderItem & { cancelled?: boolean }).cancelled);
 // a stable per-person color so a dish's owner is readable at a glance
 const DOT = ["#0E9F6E", "#2563EB", "#D97706", "#DB2777", "#7C3AED", "#0891B2", "#65A30D", "#DC2626", "#475569", "#CA8A04"];
@@ -120,15 +119,12 @@ export default function CheckoutModal({
   // ── even split ─────────────────────────────────────────────────────────────
   const evenShares = useMemo(() => reconcileShares(subtotal, evenPartition(subtotal, evenN)), [subtotal, evenN]);
 
-  // ── itemized split ─────────────────────────────────────────────────────────
-  const sharedCents = units.filter((u) => assign[u.key] === "shared").reduce((s, u) => s + cents(u.price), 0);
-  const unassignedCount = units.filter((u) => (assign[u.key] ?? "") === "").length;
-  const sharedPart = useMemo(() => evenPartition(sharedCents / 100, people.length).map(cents), [sharedCents, people.length]);
-  const personSubCents = people.map((p, pi) => units.filter((u) => assign[u.key] === p.id).reduce((s, u) => s + cents(u.price), 0) + (sharedPart[pi] ?? 0));
-  const itemShares = useMemo(
-    () => reconcileShares(subtotal, personSubCents.map((c) => c / 100)),
-    [subtotal, personSubCents.join(",")], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  // ── itemized split (pure math in lib/billSplit, unit-tested) ────────────────
+  const itemize = useMemo(() => itemizePartitions(units, assign, people.map((p) => p.id), subtotal), [units, assign, people, subtotal]);
+  const unassignedCount = itemize.unassigned;
+  const itemBalanced = itemize.balanced;
+  const offBy = Math.abs(itemize.personSubtotals.reduce((a, b) => a + b, 0) - subtotal);
+  const itemShares = useMemo(() => reconcileShares(subtotal, itemize.personSubtotals), [subtotal, itemize]);
   const itemLinesFor = (personId: string): ShareLine[] => {
     const map = new Map<string, ShareLine>();
     units.filter((u) => assign[u.key] === personId).forEach((u) => {
@@ -183,12 +179,11 @@ export default function CheckoutModal({
   const evenValid =
     evenN >= 2 &&
     evenShares.every((sh, i) => !(evenPay[i].method === "cash" && evenPay[i].tendered !== "" && money(parseFloat(evenPay[i].tendered)) < sh.total));
-  const itemBalanced = cents(personSubCents.reduce((a, b) => a + b, 0) / 100) === cents(subtotal);
   const itemValid =
     people.length >= 2 &&
     unassignedCount === 0 &&
     itemBalanced &&
-    personSubCents.every((c) => c > 0) &&
+    itemize.personSubtotals.every((s) => s > 0) &&
     people.every((p, i) => !(p.method === "cash" && p.tendered !== "" && money(parseFloat(p.tendered)) < itemShares[i].total));
 
   const canConfirm =
@@ -388,7 +383,7 @@ export default function CheckoutModal({
                     <div className={`mt-3 rounded-lg px-3 py-2 text-center text-sm font-semibold ${unassignedCount > 0 ? "bg-amber-50 text-amber-700" : itemBalanced ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
                       {unassignedCount > 0
                         ? t(T.unassigned).replace("{n}", String(unassignedCount))
-                        : itemBalanced ? t(T.balanced) : t(T.offBy).replace("{amt}", fmtPrice(Math.abs(personSubCents.reduce((a, b) => a + b, 0) / 100 - subtotal)))}
+                        : itemBalanced ? t(T.balanced) : t(T.offBy).replace("{amt}", fmtPrice(offBy))}
                     </div>
                   </>
                 )}

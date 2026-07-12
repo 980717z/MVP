@@ -9,8 +9,8 @@ import type { Order } from "./orders";
 import type { PaymentMethod, SplitPayload } from "./billSplit";
 
 // Split money math lives in the pure ./billSplit module (importable server-side).
-export type { PaymentMethod, SplitPayload, SplitShare, ShareLine } from "./billSplit";
-export { evenPartition, reconcileShares, partitionsMatch } from "./billSplit";
+export type { PaymentMethod, SplitPayload, SplitShare, ShareLine, ItemizeResult } from "./billSplit";
+export { evenPartition, reconcileShares, partitionsMatch, itemizePartitions } from "./billSplit";
 
 /** One table's live state, derived from the orders the portal already polls. */
 export interface TableState {
@@ -50,7 +50,8 @@ export interface TableCheckout {
   id: string;
   table_no: string;
   closed_at: string;
-  payment_method: PaymentMethod;
+  payment_method: PaymentMethod | "split"; // 'split' = the table was 分单-settled
+
   amount_tendered: number | null;
   change_given: number | null;
   subtotal: number;

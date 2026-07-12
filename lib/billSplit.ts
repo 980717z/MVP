@@ -78,3 +78,46 @@ export function reconcileShares(subtotal: number, partitions: number[]): { subto
 export function partitionsMatch(subtotal: number, partitions: number[]): boolean {
   return cents(partitions.reduce((a, b) => a + b, 0)) === cents(subtotal);
 }
+
+export interface ItemizeResult {
+  personSubtotals: number[]; // dollars, index-aligned to peopleIds
+  sharedTotal: number;       // dollars sitting in the shared bucket
+  unassigned: number;        // units not yet given to a person or 'shared' (a removed person counts here)
+  balanced: boolean;         // Σ personSubtotals == subtotal to the cent (only possible when unassigned == 0)
+}
+
+/**
+ * 按菜分 (itemized): turn the waiter's dish→guest assignment into per-guest
+ * subtotals. Each unit goes to a person, to the 'shared' bucket, or is
+ * unassigned. The shared bucket is split evenly (remainder cents → earliest
+ * guests). A unit assigned to a since-removed guest is treated as unassigned so
+ * it resurfaces rather than silently vanishing. Pure + cent-exact.
+ */
+export function itemizePartitions(
+  units: { key: string; price: number }[],
+  assignment: Record<string, string>, // unit.key → personId | "shared" | ""
+  peopleIds: string[],
+  subtotal: number,
+): ItemizeResult {
+  const n = peopleIds.length;
+  const idx = new Map(peopleIds.map((id, i) => [id, i]));
+  const perC = new Array<number>(n).fill(0);
+  let sharedC = 0, unassigned = 0;
+  for (const u of units) {
+    const a = assignment[u.key] ?? "";
+    if (a === "shared") { sharedC += cents(u.price); continue; }
+    const i = a === "" ? undefined : idx.get(a);
+    if (i == null) { unassigned++; continue; } // unassigned OR assigned to a removed guest
+    perC[i] += cents(u.price);
+  }
+  if (sharedC > 0 && n > 0) {
+    const base = Math.floor(sharedC / n), rem = sharedC - base * n;
+    for (let i = 0; i < n; i++) perC[i] += base + (i < rem ? 1 : 0);
+  }
+  return {
+    personSubtotals: perC.map(fromCents),
+    sharedTotal: fromCents(sharedC),
+    unassigned,
+    balanced: unassigned === 0 && perC.reduce((a, b) => a + b, 0) === cents(subtotal),
+  };
+}

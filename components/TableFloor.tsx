@@ -17,7 +17,11 @@ const T: Record<string, Dict> = {
   round: { zh: "第 {n} 单", en: "Round {n}", fr: "Tournée {n}" },
   reprint: { zh: "重打厨房单", en: "Reprint kitchen", fr: "Réimprimer" },
   checkout: { zh: "结账", en: "Checkout", fr: "Encaisser" },
-  clear: { zh: "打印账单 · 清台", en: "Print bill · clear", fr: "Imprimer · libérer" },
+  m_cash: { zh: "现金", en: "Cash", fr: "Comptant" },
+  m_card: { zh: "刷卡", en: "Card", fr: "Carte" },
+  m_emt: { zh: "EMT", en: "EMT", fr: "Virement" },
+  m_other: { zh: "其他", en: "Other", fr: "Autre" },
+  m_split: { zh: "分单", en: "Split", fr: "Partagé" },
   order: { zh: "点单", en: "Take order", fr: "Commander" },
   addRound: { zh: "加单", en: "Add round", fr: "Ajouter" },
   paidHistory: { zh: "今日已结", en: "Paid today", fr: "Payé aujourd'hui" },
@@ -222,7 +226,7 @@ export default function TableFloor({
                   <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t(T.paidHistory)}</div>
                   {history.map((h) => (
                     <div key={h.id} className="flex justify-between py-0.5 text-xs text-ink-faint">
-                      <span>{new Date(h.closed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {h.payment_method}</span>
+                      <span>{new Date(h.closed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {t(T[`m_${h.payment_method}`] ?? T.m_other)}</span>
                       <span>{fmtPrice(h.total)}</span>
                     </div>
                   ))}

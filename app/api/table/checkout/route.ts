@@ -168,14 +168,16 @@ export async function POST(req: Request) {
   const sessionId = session?.id ?? null;
   if (sessionId) await db.from("orders").update({ table_session_id: sessionId }).in("id", claimed.map((o) => o.id));
 
-  // 6b) queue prints for a split: one receipt per share + a full bill (drained
-  // one-per-poll by /api/epson). Enqueued AFTER the settle so an offline printer
-  // never blocks the checkout — the jobs wait and reprint on the next poll.
-  if (sessionId && isSplit) {
+  // 6b) queue prints whenever a split was REQUESTED: one receipt per share + a full
+  // bill (drained one-per-poll by /api/epson). If the subtotal changed between the
+  // preview and the claim, isSplit is false (stale partition) — we still enqueue the
+  // full bill so a settled table ALWAYS produces a receipt, never a silent no-print.
+  // Enqueued AFTER the settle so an offline printer never blocks checkout.
+  if (sessionId && split) {
     const fullLines = claimed.flatMap((o) => activeItems(o).map((it) => ({ name_zh: it.name_zh, name_en: it.name_en, qty: it.qty, price: it.price })));
     const job = (kind: string, seq: number, payload: Record<string, unknown>) => ({ tenant_slug: slug, table_no: tableNo, kind, seq, session_id: sessionId, payload });
-    const shareJobs = splits.map((sh, i) => job("share", i + 1, { ...sh, idx: i + 1, n: splits.length, tableNo }));
-    const fullJob = job("full", splits.length + 1, {
+    const shareJobs = isSplit ? splits.map((sh, i) => job("share", i + 1, { ...sh, idx: i + 1, n: splits.length, tableNo })) : [];
+    const fullJob = job("full", shareJobs.length + 1, {
       tableNo, subtotal: tax.subtotal, gst: tax.gst, pst: tax.pst, hst: money(tax.gst + tax.pst), total: tax.total, lines: fullLines,
       splits: splits.map((s) => ({ label: s.label, method: s.method, total: s.total })),
     });
