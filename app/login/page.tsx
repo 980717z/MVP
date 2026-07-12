@@ -38,7 +38,19 @@ const T: Record<string, Dict> = {
 // ⚠️ TEMP DIAGNOSTIC BUILD — remove this whole block + the modal once the iPad
 // login issue is pinned down. Bump the tag on every deploy so a screenshot proves
 // which build the device actually loaded (rules out Safari caching an old page).
-const BUILD_TAG = "diag-2026-07-11c";
+const BUILD_TAG = "diag-2026-07-11d";
+
+const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+
+// Reject if a promise doesn't settle in time, so a black-holed network request
+// turns into a visible "timeout" line instead of a spinner that never resolves.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`${label} 超时 ${ms}ms`)), ms)),
+  ]);
+}
 
 // localStorage is where supabase-js persists the session. In Safari Private
 // Browsing or with cookies/storage blocked, writes throw or are dropped — login
@@ -131,51 +143,79 @@ export default function Login() {
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     if (busy) return;
-    const lines: string[] = ["【登录诊断 Login diagnostic】", ...envLines()];
+    // Progressive report: pops up the instant the tap registers, then updates
+    // after every step. If NOTHING pops up, submit() never ran (native reload /
+    // button not wired). If it hangs at a step, that's where it's stuck.
+    const lines: string[] = ["【登录诊断】点击已触发 ✔", ...envLines()];
+    const flush = (ok = false) => setReport({ ok, lines: [...lines] });
+    flush();
+
     const emailVal = (emailRef.current?.value ?? "").trim();
     const passwordVal = passwordRef.current?.value ?? "";
     lines.push(`邮箱是否填入: ${emailVal ? `是 → ${emailVal}` : "否（空）"}`);
     lines.push(`密码是否填入: ${passwordVal ? `是 → ${passwordVal.length} 位` : "否（空）"}`);
+    flush();
 
     if (!emailVal || !passwordVal) {
       lines.push("结论: 邮箱或密码为空，未提交。");
       setMsg(t(T.needCreds));
-      setReport({ ok: false, lines });
+      flush();
       return;
     }
 
     setBusy(true);
     setMsg(null);
     try {
+      // Raw network probe — independent of supabase-js. Tells us if the device
+      // can even reach Supabase (content blocker / Wi-Fi / DNS would fail here).
+      lines.push("→ 测试网络能否连到 Supabase …");
+      flush();
+      try {
+        const probe = await withTimeout(
+          fetch(`${SUPA_URL}/auth/v1/health`, { headers: { apikey: SUPA_KEY } }),
+          8000,
+          "网络探测",
+        );
+        lines.push(`网络探测: HTTP ${probe.status}（能连到 Supabase）`);
+      } catch (netErr: any) {
+        lines.push(`❌ 网络探测失败: ${netErr?.message ?? netErr}`);
+        lines.push("→ 请求发不出去：可能是 Chrome 拦截插件 / 店里 WiFi / DNS 屏蔽了 supabase.co。");
+      }
+      flush();
+
       if (mode === "signup") {
         lines.push("→ 调用 signUp …");
-        const { error } = await supabase.auth.signUp({ email: emailVal, password: passwordVal });
+        flush();
+        const { error } = await withTimeout(supabase.auth.signUp({ email: emailVal, password: passwordVal }), 15000, "signUp");
         if (error) {
           lines.push(`signUp 失败: ${error.message}`);
-          setReport({ ok: false, lines });
+          flush();
           return;
         }
         const { data } = await supabase.auth.getSession();
         lines.push(`signUp 成功, getSession: ${data.session ? "有 session" : "无 session（可能需邮箱验证）"}`);
-        setReport({ ok: !!data.session, lines });
+        flush(!!data.session);
         if (!data.session) setMsg(t(T.signupOk));
         return;
       }
 
       lines.push("→ 调用 signInWithPassword …");
-      const { data: signInData, error } = await supabase.auth.signInWithPassword({
-        email: emailVal,
-        password: passwordVal,
-      });
+      flush();
+      const { data: signInData, error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: emailVal, password: passwordVal }),
+        15000,
+        "登录请求",
+      );
       if (error) {
         lines.push(`❌ 登录失败: ${error.message} (status ${(error as any).status ?? "?"})`);
         lines.push("→ 多半是邮箱/密码不对（这台设备钥匙串可能存了旧密码）。");
-        setReport({ ok: false, lines });
+        flush();
         return;
       }
       lines.push(`✅ signInWithPassword 成功, 返回 session: ${signInData.session ? "有" : "无"}`);
+      flush();
 
-      // Did the session actually land in storage? (the real iPad failure mode)
+      // Did the session actually land in storage? (the real bounce-back failure mode)
       const { data: after } = await supabase.auth.getSession();
       lines.push(`登录后 getSession(): ${after.session ? "有 session" : "❌ 无 session（没存住！）"}`);
       lines.push(`登录后 storage: ${storageWorks() ? "可用" : "❌ 被阻断"}`);
@@ -183,20 +223,20 @@ export default function Login() {
 
       if (!after.session) {
         lines.push("结论: 登录成功但登录态存不住 → 进后台会被立刻退回本页。");
-        lines.push("→ 关闭 Safari「无痕浏览」+「阻止跨网站跟踪/屏蔽所有Cookie」后重试。");
-        setReport({ ok: false, lines });
+        lines.push("→ 关闭 Safari/Chrome「无痕」+「阻止跨网站跟踪/屏蔽所有Cookie」后重试。");
+        flush();
         return;
       }
 
       lines.push("结论: 一切正常 ✅ 可进入后台（点下方绿色按钮）。");
-      setReport({ ok: true, lines });
-      // NOTE: do NOT auto-redirect — we want the success report visible/screenshot-able.
+      flush(true);
+      // NOTE: do NOT auto-redirect — keep the success report visible/screenshot-able.
       // The "继续进入后台" button performs the redirect.
     } catch (e: any) {
       lines.push(`💥 异常 exception: ${e?.message ?? String(e)}`);
       lines.push(`stack: ${e?.stack ?? "无"}`);
       setMsg(e?.message ?? t(T.genericErr));
-      setReport({ ok: false, lines });
+      flush();
     } finally {
       setBusy(false);
     }
