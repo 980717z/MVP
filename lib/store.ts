@@ -29,12 +29,23 @@ export interface RecordRow {
 
 type Bi = { zh: string; en: string };
 
+export interface TableSpot {
+  label: string;
+  x: number; // 0..1 relative
+  y: number; // 0..1 relative
+  shape?: "square" | "round";
+  w?: number;
+  h?: number;
+}
+
 export interface Tenant {
   slug: string;
   name: Bi;
   industry: string;
   address: string;
   enabled: string[];
+  tables: string[]; // printed QR table labels (permanent contract)
+  tableLayout: TableSpot[]; // floor-plan positions (additive; keyed by label)
   users: User[];
   records: Record<string, RecordRow[]>;
 }
@@ -52,6 +63,8 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     industry: row.industry ?? "restaurant",
     address: row.address ?? "",
     enabled: Array.isArray(row.enabled) ? row.enabled : [],
+    tables: Array.isArray(row.tables) ? row.tables : [],
+    tableLayout: Array.isArray(row.table_layout) ? row.table_layout : [],
     users,
     records,
   };

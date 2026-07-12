@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
-import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant } from "@/lib/store";
+import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, type Tenant } from "@/lib/store";
+import TableFloor from "@/components/TableFloor";
+import MarketPricePanel from "@/components/MarketPricePanel";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -39,6 +41,15 @@ const T: Record<string, Dict> = {
   },
   reprintAll: { en: "🖨️ Reprint all", zh: "🖨️ 补打全部", fr: "🖨️ Tout réimprimer" },
   refresh: { en: "Refresh", zh: "刷新", fr: "Actualiser" },
+  more: { en: "More", zh: "更多", fr: "Plus" },
+  viewDine: { en: "Tables", zh: "桌面", fr: "Salle" },
+  viewTogo: { en: "Pickup", zh: "自取", fr: "À emporter" },
+  viewDelivery: { en: "Delivery", zh: "外送", fr: "Livraison" },
+  viewMarket: { en: "Market price", zh: "时价", fr: "Prix du jour" },
+  nextDepart: { en: "Out for delivery", zh: "出发配送", fr: "En route" },
+  deliverTo: { en: "Deliver to", zh: "送至", fr: "Livrer à" },
+  emptyTogo: { en: "No pickup orders yet.", zh: "还没有自取订单。", fr: "Aucune commande à emporter." },
+  emptyDelivery: { en: "No delivery orders yet.", zh: "还没有外送订单。", fr: "Aucune commande de livraison." },
   // Empty state
   emptyOrders: {
     en: "No orders yet. Once customers order via the “📱 QR menu”, they show up here in real time.",
@@ -112,11 +123,14 @@ const STATUS: Record<Order["status"], { key: string; cls: string }> = {
   cancelled: { key: "stCancelled", cls: "bg-slate-100 text-ink-faint" },
 };
 
-const NEXT: Partial<Record<Order["status"], { to: Order["status"]; key: string }>> = {
-  new: { to: "preparing", key: "nextPreparing" },
-  preparing: { to: "done", key: "nextDone" }, // delivery orders get 开始配送 instead (T7)
-  delivering: { to: "done", key: "nextDelivered" },
-};
+// Next action per order, order-type aware. Delivery gets the extra 出发配送
+// (preparing → delivering) step so a driver leg is trackable; togo/dine-in skip it.
+function nextStep(o: Order): { to: Order["status"]; key: string } | null {
+  if (o.status === "new") return { to: "preparing", key: "nextPreparing" };
+  if (o.status === "preparing") return o.order_type === "delivery" ? { to: "delivering", key: "nextDepart" } : { to: "done", key: "nextDone" };
+  if (o.status === "delivering") return { to: "done", key: "nextDelivered" };
+  return null;
+}
 
 const POLL_MS = 8000;
 
@@ -164,10 +178,21 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   // starts as the slug, replaced by the tenant's real name once fetched —
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
+  const [tenant, setTenant] = useState<Tenant | undefined>();
+  const [view, setView] = useState<"dine" | "togo" | "delivery" | "market">("dine");
+  const [headerMenu, setHeaderMenu] = useState(false); // ⋯ overflow for the header's utility actions
 
   useEffect(() => {
-    getTenant(slug).then((t) => t?.name?.zh && setShopName(t.name.zh)).catch(() => {});
+    getTenant(slug).then((tt) => { if (tt) { setTenant(tt); if (tt.name?.zh) setShopName(tt.name.zh); } }).catch(() => {});
   }, [slug]);
+
+  // Restore/persist the selected view.
+  useEffect(() => {
+    try { const v = localStorage.getItem("bento_orders_view"); if (v === "dine" || v === "togo" || v === "delivery" || v === "market") setView(v); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("bento_orders_view", view); } catch { /* ignore */ }
+  }, [view]);
 
   const seen = useRef<Set<string>>(new Set()); // order IDs we've already shown
   const inited = useRef(false); // first successful fetch seeds `seen`, no alert
@@ -395,6 +420,24 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   const active = orders.filter((o) => o.status === "new" || o.status === "preparing");
 
+  // Buckets by order type — dine-in goes to the floor plan; togo/delivery to lists.
+  const togoOrders = orders.filter((o) => o.order_type === "togo");
+  const deliveryOrders = orders.filter((o) => o.order_type === "delivery");
+  const dineUnpaid = orders.filter((o) => o.order_type === "dine_in" && o.payment_status === "unpaid").length;
+  const togoActive = togoOrders.filter((o) => o.status === "new" || o.status === "preparing").length;
+  const deliveryActive = deliveryOrders.filter((o) => o.status === "new" || o.status === "preparing" || o.status === "delivering").length;
+  // dine-in unpaid rounds carrying an un-priced 时价 item — needs pricing before checkout
+  const marketPending = orders.filter(
+    (o) => o.order_type === "dine_in" && o.payment_status === "unpaid" && o.status !== "cancelled" &&
+      (o.items ?? []).some((it: any) => it.market && !(Number(it.price) > 0) && !it.cancelled),
+  ).length;
+  const VIEWS: { key: "dine" | "togo" | "delivery" | "market"; label: string; icon: string; count: number }[] = [
+    { key: "dine", label: t(T.viewDine), icon: "🗺️", count: dineUnpaid },
+    { key: "togo", label: t(T.viewTogo), icon: "📦", count: togoActive },
+    { key: "delivery", label: t(T.viewDelivery), icon: "🚴", count: deliveryActive },
+    { key: "market", label: t(T.viewMarket), icon: "💰", count: marketPending },
+  ];
+
   // Active dine-in orders grouped by table — for the COMBINED BILL and the
   // "本桌共 N 单" hint. Cards stay PER-ROUND (the kitchen fires per round); only
   // the BILL merges by table, on 打印账单 / checkout — never the kitchen cards.
@@ -458,6 +501,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           </div>
           <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
         </div>
+        {o.order_type === "delivery" && o.address && (
+          <a
+            href={`https://maps.google.com/?q=${encodeURIComponent([o.address.street, o.address.unit, o.address.city, o.address.postal].filter(Boolean).join(", "))}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mb-2 block rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 transition hover:bg-sky-100"
+          >
+            📍 {t(T.deliverTo)}: {[o.address.street, o.address.unit].filter(Boolean).join(" ")}{o.address.city ? `, ${o.address.city}` : ""} {o.address.postal}
+          </a>
+        )}
         <div className="divide-y divide-slate-100">{o.items.map((it: any, i: number) => itemRow(o, it, i))}</div>
         {o.note && <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-ink-soft">{t(T.notePrefix)}{o.note}</div>}
         {multi && o.status !== "cancelled" && (
@@ -466,9 +519,10 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="font-semibold text-ink">{t(T.cardTotal).replace("{sum}", fmtPrice(o.total))}</span>
           <div className="flex items-center gap-2">
-            {NEXT[o.status] && (
-              <button onClick={() => advance(o, NEXT[o.status]!.to)} className="btn-primary px-4 text-sm">{t(T[NEXT[o.status]!.key])}</button>
-            )}
+            {(() => {
+              const n = nextStep(o);
+              return n ? <button onClick={() => advance(o, n.to)} className="btn-primary px-4 text-sm">{t(T[n.key])}</button> : null;
+            })()}
             {/* secondary actions collapse into a ⋯ menu so the row never crowds on a phone */}
             <div className="relative">
               <button
@@ -507,12 +561,12 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   return (
     <main className="px-6 py-8 lg:px-10">
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t(T.overview)}</Link>
-      <header className="mt-3 mb-6 flex items-center justify-between">
+      <header className="mt-3 mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
           <p className="mt-1 text-sm text-ink-soft">{mod.pain.zh}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {unread > 0 && <span className="pill bg-red-100 text-red-700">🔔 {t(T.newOrdersPill).replace("{n}", String(unread))}</span>}
           <span className="pill bg-amber-100 text-amber-700">{t(T.pendingPill).replace("{n}", String(active.length))}</span>
           {!soundOn && (
@@ -520,33 +574,77 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               {t(T.enableSound)}
             </button>
           )}
-          <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title={t(T.sampleTicketTitle)}>{t(T.sampleTicket)}</button>
-          <button
-            onClick={async () => {
-              if (active.length === 0) { alert(t(T.noActive)); return; }
-              if (!confirm(t(T.confirmReprintAll).replace("{n}", String(active.length)))) return;
-              const n = await reprintActiveOrders(slug);
-              load();
-              alert(t(T.reprintedN).replace("{n}", String(n)));
-            }}
-            className="btn-ghost border border-slate-300 text-sm"
-            title={t(T.reprintAllTitle)}
-          >
-            {t(T.reprintAll)}
-          </button>
           <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">{t(T.refresh)}</button>
+          {/* rarely-used utilities collapse into a ⋯ menu so the header never crowds/clips */}
+          <div className="relative">
+            <button
+              onClick={() => setHeaderMenu((v) => !v)}
+              aria-label={t(T.more)}
+              aria-expanded={headerMenu}
+              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-300 text-lg leading-none text-ink-soft hover:bg-slate-50"
+            >
+              ⋯
+            </button>
+            {headerMenu && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setHeaderMenu(false)} />
+                <div className="absolute right-0 top-full z-40 mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                  <button onClick={() => { setHeaderMenu(false); setPreview(SAMPLE_ORDER); }} className="flex w-full items-center px-3.5 py-3 text-left text-sm text-ink hover:bg-slate-50">{t(T.sampleTicket)}</button>
+                  <button
+                    onClick={async () => {
+                      setHeaderMenu(false);
+                      if (active.length === 0) { alert(t(T.noActive)); return; }
+                      if (!confirm(t(T.confirmReprintAll).replace("{n}", String(active.length)))) return;
+                      const n = await reprintActiveOrders(slug);
+                      load();
+                      alert(t(T.reprintedN).replace("{n}", String(n)));
+                    }}
+                    className="flex w-full items-center px-3.5 py-3 text-left text-sm text-ink hover:bg-slate-50"
+                  >
+                    {t(T.reprintAll)}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      {orders.length === 0 ? (
-        <div className="card p-10 text-center text-sm text-ink-faint">
-          {t(T.emptyOrders)}
-        </div>
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
-          {orders.map((o) => renderCard(o))}
-        </div>
+      {/* view switch: dine-in floor plan · togo list · delivery list */}
+      <div className="mb-4 inline-flex flex-wrap rounded-xl border border-slate-200 bg-white p-1">
+        {VIEWS.map((v) => (
+          <button
+            key={v.key}
+            onClick={() => setView(v.key)}
+            className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium transition ${view === v.key ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}
+          >
+            <span aria-hidden>{v.icon}</span>{v.label}
+            {v.count > 0 && <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-bold text-amber-700">{v.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {view === "dine" && (
+        <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} onChanged={load} />
       )}
+
+      {view === "togo" && (
+        togoOrders.length === 0 ? (
+          <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyTogo)}</div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">{togoOrders.map((o) => renderCard(o))}</div>
+        )
+      )}
+
+      {view === "delivery" && (
+        deliveryOrders.length === 0 ? (
+          <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyDelivery)}</div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">{deliveryOrders.map((o) => renderCard(o))}</div>
+        )
+      )}
+
+      {view === "market" && <MarketPricePanel slug={slug} />}
 
       {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
     </main>

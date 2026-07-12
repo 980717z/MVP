@@ -103,7 +103,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="font-sans antialiased">
+      {/* suppressHydrationWarning: browser extensions (Grammarly, etc.) inject
+          data-* attributes onto <body> before React hydrates — this silences that
+          benign mismatch without hiding real hydration bugs in child components. */}
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <LangProvider>{children}</LangProvider>
       </body>
     </html>

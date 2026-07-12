@@ -195,8 +195,8 @@ export function buildEposReceiptXml(orders: Order | Order[], shopName: string): 
   }
   b.push(line(RULE));
   b.push(line(padRow("Subtotal", usd(subtotal))));
-  b.push(line(padRow("GST 5%", usd(tax.gst))));
-  b.push(line(padRow("PST 8%", usd(tax.pst))));
+  // One HST 13% line (= GST+PST components — reconciles with the split ledger).
+  b.push(line(padRow("HST 13%", usd(Math.round((tax.gst + tax.pst) * 100) / 100))));
   b.push(line(RULE));
   b.push(line(padRow("TOTAL", usd(tax.total)), { big: true, em: true }));
   b.push(`<feed line="3"/><cut type="feed"/>`);

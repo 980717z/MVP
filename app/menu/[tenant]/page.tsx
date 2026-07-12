@@ -62,6 +62,7 @@ export default function PublicMenu() {
   // ?embed=1 (landing showcase): hide the shop's name until we have written
   // authorization to feature it. Purely additive — printed QR params untouched.
   const [embed, setEmbed] = useState(false);
+  const [staff, setStaff] = useState(false); // opened from the floor plan (?staff=1): phone optional + ping parent on placement
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
   const [street, setStreet] = useState("");
   const [unit, setUnit] = useState("");
@@ -111,6 +112,7 @@ export default function PublicMenu() {
     }
     if (params.get("m") === "togo") setTogoMode(true);
     if (params.get("embed") === "1") setEmbed(true);
+    if (params.get("staff") === "1") setStaff(true);
     // Separate query so a pre-migration storefront view (no delivery_fsas
     // column) errors quietly here instead of taking the whole menu down.
     supabase.from("storefront").select("delivery_fsas").eq("slug", slug).maybeSingle()
@@ -250,20 +252,24 @@ export default function PublicMenu() {
     // require exactly 10 digits — stored bare (legacy format). Other country
     // codes: 7-12 digits, stored as +<code><digits>.
     let phoneToSave = "";
-    if (phoneCode === "1") {
-      const digits = phone.replace(/\D/g, "").replace(/^1(\d{10})$/, "$1");
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!togoMode && phoneDigits.length === 0) {
+      // Dine-in: phone is OPTIONAL (facultative) — left blank, stored as N/A.
+      // Togo/delivery still require it (contact for pickup/delivery).
+      phoneToSave = "";
+    } else if (phoneCode === "1") {
+      const digits = phoneDigits.replace(/^1(\d{10})$/, "$1");
       if (digits.length !== 10) {
         setPhoneErr(true);
         return;
       }
       phoneToSave = digits;
     } else {
-      const digits = phone.replace(/\D/g, "");
-      if (digits.length < 7 || digits.length > 12) {
+      if (phoneDigits.length < 7 || phoneDigits.length > 12) {
         setPhoneErr(true);
         return;
       }
-      phoneToSave = `+${phoneCode}${digits}`;
+      phoneToSave = `+${phoneCode}${phoneDigits}`;
     }
     setPhoneErr(false);
 
@@ -326,6 +332,11 @@ export default function PublicMenu() {
     // TM-T88VI PULLS via Server Direct Print (it polls /api/epson and picks up
     // this order on its next cycle). Nothing to do client-side.
     setPlaced(true);
+    // Opened from the floor plan (?staff=1): tell the parent so the modal can
+    // auto-close and refresh the table's tab.
+    if (staff && typeof window !== "undefined" && window.parent !== window) {
+      window.parent.postMessage({ type: "bento-staff-order-placed" }, "*");
+    }
     setPlacedOrders((p) => [
       ...p,
       { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total },
@@ -876,7 +887,7 @@ export default function PublicMenu() {
                         className={`input min-w-0 flex-1 ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
                         type="tel"
                         inputMode="tel"
-                        placeholder={t("phone")}
+                        placeholder={togoMode ? t("phone") : lang === "zh" ? "电话号码（可选）" : "Phone (optional)"}
                         value={phone}
                         onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
                       />

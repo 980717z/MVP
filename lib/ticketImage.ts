@@ -216,8 +216,9 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
   }
   b.rule();
   b.row("小计", money(subtotal), MID, false, LH_MID);
-  b.row("GST 5%", money(tax.gst), SM, false, LH_SM);
-  b.row("PST 8%", money(tax.pst), SM, false, LH_SM);
+  // Ontario HST is a single 13% tax — show one line (= GST+PST components, so
+  // it still reconciles penny-for-penny with the split stored in the ledger).
+  b.row("HST 13%", money(Math.round((tax.gst + tax.pst) * 100) / 100), SM, false, LH_SM);
   b.rule();
   b.row("合计", money(tax.total), BIG, true, LH_BIG);
   b.gap(40);
