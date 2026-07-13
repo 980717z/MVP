@@ -43,7 +43,9 @@ const T: Record<string, Dict> = {
   serveItem: { zh: "出餐", en: "Serve", fr: "Servir" },
   unserve: { zh: "撤销", en: "Undo", fr: "Annuler" },
   serveOrder: { zh: "整单出餐", en: "Serve round", fr: "Servir la tournée" },
+  unserveOrder: { zh: "整单撤销", en: "Unserve round", fr: "Annuler la tournée" },
   serveTable: { zh: "🍽️ 整桌出餐", en: "🍽️ Serve whole table", fr: "🍽️ Servir toute la table" },
+  unserveTable: { zh: "🍽️ 整桌取消出餐", en: "🍽️ Unmark whole table", fr: "🍽️ Annuler le service" },
   servedTag: { zh: "已出", en: "Served", fr: "Servi" },
   more: { zh: "更多", en: "More", fr: "Plus" },
   serveAria: { zh: "标记出餐", en: "Mark served", fr: "Marquer servi" },
@@ -206,7 +208,11 @@ export default function TableFloor({
                     <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-ink-faint">
                       <span>{t(T.round).replace("{n}", String(ri + 1))}</span>
                       <span className="flex items-center gap-3">
-                        <button onClick={async () => { await markServed(o.id, true); onChanged(); }} className="font-medium text-amber-600 hover:underline">{t(T.serveOrder)}</button>
+                        {(() => {
+                          const act = (o.items ?? []).filter((it: OrderItem & { cancelled?: boolean }) => !it.cancelled);
+                          const done = act.length > 0 && act.every((it: OrderItem & { served?: boolean }) => it.served);
+                          return <button onClick={async () => { await markServed(o.id, !done); onChanged(); }} className="font-medium text-amber-600 hover:underline">{done ? t(T.unserveOrder) : t(T.serveOrder)}</button>;
+                        })()}
                         <button onClick={async () => { await reprintOrder(o.id); onChanged(); }} className="text-brand hover:underline">🖨️ {t(T.reprint)}</button>
                         {/* destructive round actions tucked behind ⋯ so a live table can't be fat-fingered */}
                         <div className="relative">
@@ -280,15 +286,19 @@ export default function TableFloor({
                 centered empty state above, so no footer (no marooned bottom button). */}
             {state(sel)?.hasOrder && (
               <div className="border-t border-slate-100 p-4">
-                {/* 整桌出餐 — shown while any dish is still unserved */}
-                {state(sel)!.orders.some((o) => (o.items ?? []).some((it: OrderItem & { cancelled?: boolean }) => !it.cancelled && !it.served)) && (
-                  <button
-                    onClick={async () => { await Promise.all(state(sel)!.orders.map((o) => markServed(o.id, true))); onChanged(); }}
-                    className="mb-2 min-h-11 w-full rounded-lg border border-amber-400 bg-amber-50 font-medium text-amber-700 transition hover:bg-amber-100"
-                  >
-                    {t(T.serveTable)}
-                  </button>
-                )}
+                {/* 整桌出餐 — toggles both ways: serve all, or (when all served) un-serve all */}
+                {(() => {
+                  const active = state(sel)!.orders.flatMap((o) => (o.items ?? []).filter((it: OrderItem & { cancelled?: boolean }) => !it.cancelled));
+                  const allDone = active.length > 0 && active.every((it: OrderItem & { served?: boolean }) => it.served);
+                  return (
+                    <button
+                      onClick={async () => { await Promise.all(state(sel)!.orders.map((o) => markServed(o.id, !allDone))); onChanged(); }}
+                      className="mb-2 min-h-11 w-full rounded-lg border border-amber-400 bg-amber-50 font-medium text-amber-700 transition hover:bg-amber-100"
+                    >
+                      {allDone ? t(T.unserveTable) : t(T.serveTable)}
+                    </button>
+                  );
+                })()}
                 <div className="flex flex-wrap gap-2">
                 <button onClick={() => setOrdering(true)} className="min-h-11 rounded-lg border border-brand px-4 font-medium text-brand-ink transition hover:bg-brand-wash">
                   {t(T.addRound)}
