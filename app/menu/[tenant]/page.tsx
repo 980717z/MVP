@@ -357,6 +357,7 @@ export default function PublicMenu() {
         qty: g.qty,
         ...(x.isMarket ? { market: true } : {}),
         ...(g.note ? { note: g.note } : {}),
+        ...(!x.isMarket && g.adjust !== 0 ? { adjust: Math.round(g.adjust * 100) / 100 } : {}),
         ...(isNoCook(x.d) ? { noKitchen: true } : {}),
       }));
     });
@@ -832,7 +833,11 @@ export default function PublicMenu() {
         const d = byId[id];
         if (!d) return null;
         const base = d.is_market && !(unitPrice(d, vi) > 0) ? 0 : unitPrice(d, vi);
-        const priceOf = (s: string) => Math.max(0, Math.round((base + (s.trim() === "" ? 0 : parseFloat(s) || 0)) * 100) / 100);
+        // Bare number defaults to + (add). "-5" subtracts. Kept as the signed delta so
+        // the live preview + printed bill can show "+$5.00" / "−$5.00" explicitly.
+        const deltaOf = (s: string) => (s.trim() === "" ? 0 : parseFloat(s) || 0);
+        const priceOf = (s: string) => Math.max(0, Math.round((base + deltaOf(s)) * 100) / 100);
+        const signed = (n: number) => (n >= 0 ? "+" : "−") + fmtPrice(Math.abs(n));
         const setUnit = (i: number, patch: Partial<{ note: string; adjust: string }>) => setEditUnits((us) => us.map((u, k) => (k === i ? { ...u, ...patch } : u)));
         const setN = (n: number) => setEditUnits((us) => Array.from({ length: Math.max(1, Math.min(20, n)) }, (_, i) => us[i] ?? { note: "", adjust: "" }));
         const n = editUnits.length;
@@ -872,7 +877,10 @@ export default function PublicMenu() {
                     <div className="flex items-center gap-2">
                       <span className="flex-none text-xs text-ink-faint">{tri("加/减价 $", "Adjust $", "Ajust. $")}</span>
                       <input type="number" inputMode="decimal" value={u.adjust} onChange={(e) => setUnit(i, { adjust: e.target.value })} placeholder="+15 / -5" className="input min-h-9 flex-1 text-sm" />
-                      <span className="flex-none text-sm font-bold text-jade">{fmtPrice(priceOf(u.adjust))}</span>
+                      <span className="flex-none text-right text-sm font-bold text-jade">
+                        {deltaOf(u.adjust) !== 0 && <span className="mr-1 text-xs font-semibold text-gold">{signed(deltaOf(u.adjust))}</span>}
+                        {fmtPrice(priceOf(u.adjust))}
+                      </span>
                     </div>
                   </div>
                   );

@@ -31,7 +31,7 @@ function shopBusinessDate(): string {
   }).format(new Date()); // YYYY-MM-DD
 }
 
-type Item = { name_zh: string; name_en?: string; qty: number; price: number | null; market?: boolean; cancelled?: boolean };
+type Item = { name_zh: string; name_en?: string; qty: number; price: number | null; market?: boolean; cancelled?: boolean; note?: string; adjust?: number };
 const activeItems = (o: { items: Item[] }) => (o.items ?? []).filter((it) => !it.cancelled);
 const orderTotal = (o: { items: Item[] }) =>
   money(activeItems(o).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0));
@@ -179,7 +179,7 @@ export async function POST(req: Request) {
   // full bill so a settled table ALWAYS produces a receipt, never a silent no-print.
   // Enqueued AFTER the settle so an offline printer never blocks checkout.
   if (sessionId && split) {
-    const fullLines = claimed.flatMap((o) => activeItems(o).map((it) => ({ name_zh: it.name_zh, name_en: it.name_en, qty: it.qty, price: it.price })));
+    const fullLines = claimed.flatMap((o) => activeItems(o).map((it) => ({ name_zh: it.name_zh, name_en: it.name_en, qty: it.qty, price: it.price, ...(it.note ? { note: it.note } : {}), ...(it.adjust ? { adjust: it.adjust } : {}) })));
     const job = (kind: string, seq: number, payload: Record<string, unknown>) => ({ tenant_slug: slug, table_no: tableNo, kind, seq, session_id: sessionId, payload });
     const shareJobs = isSplit ? splits.map((sh, i) => job("share", i + 1, { ...sh, idx: i + 1, n: splits.length, tableNo })) : [];
     const fullJob = job("full", shareJobs.length + 1, {

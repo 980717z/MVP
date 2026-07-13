@@ -177,6 +177,22 @@ function fmtTime(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 const money = (n: number) => "$" + (Math.round(n * 100) / 100).toFixed(2);
+// Signed dollar delta for a priced bill, e.g. +$5.00 / −$5.00 (proper minus glyph).
+const signedMoney = (n: number) => (n >= 0 ? "+" : "−") + money(Math.abs(n));
+
+/** The "→ reason +$amount" line under a dish on a PRICED bill (账单 / 分单总单).
+ *  • note + adjust → "→ 加炒底 +$5.00"   (reason is the staff note; amount is the delta)
+ *  • note only     → "→ 加一条鱼"          (free note, no price change)
+ *  • adjust only   → "→ 加价 Adjust +$5.00" (bilingual generic label — no note text)
+ *  Returns null when there's nothing to annotate. Kitchen tickets don't use this
+ *  (they show the note without any price — the kitchen doesn't handle money). */
+function pricedNoteLine(it: { note?: string; adjust?: number }): string | null {
+  const note = (it.note || "").trim();
+  const adj = Number(it.adjust) || 0;
+  if (note) return adj !== 0 ? `  → ${note} ${signedMoney(adj)}` : `  → ${note}`;
+  if (adj !== 0) return `  → 加价 Adjust ${signedMoney(adj)}`;
+  return null;
+}
 
 // ── KITCHEN TICKET ─────────────────────────────────────────────────────────
 function drawTicket(o: Order, shopName: string): { canvas: Canvas; height: number } | null {
@@ -237,8 +253,8 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
     // Chinese name + qty + price on line 1; English on an indented sub-line.
     b.row(qty >= 2 ? `${zh} ×${qty}` : zh, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
     if (en && en !== zh) b.left(`  ${en}`, SM, false, LH_SM);
-    const inote = ((it as { note?: string }).note || "").trim();
-    if (inote) b.left(`  → ${inote}`, SM, false, LH_SM); // staff per-item note
+    const nl = pricedNoteLine(it as { note?: string; adjust?: number }); // "→ 加炒底 +$5.00"
+    if (nl) b.left(nl, SM, false, LH_SM);
   }
   b.rule();
   b.row("小计 Subtotal", money(subtotal), MID, false, LH_MID);
@@ -259,7 +275,7 @@ interface SplitReceiptPayload {
   tableNo?: string; idx?: number; n?: number; evenOfN?: number; label?: string; method?: string;
   subtotal?: number; gst?: number; pst?: number; hst?: number; total?: number; tip?: number;
   tendered?: number | null; change?: number | null;
-  lines?: { name_zh?: string; name_en?: string; qty?: number; price?: number | null }[];
+  lines?: { name_zh?: string; name_en?: string; qty?: number; price?: number | null; note?: string; adjust?: number }[];
   splits?: { label?: string; method?: string; total?: number; tip?: number }[];
 }
 const hstOf = (p: SplitReceiptPayload) => p.hst != null ? p.hst : Math.round(((p.gst || 0) + (p.pst || 0)) * 100) / 100;
@@ -280,6 +296,8 @@ function drawSplitShare(p: SplitReceiptPayload, shopName: string): { canvas: Can
     const en = (it.name_en || "").trim();
     b.row(qty >= 2 ? `${zh} ×${qty}` : zh, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
     if (en && en !== zh) b.left(`  ${en}`, SM, false, LH_SM);
+    const nl = pricedNoteLine(it);
+    if (nl) b.left(nl, SM, false, LH_SM);
   }
   if (lines.length) b.rule();
   b.row("小计 Subtotal", money(p.subtotal || 0), MID, false, LH_MID);
@@ -313,6 +331,8 @@ function drawSplitFull(p: SplitReceiptPayload, shopName: string): { canvas: Canv
     const en = (it.name_en || "").trim();
     b.row(qty >= 2 ? `${zh} ×${qty}` : zh, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
     if (en && en !== zh) b.left(`  ${en}`, SM, false, LH_SM);
+    const nl = pricedNoteLine(it);
+    if (nl) b.left(nl, SM, false, LH_SM);
   }
   b.rule();
   b.row("小计 Subtotal", money(p.subtotal || 0), MID, false, LH_MID);

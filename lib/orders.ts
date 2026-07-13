@@ -16,6 +16,10 @@ export interface OrderItem {
   market?: boolean;
   /** Staff per-item note (e.g. 加一条鱼); prints under the dish on the bill + kitchen ticket. */
   note?: string;
+  /** Staff price adjustment applied to this line (± dollars), already folded into `price`.
+   *  Carried separately so the PRICED bill can annotate the reason line "加炒底 +$5.00".
+   *  Kitchen ticket ignores it (kitchen doesn't handle money). Absent = no adjustment. */
+  adjust?: number;
   /** 已出餐: this dish has been served to the table (floor-plan only; not a kitchen status). */
   served?: boolean;
   /** true for items the kitchen doesn't cook (drinks / plain rice). A round that is

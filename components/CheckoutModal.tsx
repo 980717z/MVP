@@ -50,7 +50,7 @@ const activeItems = (o: Order) => (o.items ?? []).filter((it) => !(it as OrderIt
 // a stable per-person color so a dish's owner is readable at a glance
 const DOT = ["#0E9F6E", "#2563EB", "#D97706", "#DB2777", "#7C3AED", "#0891B2", "#65A30D", "#DC2626", "#475569", "#CA8A04"];
 
-type Unit = { key: string; name_zh: string; name_en?: string; price: number };
+type Unit = { key: string; name_zh: string; name_en?: string; price: number; note?: string; adjust?: number };
 type Person = { id: string; method: PaymentMethod; tendered: string; tip: string };
 
 export default function CheckoutModal({
@@ -112,7 +112,7 @@ export default function CheckoutModal({
     orders.forEach((o) =>
       activeItems(o).forEach((it, i) => {
         const q = Number(it.qty) || 1;
-        for (let u = 0; u < q; u++) out.push({ key: `${o.id}:${i}:${u}`, name_zh: it.name_zh, name_en: it.name_en, price: money(Number(it.price) || 0) });
+        for (let u = 0; u < q; u++) out.push({ key: `${o.id}:${i}:${u}`, name_zh: it.name_zh, name_en: it.name_en, price: money(Number(it.price) || 0), note: it.note, adjust: it.adjust });
       }),
     );
     return out;
@@ -136,9 +136,11 @@ export default function CheckoutModal({
   const itemLinesFor = (personId: string): ShareLine[] => {
     const map = new Map<string, ShareLine>();
     units.filter((u) => assign[u.key] === personId).forEach((u) => {
-      const e = map.get(u.name_zh) ?? { name_zh: u.name_zh, name_en: u.name_en, qty: 0, price: u.price };
+      // Group by name + note + adjust so a customized portion stays its own bill line.
+      const gk = `${u.name_zh}|${u.note ?? ""}|${u.adjust ?? 0}`;
+      const e = map.get(gk) ?? { name_zh: u.name_zh, name_en: u.name_en, qty: 0, price: u.price, ...(u.note ? { note: u.note } : {}), ...(u.adjust ? { adjust: u.adjust } : {}) };
       e.qty += 1;
-      map.set(u.name_zh, e);
+      map.set(gk, e);
     });
     return [...map.values()];
   };

@@ -245,7 +245,7 @@ export default function TableFloor({
                           </button>
                         )}
                         <span className={`min-w-0 flex-1 ${it.cancelled ? "text-ink-faint line-through" : it.served ? "text-amber-700" : "text-ink"}`}>
-                          {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}
+                          {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{(it.note || it.adjust) && <span className="ml-1 text-xs text-gold">· {it.note || "加价"}{it.adjust ? ` ${it.adjust >= 0 ? "+" : "−"}$${Math.abs(it.adjust).toFixed(2)}` : ""}</span>}
                         </span>
                         {it.market && !(Number(it.price) > 0) ? (
                           <span className="flex-none rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">{t(T.marketPending)}</span>

@@ -19,7 +19,7 @@ const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const cents = (n: number) => Math.round((Number(n) || 0) * 100);
 const fromCents = (c: number) => Math.round(c) / 100;
 
-export interface ShareLine { name_zh: string; name_en?: string; qty: number; price: number | null }
+export interface ShareLine { name_zh: string; name_en?: string; qty: number; price: number | null; note?: string; adjust?: number }
 
 /** One settled sub-bill — stored in table_sessions.splits and printed separately. */
 export interface SplitShare {
