@@ -45,6 +45,8 @@ const T: Record<string, Dict> = {
   serveOrder: { zh: "整单出餐", en: "Serve round", fr: "Servir la tournée" },
   serveTable: { zh: "🍽️ 整桌出餐", en: "🍽️ Serve whole table", fr: "🍽️ Servir toute la table" },
   servedTag: { zh: "已出", en: "Served", fr: "Servi" },
+  more: { zh: "更多", en: "More", fr: "Plus" },
+  serveAria: { zh: "标记出餐", en: "Mark served", fr: "Marquer servi" },
 };
 
 const NEW_MS = 120_000; // "new order" cue window
@@ -78,6 +80,7 @@ export default function TableFloor({
   const [checkout, setCheckout] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [history, setHistory] = useState<TableCheckout[]>([]);
+  const [rowMenu, setRowMenu] = useState<string | null>(null); // order id whose ⋯ (destructive) menu is open
   const now = Date.now();
 
   const byLabel = new Map(layout.map((l) => [l.label, l]));
@@ -205,31 +208,48 @@ export default function TableFloor({
                       <span className="flex items-center gap-3">
                         <button onClick={async () => { await markServed(o.id, true); onChanged(); }} className="font-medium text-amber-600 hover:underline">{t(T.serveOrder)}</button>
                         <button onClick={async () => { await reprintOrder(o.id); onChanged(); }} className="text-brand hover:underline">🖨️ {t(T.reprint)}</button>
-                        <button onClick={async () => { if (confirm(t(T.confirmCancelOrder))) { await setOrderStatus(o.id, "cancelled"); onChanged(); } }} className="hover:text-red-600">{t(T.cancelOrder)}</button>
-                        <button onClick={async () => { if (confirm(t(T.confirmDel))) { await deleteOrder(o.id); onChanged(); } }} className="hover:text-red-600">{t(T.del)}</button>
+                        {/* destructive round actions tucked behind ⋯ so a live table can't be fat-fingered */}
+                        <div className="relative">
+                          <button onClick={() => setRowMenu((m) => (m === o.id ? null : o.id))} aria-label={t(T.more)} aria-expanded={rowMenu === o.id} className="grid h-6 w-6 place-items-center rounded text-base leading-none text-ink-faint hover:bg-slate-100">⋯</button>
+                          {rowMenu === o.id && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setRowMenu(null)} />
+                              <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg">
+                                <button onClick={async () => { setRowMenu(null); if (confirm(t(T.confirmCancelOrder))) { await setOrderStatus(o.id, "cancelled"); onChanged(); } }} className="block w-full px-3 py-2.5 text-left text-red-600 hover:bg-red-50">{t(T.cancelOrder)}</button>
+                                <button onClick={async () => { setRowMenu(null); if (confirm(t(T.confirmDel))) { await deleteOrder(o.id); onChanged(); } }} className="block w-full px-3 py-2.5 text-left text-red-600 hover:bg-red-50">{t(T.del)}</button>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </span>
                     </div>
                     {(o.items ?? []).map((it: OrderItem & { cancelled?: boolean }, i: number) => (
-                      <div key={i} className={`flex items-center justify-between py-0.5 text-sm ${it.cancelled ? "opacity-40" : ""}`}>
-                        <span className={it.cancelled ? "text-ink-faint line-through" : it.served ? "text-amber-700" : "text-ink"}>
-                          {it.served && !it.cancelled && <span className="mr-0.5">✓</span>}
+                      <div key={i} className={`flex items-center gap-2.5 py-1 text-sm ${it.cancelled ? "opacity-40" : ""}`}>
+                        {/* serve toggle — routine, big tap target; filled amber ✓ when served */}
+                        {it.cancelled ? (
+                          <span className="h-6 w-6 flex-none" />
+                        ) : (
+                          <button
+                            onClick={async () => { await markServed(o.id, !it.served, i); onChanged(); }}
+                            aria-pressed={!!it.served}
+                            aria-label={t(T.serveAria)}
+                            className={`grid h-6 w-6 flex-none place-items-center rounded-full border text-xs transition ${it.served ? "border-amber-500 bg-amber-500 text-white" : "border-slate-300 text-transparent hover:border-amber-400"}`}
+                          >
+                            ✓
+                          </button>
+                        )}
+                        <span className={`min-w-0 flex-1 ${it.cancelled ? "text-ink-faint line-through" : it.served ? "text-amber-700" : "text-ink"}`}>
                           {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}
                         </span>
-                        <span className="flex items-center gap-2.5">
-                          {it.market && !(Number(it.price) > 0) ? (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">{t(T.marketPending)}</span>
-                          ) : (
-                            <span className="text-ink-soft">{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
-                          )}
-                          {!it.cancelled && (
-                            <button onClick={async () => { await markServed(o.id, !it.served, i); onChanged(); }} className={`text-xs ${it.served ? "text-amber-600 hover:underline" : "text-brand hover:underline"}`}>
-                              {it.served ? t(T.unserve) : t(T.serveItem)}
-                            </button>
-                          )}
-                          {!it.cancelled && (
-                            <button onClick={async () => { await cancelOrderItem(o.id, i); onChanged(); }} className="text-xs text-ink-faint hover:text-red-600">{t(T.cancelItem)}</button>
-                          )}
-                        </span>
+                        {it.market && !(Number(it.price) > 0) ? (
+                          <span className="flex-none rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">{t(T.marketPending)}</span>
+                        ) : (
+                          <span className="flex-none text-ink-soft">{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
+                        )}
+                        {/* cancel — destructive, small + muted + far from the serve toggle */}
+                        {!it.cancelled && (
+                          <button onClick={async () => { await cancelOrderItem(o.id, i); onChanged(); }} aria-label={t(T.cancelItem)} className="flex-none px-1 text-xs text-ink-faint/50 hover:text-red-600">✕</button>
+                        )}
                       </div>
                     ))}
                   </div>
