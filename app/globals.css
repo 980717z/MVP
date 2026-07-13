@@ -6,6 +6,24 @@
   --font-sans: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
+/* ── Menu layout override (phone ⇄ desktop toggle) ──────────────────────────
+   The auto layout is pure Tailwind `md:` breakpoints — correct on first paint,
+   no hydration flash. These rules fire ONLY when the diner manually forces a
+   view via the header toggle (main[data-view=…]); they beat the md: utilities
+   by specificity. Marker classes: mv-shell (max width), mv-grid (dish columns),
+   mv-rail (nav width), mv-desktop (order panel), mv-phone (bottom cart bar). */
+main[data-view="phone"] .mv-shell { max-width: 440px !important; }
+main[data-view="phone"] .mv-grid { grid-template-columns: 1fr !important; }
+main[data-view="phone"] .mv-rail { width: 88px !important; }
+main[data-view="phone"] .mv-desktop { display: none !important; }
+main[data-view="phone"] .mv-phone { display: block !important; }
+
+main[data-view="desktop"] .mv-shell { max-width: 1440px !important; }
+main[data-view="desktop"] .mv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+main[data-view="desktop"] .mv-rail { width: 11rem !important; }
+main[data-view="desktop"] .mv-desktop { display: flex !important; }
+main[data-view="desktop"] .mv-phone { display: none !important; }
+
 html,
 body {
   padding: 0;

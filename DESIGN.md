@@ -52,9 +52,19 @@ BentoOS platform UI (landing/dashboard/demo), which has its own pastel look.
 - **Scale:** 2xs(2) xs(4) sm(8) md(16) lg(24) xl(32) 2xl(48). Row padding 14px; section pad 18px.
 
 ## Layout
-- **Approach:** grid-disciplined, mobile-first single column.
-- **Max content width:** 440px (`max-w-[440px]`), centered. The menu is phone-first
-  (QR-scanned); cap to a phone-width column so it reads as the phone view on desktop too.
+- **Approach:** grid-disciplined, mobile-first single column — with a responsive
+  desktop/iPad layout on top (see "Two views" below).
+- **Max content width (phone):** 440px (`max-w-[440px]`), centered. The phone view
+  (QR-scanned) caps to a phone-width column.
+- **Two views (phone ⇄ desktop/iPad):** at **≥768px** the menu becomes a 3-pane POS —
+  wider category rail (labels + counts) · multi-column dish grid (2 → 3 cols) ·
+  persistent right **order panel** (live order, per-line qty, submit). Bottom sheets
+  (选规格 / 火锅配菜 / staff ✎ / cart) become **centered dialogs**. A header top-right
+  toggle (📱/🖥) switches views manually and persists per device (`localStorage`);
+  with no manual choice, viewport width decides. The auto layout is pure CSS `md:`
+  breakpoints (no hydration flash); the manual override is `main[data-view]` rules in
+  globals.css. Phone view (<768) is unchanged. Permanent QR contract untouched
+  (same route, no new param). Detection precedence lives in `lib/menuView.ts` (tested).
 - **Header:** sticky; cart pill (top-left, jade, shows subtotal) + 富来小厨 (serif) +
   Sang's Seafood (tracked) + EN/中 toggle.
 - **Category nav:** sticky **left rail** (美团/大众点评 style) — all categories visible,
@@ -75,3 +85,4 @@ BentoOS platform UI (landing/dashboard/demo), which has its own pastel look.
 | 2026-06-29 | Category nav → left rail w/ scroll-sync; content capped to 440px (phone width) | Folding tab bar hid 14 of 19 categories; left rail (美团 pattern) shows all + diners know it. Phone-width cap makes desktop preview as the phone view. |
 | 2026-07-03 | Re-applied left rail + 440px after a cross-branch merge reverted them | A parallel `testing`-branch merge clobbered the menu page + this doc back to folding-tabs/640px; restored on top of the 扫码配送 changes. |
 | 2026-07-03 | 多规格 (multi-size) dishes: bottom-sheet size selector | /plan-design-review. Dishes may carry sizes (全/半, 位/小/中/大/特大). Single-price dishes unchanged (bare ＋). Multi-size show "起 $min" + 选规格 button → slide-up sheet lists each size+price with steppers; each size is its own cart line. Sheet chosen over inline chips because it scales to 5-size soups on a 440px phone. |
+| 2026-07-13 | Desktop/iPad 3-pane view + phone⇄desktop toggle (supersedes 440px-on-desktop cap for ≥768) | /plan-design-review + /plan-eng-review. The 440px cap made desktop/iPad (esp. staff iPad ordering) waste ~65% of the screen. At ≥768px the menu is now a 3-pane POS (rail · dish grid · persistent order panel); sheets → centered dialogs. Toggle (📱/🖥) top-right, localStorage-persisted, manual beats auto. CSS-single-tree (one dish list, responsive grid) so no double-DOM + no hydration flash; manual override via `main[data-view]`. Phone view unchanged (baseline). |

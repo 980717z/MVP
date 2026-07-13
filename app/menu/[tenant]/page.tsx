@@ -9,6 +9,7 @@ import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
 import CheckoutSheet from "@/components/CheckoutSheet";
+import { resolveMenuView, MENU_VIEW_KEY, type MenuView } from "@/lib/menuView";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -76,6 +77,11 @@ export default function PublicMenu() {
   const [embed, setEmbed] = useState(false);
   const [staff, setStaff] = useState(false); // opened from the floor plan (?staff=1): phone optional + ping parent on placement
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
+  // Desktop/iPad vs phone layout. `viewOverride` = the manual toggle (null = auto).
+  // The auto layout is driven by CSS `md:` breakpoints (correct on first paint, no
+  // hydration flash); this state only powers the manual override attribute + toggle.
+  const [viewOverride, setViewOverride] = useState<MenuView | null>(null);
+  const [wideAuto, setWideAuto] = useState(false); // viewport ≥768 (toggle highlight only)
   const [street, setStreet] = useState("");
   const [unit, setUnit] = useState("");
   const [postal, setPostal] = useState("");
@@ -93,6 +99,26 @@ export default function PublicMenu() {
   // For helpers/data with only zh/en (category & postal-zone names, Clover sheet):
   // French shows English (no French data exists for those).
   const lang2: "zh" | "en" = lang === "zh" ? "zh" : "en";
+
+  // Layout view: read the saved manual choice + track viewport width. Layout itself
+  // is CSS-driven (md: breakpoints + the [data-view] override in globals.css); this
+  // only resolves the toggle's active state and the override attribute.
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(MENU_VIEW_KEY); } catch { /* private mode */ }
+    if (stored === "phone" || stored === "desktop") setViewOverride(stored);
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    setWideAuto(mq.matches);
+    const on = () => setWideAuto(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  const effectiveView = resolveMenuView(viewOverride, wideAuto);
+  const setView = (v: MenuView) => {
+    setViewOverride(v);
+    try { localStorage.setItem(MENU_VIEW_KEY, v); } catch { /* ignore */ }
+  };
 
   // Auto-format the postal code as the customer types: "m5t2e7" → "M5T 2E7"
   const onPostal = (raw: string) => {
@@ -571,9 +597,74 @@ export default function PublicMenu() {
     );
   };
 
+  // Desktop/iPad persistent order panel (right column). Reuses the same cartLines +
+  // inc handlers as the phone cart sheet; the primary button opens the cart sheet
+  // (a centered dialog on desktop) for phone/note + final submit — no logic fork.
+  const renderOrderPanel = () => {
+    const headTable = lockedTable ? tri(`本单 · ${displayTable(lockedTable)} 号桌`, `Order · Table ${displayTable(lockedTable)}`, `Commande · Table ${displayTable(lockedTable)}`) : tri("本单", "Your order", "Votre commande");
+    return (
+      <>
+        <div className="flex-none border-b border-slate-100 px-4 py-3 text-sm font-bold text-ink">{headTable}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          {placedLines.length > 0 && (
+            <div className="mb-3 rounded-xl border border-jade/20 bg-jade-wash/50 p-3">
+              <div className="mb-1 flex items-center justify-between text-xs font-semibold text-jade">
+                <span>✓ {t("prevOrdered")}</span><span className="tabular-nums">${placedTotal.toFixed(2)}</span>
+              </div>
+              <div className="space-y-0.5">
+                {placedLines.map((l, i) => (
+                  <div key={i} className="flex justify-between gap-2 text-xs text-ink-soft">
+                    <span className="min-w-0 truncate">{lang === "zh" ? l.name_zh : l.name_en || l.name_zh} ×{l.qty}</span>
+                    <span className="flex-none tabular-nums">{fmtPrice((Number(l.price) || 0) * l.qty)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {cartLines.length === 0 ? (
+            <p className="py-10 text-center text-sm text-ink-faint">{t("empty")}</p>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {cartLines.map((x) => (
+                <div key={x.key} className="flex items-center justify-between gap-2 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-ink">{lineName(x.d, x.variant, lang !== "zh")}</div>
+                    <div className={`text-xs ${x.isMarket ? "font-semibold text-gold" : "text-ink-faint"}`}>
+                      {x.isMarket ? t("market") : x.customized ? `${fmtPrice(x.lineTotal)}${x.qty > 1 ? ` · ${x.qty} ${t("items")}` : ""}` : fmtPrice(x.unit) || t("market")}
+                      {x.customized && <span className="ml-1 text-gold">✎</span>}
+                    </div>
+                  </div>
+                  <div className="flex flex-none items-center gap-1.5">
+                    <button onClick={() => inc(x.key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                    <span className="w-5 text-center font-semibold">{x.qty}</span>
+                    <button onClick={() => inc(x.key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex-none border-t border-slate-100 p-4">
+          <div className="mb-2 flex items-center justify-between text-base font-bold text-ink">
+            <span>{placedTotal > 0 ? t("grand") : t("total")}</span>
+            <span className="tabular-nums">${(placedTotal > 0 ? grandTotal : total).toFixed(2)}{hasMarketItems && <span className="ml-1 text-xs font-semibold text-gold">+ {t("market")}</span>}</span>
+          </div>
+          <button
+            onClick={() => setOpen(true)}
+            disabled={count === 0}
+            className="w-full rounded-full bg-jade py-3 text-sm font-semibold text-white transition enabled:hover:opacity-90 disabled:opacity-40"
+          >
+            {count > 0 ? (togoMode ? (PAYMENTS_LIVE ? t("goPay") : t("sendOrder")) : t("submit")) : t("empty")}
+          </button>
+        </div>
+      </>
+    );
+  };
+
   return (
     <main
-      className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32" : "pb-20"}`}
+      data-view={viewOverride ?? undefined}
+      className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32 md:pb-6" : "pb-20 md:pb-6"}`}
       style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
@@ -585,7 +676,7 @@ export default function PublicMenu() {
       <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[440px] items-center gap-3 px-5 py-4">
+        <div className="mv-shell mx-auto flex w-full max-w-[440px] items-center gap-3 px-5 py-4 md:max-w-[1440px]">
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
               {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? name.zh : "…"}
@@ -593,6 +684,21 @@ export default function PublicMenu() {
             {!embed && name?.en && name.en !== name.zh && (
               <div className="text-[11px] uppercase tracking-[0.15em] text-ink-faint">{name.en}</div>
             )}
+          </div>
+          {/* phone ⇄ desktop layout toggle — auto-detects by screen, manual choice sticks */}
+          <div className="flex flex-none items-center rounded-full border border-slate-200 p-0.5" role="group" aria-label={tri("视图", "Layout", "Vue")}>
+            <button
+              onClick={() => setView("phone")}
+              aria-pressed={effectiveView === "phone"}
+              title={tri("手机版", "Phone view", "Vue mobile")}
+              className={`grid h-7 w-8 place-items-center rounded-full text-sm transition ${effectiveView === "phone" ? "bg-jade text-white" : "text-ink-faint hover:bg-slate-50"}`}
+            >📱</button>
+            <button
+              onClick={() => setView("desktop")}
+              aria-pressed={effectiveView === "desktop"}
+              title={tri("桌面版", "Desktop view", "Vue bureau")}
+              className={`grid h-7 w-8 place-items-center rounded-full text-sm transition ${effectiveView === "desktop" ? "bg-jade text-white" : "text-ink-faint hover:bg-slate-50"}`}
+            >🖥️</button>
           </div>
           <button
             onClick={() => setLang((l) => (l === "zh" ? "en" : l === "en" ? "fr" : "zh"))}
@@ -614,7 +720,7 @@ export default function PublicMenu() {
         </div>
       )}
 
-      <div className="mx-auto max-w-[440px] px-5 py-6">
+      <div className="mv-shell mx-auto w-full max-w-[440px] px-5 py-6 md:max-w-[1440px]">
         {loaded && dishes.length === 0 && (
           <p className="py-20 text-center text-sm text-ink-faint">{tri("菜单还没准备好。", "The menu isn't ready yet.", "Le menu n'est pas encore prêt.")}</p>
         )}
@@ -697,7 +803,7 @@ export default function PublicMenu() {
             {results.length === 0 ? (
               <p className="py-12 text-center text-sm text-ink-faint">{t("noResults")}</p>
             ) : (
-              <div className="space-y-3">{results.map(renderDish)}</div>
+              <div className="mv-grid grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-x-6 xl:grid-cols-3">{results.map(renderDish)}</div>
             )}
           </section>
         ) : (
@@ -707,7 +813,7 @@ export default function PublicMenu() {
           {cats.length > 1 && (
             <nav
               ref={railRef}
-              className="sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="mv-rail sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
             >
               {cats.map((g, i) => {
                 const on = g.category === activeCat;
@@ -736,10 +842,16 @@ export default function PublicMenu() {
                 <h2 className="mb-3 flex items-baseline gap-2 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">
                   {catLabel(g.category, lang2)}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
                 </h2>
-                <div className="space-y-3">{g.items.map(renderDish)}</div>
+                <div className="mv-grid grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-x-6 xl:grid-cols-3">{g.items.map(renderDish)}</div>
               </section>
             ))}
           </div>
+
+          {/* desktop/iPad: persistent order panel — live order while browsing.
+              Always in DOM; CSS `md:` (+ [data-view] override) controls visibility. */}
+          <aside className="mv-desktop sticky top-[68px] hidden max-h-[calc(100vh-88px)] w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex">
+            {renderOrderPanel()}
+          </aside>
         </div>
         </>
         )}
@@ -747,7 +859,7 @@ export default function PublicMenu() {
 
       {/* slim bottom checkout bar — one row, no dish list (美团 pattern) */}
       {(count > 0 || placedTotal > 0) && !open && !sheetDish && (
-        <div className="fixed inset-x-0 bottom-0 z-20 px-3 pb-3">
+        <div className="mv-phone fixed inset-x-0 bottom-0 z-20 px-3 pb-3 md:hidden">
           <button
             onClick={() => setOpen(true)}
             className="mx-auto flex w-full max-w-[440px] items-center justify-between rounded-full bg-jade py-3 pl-5 pr-2 text-white shadow-[0_6px_24px_rgba(17,122,101,0.35)] transition active:scale-[0.99]"
@@ -781,8 +893,8 @@ export default function PublicMenu() {
 
       {/* 多规格 size selector — tap 选规格 opens this */}
       {sidesOpen && hotpotSides.length > 0 && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSidesOpen(false)}>
-          <div className="mx-auto flex max-h-[82vh] w-full max-w-[440px] flex-col rounded-t-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setSidesOpen(false)}>
+          <div className="mx-auto flex max-h-[82vh] w-full max-w-[440px] flex-col rounded-t-2xl md:rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
             {/* sticky header — the top-right action is ALWAYS visible (no scroll to skip/finish) */}
             <div className="flex flex-none items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
               <div className="min-w-0">
@@ -849,8 +961,8 @@ export default function PublicMenu() {
         const setN = (n: number) => setEditUnits((us) => Array.from({ length: Math.max(1, Math.min(20, n)) }, (_, i) => us[i] ?? { note: "", adjust: "" }));
         const n = editUnits.length;
         return (
-          <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setStaffEditKey(null)}>
-            <div className="mx-auto flex max-h-[84vh] w-full max-w-[440px] flex-col rounded-t-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setStaffEditKey(null)}>
+            <div className="mx-auto flex max-h-[84vh] w-full max-w-[440px] flex-col rounded-t-2xl md:rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
               {/* sticky header: dish name + 份数 stepper */}
               <div className="flex flex-none items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
                 <div className="min-w-0 truncate text-lg font-bold text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
@@ -915,8 +1027,8 @@ export default function PublicMenu() {
       })()}
 
       {sheetDish && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSheetDish(null)}>
-          <div className="mx-auto max-h-[78vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setSheetDish(null)}>
+          <div className="mx-auto max-h-[78vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-slate-200" />
             <div className="mb-1 flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -971,8 +1083,8 @@ export default function PublicMenu() {
 
       {/* cart sheet */}
       {open && (
-        <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={() => setOpen(false)}>
-          <div className="mx-auto max-h-[85vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-30 flex items-end bg-black/40 md:items-center" onClick={() => setOpen(false)}>
+          <div className="mx-auto max-h-[85vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <div className="text-lg font-bold text-ink">{t("cart")}</div>
               <button onClick={() => setOpen(false)} className="text-ink-faint">✕</button>
