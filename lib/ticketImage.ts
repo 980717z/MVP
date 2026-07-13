@@ -49,7 +49,12 @@ function ensureFont(): boolean {
 }
 
 function setFont(ctx: SKRSContext2D, size: number, bold: boolean) {
-  ctx.font = `${bold ? "bold " : ""}${size}px ${FONT}`;
+  // Every line renders bold: 富来 serves mostly elderly diners, and heavier strokes
+  // read noticeably darker on thermal paper. Hierarchy is carried by SIZE
+  // (SHOP > BIG > MID > SM), not weight, so all-bold keeps the layout legible.
+  // `bold` is kept in the signature for call-site intent (and future light weight).
+  void bold;
+  ctx.font = `bold ${size}px ${FONT}`;
 }
 
 // Greedy wrap: Latin words stay whole, CJK/fullwidth chars break anywhere, and
