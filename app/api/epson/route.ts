@@ -83,7 +83,7 @@ async function handle(req: Request): Promise<Response> {
       .neq("status", "cancelled")
       .or("order_type.eq.dine_in,payment_status.eq.paid")
       .order("created_at", { ascending: true })
-      .limit(1);
+      .limit(5);
     if (error) {
       // Most likely the `printed_at` column isn't migrated yet — fail quiet so the
       // printer just gets "nothing to print" instead of erroring.
@@ -91,10 +91,13 @@ async function handle(req: Request): Promise<Response> {
       return empty();
     }
 
-    const order = (data as Order[] | null)?.[0];
-    if (order) {
-      // Optimistically mark printed. The `.is('printed_at', null)` guard makes this a
-      // compare-and-set so a rare double-poll can't double-print.
+    // Drain pending kitchen tickets oldest-first. A round of ONLY no-kitchen items
+    // (drinks / plain rice) gets claimed but NOT printed — the kitchen doesn't cook
+    // it (it still shows on the bill). Print the first round that has cookable food.
+    for (const order of (data as Order[] | null) ?? []) {
+      const active = (order.items ?? []).filter((it) => !(it as { cancelled?: boolean }).cancelled);
+      const needsKitchen = active.some((it) => !(it as { noKitchen?: boolean }).noKitchen);
+      // CAS-claim so a rare double-poll can't double-print.
       const { data: claimed } = await db
         .from("orders")
         .update({ printed_at: new Date().toISOString() })
@@ -102,8 +105,9 @@ async function handle(req: Request): Promise<Response> {
         .is("printed_at", null)
         .select("id")
         .maybeSingle();
-      if (claimed) return new Response(buildEposXml(order, shopName), { headers: XML_HEADERS });
-      // else another poll claimed it — fall through to a bill, don't idle this poll.
+      if (!claimed) continue; // another poll claimed it
+      if (needsKitchen) return new Response(buildEposXml(order, shopName), { headers: XML_HEADERS });
+      // no-cook-only round → claimed (won't reprint), no kitchen ticket; keep looking.
     }
 
     // Split-bill queue (分单): one sub-bill / full-bill per poll, FIFO (created_at

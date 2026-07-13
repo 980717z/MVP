@@ -332,6 +332,9 @@ export default function PublicMenu() {
     }
 
     setSubmitting(true);
+    // Drinks (酒水饮品) and plain white rice (白饭/白米饭) aren't cooked — a round of
+    // only these skips the kitchen ticket (see /api/epson). Still prints on the bill.
+    const isNoCook = (d: MenuItem) => d.category === "酒水饮品" || /^白\s*米?\s*饭$/.test((d.name_zh || "").trim());
     const items: OrderItem[] = cartLines.map((x) => ({
       id: x.d.id,
       name_zh: lineName(x.d, x.variant),
@@ -340,6 +343,7 @@ export default function PublicMenu() {
       qty: x.qty,
       ...(x.isMarket ? { market: true } : {}),
       ...(x.note ? { note: x.note } : {}),
+      ...(isNoCook(x.d) ? { noKitchen: true } : {}),
     }));
     const res = await createOrder(slug, {
       items,

@@ -18,6 +18,9 @@ export interface OrderItem {
   note?: string;
   /** 已出餐: this dish has been served to the table (floor-plan only; not a kitchen status). */
   served?: boolean;
+  /** true for items the kitchen doesn't cook (drinks / plain rice). A round that is
+   *  ALL no-kitchen items skips the kitchen ticket; it still prints on the bill. */
+  noKitchen?: boolean;
 }
 
 export interface OrderAddress {
