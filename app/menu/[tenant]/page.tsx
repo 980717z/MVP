@@ -856,9 +856,18 @@ export default function PublicMenu() {
                     {tri("把第 1 份应用到全部", "Apply portion 1 to all", "Appliquer la 1re à toutes")}
                   </button>
                 )}
-                {editUnits.map((u, i) => (
-                  <div key={i} className="rounded-xl border border-slate-100 p-3">
-                    {n > 1 && <div className="mb-1.5 text-xs font-semibold text-ink-soft">{lang === "zh" ? `第 ${i + 1} 份` : `Portion ${i + 1}`}</div>}
+                {editUnits.map((u, i) => {
+                  const hasNote = u.note.trim() !== "";
+                  const hasAdj = u.adjust.trim() !== "" && (parseFloat(u.adjust) || 0) !== 0;
+                  const tag = hasNote && hasAdj ? tri("已备注 · 改价", "Note · price", "Note · prix") : hasNote ? tri("已备注", "Note", "Note") : hasAdj ? tri("改价", "Price", "Prix") : "";
+                  return (
+                  <div key={i} className={`rounded-xl border p-3 ${tag ? "border-gold/50 bg-gold/[0.06]" : "border-slate-100"}`}>
+                    {(n > 1 || tag) && (
+                      <div className="mb-1.5 flex items-center justify-between">
+                        {n > 1 && <span className="text-xs font-semibold text-ink-soft">{lang === "zh" ? `第 ${i + 1} 份` : `Portion ${i + 1}`}</span>}
+                        {tag && <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">{tag}</span>}
+                      </div>
+                    )}
                     <input value={u.note} onChange={(e) => setUnit(i, { note: e.target.value })} placeholder={tri("备注 例：加一条鱼", "Note, e.g. add a fish", "Note ex. ajouter un poisson")} className="input mb-2 w-full text-sm" />
                     <div className="flex items-center gap-2">
                       <span className="flex-none text-xs text-ink-faint">{tri("加/减价 $", "Adjust $", "Ajust. $")}</span>
@@ -866,7 +875,8 @@ export default function PublicMenu() {
                       <span className="flex-none text-sm font-bold text-jade">{fmtPrice(priceOf(u.adjust))}</span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="flex-none border-t border-slate-100 p-4">
                 <button
