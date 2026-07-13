@@ -61,10 +61,11 @@ export default function PublicMenu() {
   const [sheetDish, setSheetDish] = useState<MenuItem | null>(null); // open 多规格 size sheet
   const [sidesOpen, setSidesOpen] = useState(false); // full 火锅配菜 sheet (auto-opens on hotpot)
   // staff (?staff=1) per-item customization: note + price adjustment (±), keyed by cartKey
-  const [itemMeta, setItemMeta] = useState<Record<string, { note?: string; adjust?: number }>>({});
+  // Per-PORTION note + price adjustment: units[u] customizes the u-th portion, so a
+  // note can apply to just one of several identical dishes (grouped back into order lines).
+  const [itemMeta, setItemMeta] = useState<Record<string, { units: { note?: string; adjust?: number }[] }>>({});
   const [staffEditKey, setStaffEditKey] = useState<string | null>(null); // cartKey whose editor sheet is open
-  const [editNote, setEditNote] = useState("");
-  const [editAdjust, setEditAdjust] = useState("");
+  const [editUnits, setEditUnits] = useState<{ note: string; adjust: string }[]>([]);
   const railRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
@@ -165,25 +166,26 @@ export default function PublicMenu() {
     });
 
   // Cart is keyed by dish id (single-price) or `id#variantIndex` (a chosen size).
-  const cartLines = Object.entries(cart)
-    .map(([key, qty]) => {
-      const { id, vi } = parseCartKey(key);
-      const d = byId[id];
-      if (!d) return null;
-      const variant = vi != null ? d.variants?.[vi] ?? null : null;
-      // 时价 line = market dish whose chosen price is 0 (no today-price, or a
-      // priceless cooking-style variant like 生猛龙虾·清蒸). Staff prices it at
-      // completion. A market dish with a today-price entered charges normally.
-      const isMarket = !!d.is_market && !(unitPrice(d, vi) > 0);
-      const meta = itemMeta[key];
-      const base = isMarket ? 0 : unitPrice(d, vi);
-      const unit = Math.max(0, Math.round((base + (meta?.adjust ?? 0)) * 100) / 100); // staff ± adjustment, never negative
-      return { key, d, variant, isMarket, unit, qty, note: meta?.note };
-    })
-    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number; note: string | undefined } => !!x);
+  const cartLines = Object.entries(cart).flatMap(([key, qty]) => {
+    const { id, vi } = parseCartKey(key);
+    const d = byId[id];
+    if (!d) return [];
+    const variant = vi != null ? d.variants?.[vi] ?? null : null;
+    // 时价 line = market dish whose chosen price is 0 (no today-price, or a
+    // priceless cooking-style variant like 生猛龙虾·清蒸). Staff prices it at
+    // completion. A market dish with a today-price entered charges normally.
+    const isMarket = !!d.is_market && !(unitPrice(d, vi) > 0);
+    const meta = itemMeta[key];
+    const base = isMarket ? 0 : unitPrice(d, vi);
+    const unitAt = (u: number) => Math.max(0, Math.round((base + (meta?.units?.[u]?.adjust ?? 0)) * 100) / 100);
+    const unit = unitAt(0); // representative (first portion) for the cart row
+    const lineTotal = isMarket ? 0 : Array.from({ length: qty }, (_, u) => unitAt(u)).reduce((a, b) => a + b, 0);
+    const customized = Array.from({ length: qty }, (_, u) => meta?.units?.[u]).some((m) => m && ((m.adjust ?? 0) !== 0 || (m.note ?? "").trim() !== ""));
+    return [{ key, d, variant, isMarket, base, unit, lineTotal, qty, meta, customized }];
+  });
   const hasMarketItems = cartLines.some((x) => x.isMarket);
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
-  const total = cartLines.reduce((a, x) => a + x.unit * x.qty, 0);
+  const total = cartLines.reduce((a, x) => a + x.lineTotal, 0);
   // Display name with size baked in, so kitchen ticket / receipt / ledger read "红烧蟹肉翅（中）".
   const lineName = (d: MenuItem, v: Variant | null, en = false) =>
     en
@@ -335,16 +337,29 @@ export default function PublicMenu() {
     // Drinks (酒水饮品) and plain white rice (白饭/白米饭) aren't cooked — a round of
     // only these skips the kitchen ticket (see /api/epson). Still prints on the bill.
     const isNoCook = (d: MenuItem) => d.category === "酒水饮品" || /^白\s*米?\s*饭$/.test((d.name_zh || "").trim());
-    const items: OrderItem[] = cartLines.map((x) => ({
-      id: x.d.id,
-      name_zh: lineName(x.d, x.variant),
-      name_en: lineName(x.d, x.variant, true),
-      price: x.isMarket ? null : x.unit,
-      qty: x.qty,
-      ...(x.isMarket ? { market: true } : {}),
-      ...(x.note ? { note: x.note } : {}),
-      ...(isNoCook(x.d) ? { noKitchen: true } : {}),
-    }));
+    const items: OrderItem[] = cartLines.flatMap((x) => {
+      // Group this dish's portions by identical (note, adjust) → one order line per group,
+      // so 白饭×3 with a note on portion 2 becomes 白饭×2 + 白饭×1(备注).
+      const groups = new Map<string, { note?: string; adjust: number; qty: number }>();
+      for (let u = 0; u < x.qty; u++) {
+        const note = (x.meta?.units?.[u]?.note ?? "").trim();
+        const adjust = x.meta?.units?.[u]?.adjust ?? 0;
+        const gk = `${note}|${adjust}`;
+        const g = groups.get(gk) ?? { note: note || undefined, adjust, qty: 0 };
+        g.qty += 1;
+        groups.set(gk, g);
+      }
+      return [...groups.values()].map((g) => ({
+        id: x.d.id,
+        name_zh: lineName(x.d, x.variant),
+        name_en: lineName(x.d, x.variant, true),
+        price: x.isMarket ? null : Math.max(0, Math.round((x.base + g.adjust) * 100) / 100),
+        qty: g.qty,
+        ...(x.isMarket ? { market: true } : {}),
+        ...(g.note ? { note: g.note } : {}),
+        ...(isNoCook(x.d) ? { noKitchen: true } : {}),
+      }));
+    });
     const res = await createOrder(slug, {
       items,
       total,
@@ -521,9 +536,14 @@ export default function PublicMenu() {
             {/* staff-only: per-item 备注 + 加价/减价 for this dish (opens the editor sheet) */}
             {staff && (
               <button
-                onClick={() => { const m = itemMeta[d.id]; setEditNote(m?.note ?? ""); setEditAdjust(m?.adjust != null ? String(m.adjust) : ""); setStaffEditKey(d.id); }}
+                onClick={() => {
+                  const n = Math.max(1, cart[d.id] ?? 0);
+                  const u = itemMeta[d.id]?.units ?? [];
+                  setEditUnits(Array.from({ length: n }, (_, i) => ({ note: u[i]?.note ?? "", adjust: u[i]?.adjust != null ? String(u[i]!.adjust) : "" })));
+                  setStaffEditKey(d.id);
+                }}
                 title={tri("备注 / 改价", "Note / price", "Note / prix")}
-                className={`grid h-7 w-7 flex-none place-items-center rounded-full border text-sm ${itemMeta[d.id]?.note || itemMeta[d.id]?.adjust ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
+                className={`grid h-7 w-7 flex-none place-items-center rounded-full border text-sm ${(itemMeta[d.id]?.units ?? []).some((m) => (m?.adjust ?? 0) !== 0 || (m?.note ?? "").trim() !== "") ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
               >
                 ✎
               </button>
@@ -806,44 +826,64 @@ export default function PublicMenu() {
         </div>
       )}
 
-      {/* staff per-item 备注 + 加价/减价 editor */}
+      {/* staff per-PORTION 备注 + 加价/减价 editor — a note can apply to just one of several portions */}
       {staffEditKey && (() => {
         const { id, vi } = parseCartKey(staffEditKey);
         const d = byId[id];
         if (!d) return null;
         const base = d.is_market && !(unitPrice(d, vi) > 0) ? 0 : unitPrice(d, vi);
-        const adj = editAdjust.trim() === "" ? 0 : parseFloat(editAdjust) || 0;
-        const newPrice = Math.max(0, Math.round((base + adj) * 100) / 100);
+        const priceOf = (s: string) => Math.max(0, Math.round((base + (s.trim() === "" ? 0 : parseFloat(s) || 0)) * 100) / 100);
+        const setUnit = (i: number, patch: Partial<{ note: string; adjust: string }>) => setEditUnits((us) => us.map((u, k) => (k === i ? { ...u, ...patch } : u)));
+        const setN = (n: number) => setEditUnits((us) => Array.from({ length: Math.max(1, Math.min(20, n)) }, (_, i) => us[i] ?? { note: "", adjust: "" }));
+        const n = editUnits.length;
         return (
           <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setStaffEditKey(null)}>
-            <div className="mx-auto max-h-[80vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-lg font-bold text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
-                <button onClick={() => setStaffEditKey(null)} className="flex-none text-ink-faint">✕</button>
+            <div className="mx-auto flex max-h-[84vh] w-full max-w-[440px] flex-col rounded-t-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+              {/* sticky header: dish name + 份数 stepper */}
+              <div className="flex flex-none items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                <div className="min-w-0 truncate text-lg font-bold text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+                <div className="flex flex-none items-center gap-2">
+                  <span className="text-xs text-ink-faint">{tri("份数", "Qty", "Qté")}</span>
+                  <button onClick={() => setN(n - 1)} className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                  <span className="w-5 text-center text-base font-bold text-ink">{n}</span>
+                  <button onClick={() => setN(n + 1)} className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-ink">＋</button>
+                </div>
               </div>
-              <label className="mb-1 block text-sm font-medium text-ink-soft">{tri("备注（厨房 + 账单显示）", "Note (kitchen + bill)", "Note (cuisine + addition)")}</label>
-              <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder={tri("例：加一条鱼", "e.g. add a fish", "ex. ajouter un poisson")} className="input mb-4 w-full" />
-              <label className="mb-1 block text-sm font-medium text-ink-soft">{tri("加价 / 减价", "Price adjustment", "Ajustement de prix")}</label>
-              <div className="flex items-center gap-2">
-                <span className="text-ink-faint">$</span>
-                <input type="number" inputMode="decimal" value={editAdjust} onChange={(e) => setEditAdjust(e.target.value)} placeholder="+15 / -5" className="input flex-1" />
+              <div className="flex-1 space-y-2.5 overflow-y-auto p-5">
+                {n > 1 && (
+                  <button onClick={() => setEditUnits((us) => us.map(() => ({ note: us[0]?.note ?? "", adjust: us[0]?.adjust ?? "" })))}
+                    className="w-full rounded-lg border border-slate-200 py-2 text-xs font-medium text-ink-soft transition hover:bg-slate-50">
+                    {tri("把第 1 份应用到全部", "Apply portion 1 to all", "Appliquer la 1re à toutes")}
+                  </button>
+                )}
+                {editUnits.map((u, i) => (
+                  <div key={i} className="rounded-xl border border-slate-100 p-3">
+                    {n > 1 && <div className="mb-1.5 text-xs font-semibold text-ink-soft">{lang === "zh" ? `第 ${i + 1} 份` : `Portion ${i + 1}`}</div>}
+                    <input value={u.note} onChange={(e) => setUnit(i, { note: e.target.value })} placeholder={tri("备注 例：加一条鱼", "Note, e.g. add a fish", "Note ex. ajouter un poisson")} className="input mb-2 w-full text-sm" />
+                    <div className="flex items-center gap-2">
+                      <span className="flex-none text-xs text-ink-faint">{tri("加/减价 $", "Adjust $", "Ajust. $")}</span>
+                      <input type="number" inputMode="decimal" value={u.adjust} onChange={(e) => setUnit(i, { adjust: e.target.value })} placeholder="+15 / -5" className="input min-h-9 flex-1 text-sm" />
+                      <span className="flex-none text-sm font-bold text-jade">{fmtPrice(priceOf(u.adjust))}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="mt-3 flex items-center justify-between rounded-lg bg-jade-wash px-3 py-2 text-sm">
-                <span className="text-ink-soft">{tri("原价", "Base", "Base")} {fmtPrice(base)}</span>
-                <span className="font-bold text-jade">→ {fmtPrice(newPrice)}</span>
+              <div className="flex-none border-t border-slate-100 p-4">
+                <button
+                  onClick={() => {
+                    const units = editUnits.map((u) => {
+                      const a = u.adjust.trim() === "" ? 0 : parseFloat(u.adjust) || 0;
+                      return { note: u.note.trim() || undefined, adjust: a || undefined };
+                    });
+                    setItemMeta((mm) => ({ ...mm, [staffEditKey]: { units } }));
+                    setCart((c) => ({ ...c, [staffEditKey]: n }));
+                    setStaffEditKey(null);
+                  }}
+                  className="w-full rounded-lg bg-jade py-3 font-medium text-white"
+                >
+                  {tri("完成", "Done", "Terminé")}
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  const a = editAdjust.trim() === "" ? 0 : parseFloat(editAdjust) || 0;
-                  const nt = editNote.trim();
-                  setItemMeta((mm) => ({ ...mm, [staffEditKey]: { note: nt || undefined, adjust: a || undefined } }));
-                  setCart((c) => ({ ...c, [staffEditKey]: c[staffEditKey] || 1 }));
-                  setStaffEditKey(null);
-                }}
-                className="mt-4 w-full rounded-lg bg-jade py-3 font-medium text-white"
-              >
-                {tri("完成", "Done", "Terminé")}
-              </button>
             </div>
           </div>
         );
@@ -941,7 +981,8 @@ export default function PublicMenu() {
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-ink">{lineName(x.d, x.variant, lang !== "zh")}</div>
                         <div className={`text-xs ${x.isMarket ? "font-semibold text-gold" : "text-ink-faint"}`}>
-                          {x.isMarket ? t("market") : fmtPrice(x.unit) || t("market")}
+                          {x.isMarket ? t("market") : x.customized ? `${fmtPrice(x.lineTotal)}${x.qty > 1 ? ` · ${x.qty} ${t("items")}` : ""}` : fmtPrice(x.unit) || t("market")}
+                          {x.customized && <span className="ml-1 text-gold">✎</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
