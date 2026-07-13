@@ -349,17 +349,24 @@ export default function PublicMenu() {
         g.qty += 1;
         groups.set(gk, g);
       }
-      return [...groups.values()].map((g) => ({
-        id: x.d.id,
-        name_zh: lineName(x.d, x.variant),
-        name_en: lineName(x.d, x.variant, true),
-        price: x.isMarket ? null : Math.max(0, Math.round((x.base + g.adjust) * 100) / 100),
-        qty: g.qty,
-        ...(x.isMarket ? { market: true } : {}),
-        ...(g.note ? { note: g.note } : {}),
-        ...(!x.isMarket && g.adjust !== 0 ? { adjust: Math.round(g.adjust * 100) / 100 } : {}),
-        ...(isNoCook(x.d) ? { noKitchen: true } : {}),
-      }));
+      return [...groups.values()].map((g) => {
+        // Clamp a discount to never exceed the dish price: the line price floors
+        // at $0, so store the SAME clamped delta — otherwise the bill would print
+        // "$0.00 · 加价 −$100.00" (line & reason disagree). Clamp at the source so
+        // price and the printed annotation are consistent by construction.
+        const adj = Math.round(Math.max(g.adjust, -x.base) * 100) / 100;
+        return {
+          id: x.d.id,
+          name_zh: lineName(x.d, x.variant),
+          name_en: lineName(x.d, x.variant, true),
+          price: x.isMarket ? null : Math.max(0, Math.round((x.base + adj) * 100) / 100),
+          qty: g.qty,
+          ...(x.isMarket ? { market: true } : {}),
+          ...(g.note ? { note: g.note } : {}),
+          ...(!x.isMarket && adj !== 0 ? { adjust: adj } : {}),
+          ...(isNoCook(x.d) ? { noKitchen: true } : {}),
+        };
+      });
     });
     const res = await createOrder(slug, {
       items,

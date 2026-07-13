@@ -22,6 +22,9 @@ import path from "path";
 import type { Order } from "./orders";
 import { displayTable } from "./format";
 import { computeTax } from "./tax";
+// Pure money/note formatters — kept canvas-free in ./billFormat so they're
+// unit-testable without the native canvas module.
+import { money, pricedNoteLine } from "./billFormat";
 
 // 80mm paper printable width on the TM-T88VI = 512 dots.
 const W = 512;
@@ -180,23 +183,6 @@ function paint(ops: Op[], height: number): Canvas {
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-const money = (n: number) => "$" + (Math.round(n * 100) / 100).toFixed(2);
-// Signed dollar delta for a priced bill, e.g. +$5.00 / −$5.00 (proper minus glyph).
-const signedMoney = (n: number) => (n >= 0 ? "+" : "−") + money(Math.abs(n));
-
-/** The "→ reason +$amount" line under a dish on a PRICED bill (账单 / 分单总单).
- *  • note + adjust → "→ 加炒底 +$5.00"   (reason is the staff note; amount is the delta)
- *  • note only     → "→ 加一条鱼"          (free note, no price change)
- *  • adjust only   → "→ 加价 Adjust +$5.00" (bilingual generic label — no note text)
- *  Returns null when there's nothing to annotate. Kitchen tickets don't use this
- *  (they show the note without any price — the kitchen doesn't handle money). */
-function pricedNoteLine(it: { note?: string; adjust?: number }): string | null {
-  const note = (it.note || "").trim();
-  const adj = Number(it.adjust) || 0;
-  if (note) return adj !== 0 ? `  → ${note} ${signedMoney(adj)}` : `  → ${note}`;
-  if (adj !== 0) return `  → 加价 Adjust ${signedMoney(adj)}`;
-  return null;
 }
 
 // ── KITCHEN TICKET ─────────────────────────────────────────────────────────
