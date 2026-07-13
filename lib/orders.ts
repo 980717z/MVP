@@ -16,6 +16,8 @@ export interface OrderItem {
   market?: boolean;
   /** Staff per-item note (e.g. 加一条鱼); prints under the dish on the bill + kitchen ticket. */
   note?: string;
+  /** 已出餐: this dish has been served to the table (floor-plan only; not a kitchen status). */
+  served?: boolean;
 }
 
 export interface OrderAddress {
@@ -247,4 +249,15 @@ export async function cancelOrderItem(id: string, itemIndex: number): Promise<vo
   const r2 = Math.round(total * 100) / 100;
   const { error } = await supabase.from("orders").update({ items, total: r2 }).eq("id", id);
   if (error) console.error("cancelOrderItem", error);
+}
+
+/** Mark dishes 已出餐 (served). itemIndex set → one dish; omitted → every active dish
+ *  in the order. Floor-plan only — does not touch total or the kitchen status. */
+export async function markServed(id: string, served: boolean, itemIndex?: number): Promise<void> {
+  const { data, error: fetchErr } = await supabase.from("orders").select("items").eq("id", id).maybeSingle();
+  if (fetchErr || !data) return;
+  const items: (OrderItem & { cancelled?: boolean })[] = data.items ?? [];
+  const next = items.map((it, i) => ((itemIndex == null || i === itemIndex) && !it.cancelled ? { ...it, served } : it));
+  const { error } = await supabase.from("orders").update({ items: next }).eq("id", id);
+  if (error) console.error("markServed", error);
 }

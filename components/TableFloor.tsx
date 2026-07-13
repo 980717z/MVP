@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { TableSpot } from "@/lib/store";
-import { reprintOrder, requestBill, cancelOrderItem, deleteOrder, setOrderStatus, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { reprintOrder, requestBill, cancelOrderItem, markServed, deleteOrder, setOrderStatus, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { listMenuItems } from "@/lib/menu";
 import { tableOccupancy, listTableCheckouts, type TableState, type TableCheckout } from "@/lib/tableSessions";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -39,6 +39,12 @@ const T: Record<string, Dict> = {
   confirmDel: { zh: "删除这一单？", en: "Delete this order?", fr: "Supprimer cette commande ?" },
   legendEmpty: { zh: "空闲", en: "Empty", fr: "Vide" },
   legendBusy: { zh: "用餐中", en: "Occupied", fr: "Occupée" },
+  legendServed: { zh: "已出餐", en: "Served", fr: "Servi" },
+  serveItem: { zh: "出餐", en: "Serve", fr: "Servir" },
+  unserve: { zh: "撤销", en: "Undo", fr: "Annuler" },
+  serveOrder: { zh: "整单出餐", en: "Serve round", fr: "Servir la tournée" },
+  serveTable: { zh: "🍽️ 整桌出餐", en: "🍽️ Serve whole table", fr: "🍽️ Servir toute la table" },
+  servedTag: { zh: "已出", en: "Served", fr: "Servi" },
 };
 
 const NEW_MS = 120_000; // "new order" cue window
@@ -119,9 +125,11 @@ export default function TableFloor({
   };
 
   const nodeClasses = (s?: TableState) =>
-    s?.hasOrder
-      ? "border-brand bg-brand-wash text-brand-ink"
-      : "border-slate-200 bg-white text-ink-faint";
+    !s?.hasOrder
+      ? "border-slate-200 bg-white text-ink-faint"
+      : s.served
+        ? "border-amber-400 bg-amber-50 text-amber-700" // 已出餐: some food is out
+        : "border-brand bg-brand-wash text-brand-ink"; // 用餐中: ordered, nothing served yet
 
   return (
     <>
@@ -129,6 +137,7 @@ export default function TableFloor({
       <div className="mb-3 flex items-center gap-4 text-xs text-ink-faint">
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-slate-200 bg-white" />{t(T.legendEmpty)}</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-brand bg-brand-wash" />{t(T.legendBusy)}</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-amber-400 bg-amber-50" />{t(T.legendServed)}</span>
       </div>
 
       {/* DESKTOP: spatial map — bounded, centered "room" canvas (portrait, like
@@ -180,8 +189,8 @@ export default function TableFloor({
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div className="flex items-baseline gap-2">
                 <span className="text-lg font-bold text-ink">{displayTable(sel)}</span>
-                <span className={`text-xs ${state(sel)?.hasOrder ? "font-medium text-brand-ink" : "text-ink-faint"}`}>
-                  {state(sel)?.hasOrder ? `${t(T.legendBusy)} · ${state(sel)!.orders.length}单` : t(T.legendEmpty)}
+                <span className={`text-xs font-medium ${!state(sel)?.hasOrder ? "text-ink-faint" : state(sel)?.served ? "text-amber-600" : "text-brand-ink"}`}>
+                  {!state(sel)?.hasOrder ? t(T.legendEmpty) : `${t(state(sel)!.served ? T.legendServed : T.legendBusy)} · ${state(sel)!.orders.length}单`}
                 </span>
               </div>
               <button onClick={() => setSel(null)} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-faint hover:bg-slate-50">✕</button>
@@ -194,6 +203,7 @@ export default function TableFloor({
                     <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-ink-faint">
                       <span>{t(T.round).replace("{n}", String(ri + 1))}</span>
                       <span className="flex items-center gap-3">
+                        <button onClick={async () => { await markServed(o.id, true); onChanged(); }} className="font-medium text-amber-600 hover:underline">{t(T.serveOrder)}</button>
                         <button onClick={async () => { await reprintOrder(o.id); onChanged(); }} className="text-brand hover:underline">🖨️ {t(T.reprint)}</button>
                         <button onClick={async () => { if (confirm(t(T.confirmCancelOrder))) { await setOrderStatus(o.id, "cancelled"); onChanged(); } }} className="hover:text-red-600">{t(T.cancelOrder)}</button>
                         <button onClick={async () => { if (confirm(t(T.confirmDel))) { await deleteOrder(o.id); onChanged(); } }} className="hover:text-red-600">{t(T.del)}</button>
@@ -201,12 +211,20 @@ export default function TableFloor({
                     </div>
                     {(o.items ?? []).map((it: OrderItem & { cancelled?: boolean }, i: number) => (
                       <div key={i} className={`flex items-center justify-between py-0.5 text-sm ${it.cancelled ? "opacity-40" : ""}`}>
-                        <span className={it.cancelled ? "text-ink-faint line-through" : "text-ink"}>{it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}</span>
-                        <span className="flex items-center gap-2">
+                        <span className={it.cancelled ? "text-ink-faint line-through" : it.served ? "text-amber-700" : "text-ink"}>
+                          {it.served && !it.cancelled && <span className="mr-0.5">✓</span>}
+                          {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}
+                        </span>
+                        <span className="flex items-center gap-2.5">
                           {it.market && !(Number(it.price) > 0) ? (
                             <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">{t(T.marketPending)}</span>
                           ) : (
                             <span className="text-ink-soft">{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
+                          )}
+                          {!it.cancelled && (
+                            <button onClick={async () => { await markServed(o.id, !it.served, i); onChanged(); }} className={`text-xs ${it.served ? "text-amber-600 hover:underline" : "text-brand hover:underline"}`}>
+                              {it.served ? t(T.unserve) : t(T.serveItem)}
+                            </button>
                           )}
                           {!it.cancelled && (
                             <button onClick={async () => { await cancelOrderItem(o.id, i); onChanged(); }} className="text-xs text-ink-faint hover:text-red-600">{t(T.cancelItem)}</button>
@@ -241,7 +259,17 @@ export default function TableFloor({
             {/* Occupied → 加单 + 结账 in the footer. Empty → the CTA lives in the
                 centered empty state above, so no footer (no marooned bottom button). */}
             {state(sel)?.hasOrder && (
-              <div className="flex flex-wrap gap-2 border-t border-slate-100 p-4">
+              <div className="border-t border-slate-100 p-4">
+                {/* 整桌出餐 — shown while any dish is still unserved */}
+                {state(sel)!.orders.some((o) => (o.items ?? []).some((it: OrderItem & { cancelled?: boolean }) => !it.cancelled && !it.served)) && (
+                  <button
+                    onClick={async () => { await Promise.all(state(sel)!.orders.map((o) => markServed(o.id, true))); onChanged(); }}
+                    className="mb-2 min-h-11 w-full rounded-lg border border-amber-400 bg-amber-50 font-medium text-amber-700 transition hover:bg-amber-100"
+                  >
+                    {t(T.serveTable)}
+                  </button>
+                )}
+                <div className="flex flex-wrap gap-2">
                 <button onClick={() => setOrdering(true)} className="min-h-11 rounded-lg border border-brand px-4 font-medium text-brand-ink transition hover:bg-brand-wash">
                   {t(T.addRound)}
                 </button>
@@ -252,6 +280,7 @@ export default function TableFloor({
                   🖨️ {t(T.printBill)}
                 </button>
                 <button onClick={() => beginCheckout(state(sel)!)} className="btn-primary min-w-[8rem] flex-1">{t(T.checkout)} · {fmtPrice(state(sel)!.total)}</button>
+                </div>
               </div>
             )}
           </div>

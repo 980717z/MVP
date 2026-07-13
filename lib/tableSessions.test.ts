@@ -129,6 +129,16 @@ describe("tableOccupancy", () => {
     const occ = tableOccupancy([mk({ id: "a", table_no: "7", items: [item("a", 10), item("b", 5, 1, { cancelled: true })] as any })]);
     expect(occ.get("7")!.total).toBeCloseTo(10, 2);
   });
+
+  it("served = true when ANY active dish is served (any-served → orange)", () => {
+    const none = tableOccupancy([mk({ id: "a", table_no: "5", items: [item("鱼", 30), item("饭", 2)] as any })]);
+    expect(none.get("5")!.served).toBe(false);
+    const some = tableOccupancy([mk({ id: "b", table_no: "6", items: [item("鱼", 30, 1, { served: true }), item("饭", 2)] as any })]);
+    expect(some.get("6")!.served).toBe(true);
+    // a served-but-cancelled dish doesn't count
+    const cx = tableOccupancy([mk({ id: "c", table_no: "8", items: [item("鱼", 30, 1, { served: true, cancelled: true })] as any })]);
+    expect(cx.get("8")!.served).toBe(false);
+  });
 });
 
 describe("HST single line reconciles with the split ledger", () => {

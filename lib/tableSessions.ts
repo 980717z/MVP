@@ -18,6 +18,7 @@ export interface TableState {
   orders: Order[]; // unpaid dine-in rounds at this table
   total: number; // running total across rounds
   hasOrder: boolean;
+  served: boolean; // 已出餐: ≥1 active dish marked served (any-served → orange)
   newestAt: number; // ms of the most recent order (for the "new" cue)
 }
 
@@ -36,9 +37,10 @@ export function tableOccupancy(orders: Order[]): Map<string, TableState> {
     if (o.order_type !== "dine_in" || o.payment_status !== "unpaid" || o.status === "cancelled") continue;
     const k = (o.table_no || "").trim();
     if (!k) continue;
-    const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, newestAt: 0 };
+    const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, served: false, newestAt: 0 };
     cur.orders.push(o);
     cur.total = money(cur.total + activeTotal(o));
+    cur.served = cur.served || (o.items ?? []).some((it) => !(it as { cancelled?: boolean }).cancelled && (it as { served?: boolean }).served);
     cur.newestAt = Math.max(cur.newestAt, new Date(o.created_at).getTime());
     map.set(k, cur);
   }
