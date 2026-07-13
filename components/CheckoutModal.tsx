@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { computeTax } from "@/lib/tax";
 import { checkoutTable, evenPartition, reconcileShares, itemizePartitions, type PaymentMethod, type SplitPayload, type ShareLine } from "@/lib/tableSessions";
 import { requestBill, type Order, type OrderItem } from "@/lib/orders";
@@ -30,6 +30,9 @@ const T: Record<string, Dict> = {
   share: { zh: "第 {n} 份", en: "Share {n}", fr: "Part {n}" },
   shared: { zh: "共享均摊", en: "Shared", fr: "Partagé" },
   tapAssign: { zh: "点菜品分配给客人 · 再点进入共享", en: "Tap a dish to assign; tap again for shared", fr: "Touchez un plat pour l'attribuer ; encore pour partagé" },
+  assignTo: { zh: "分配给", en: "Assign to", fr: "Attribuer à" },
+  brushHint: { zh: "选客人 → 点他的菜（再点取消）", en: "Pick a guest, then tap their dishes (tap again to clear)", fr: "Choisissez un client, touchez ses plats" },
+  fillRest: { zh: "均摊剩余 {n} 样", en: "Split remaining {n} evenly", fr: "Partager les {n} restants" },
   unassigned: { zh: "还有 {n} 样未分配", en: "{n} unassigned", fr: "{n} non attribué(s)" },
   balanced: { zh: "已配平 ✓", en: "Balanced ✓", fr: "Équilibré ✓" },
   offBy: { zh: "对不上 {amt}", en: "Off by {amt}", fr: "Écart {amt}" },
@@ -89,6 +92,7 @@ export default function CheckoutModal({
     { id: "p1", method: "cash", tendered: "", tip: "" },
   ]);
   const [assign, setAssign] = useState<Record<string, string>>({}); // unit.key → personId | "shared" | ""
+  const [brush, setBrush] = useState<string>("p0"); // active guest/shared — tapping a dish assigns it here
 
   // ── table totals (single HST line, matches the server) ─────────────────────
   const { subtotal, hst, total, hasUnpriced } = useMemo(() => {
@@ -139,18 +143,15 @@ export default function CheckoutModal({
     return [...map.values()];
   };
 
-  // cycle a unit: unassigned → p0 → p1 … → shared → unassigned
-  const cycle = (key: string) => {
-    const order = [...people.map((p) => p.id), "shared", ""];
-    const cur = assign[key] ?? "";
-    const next = order[(order.indexOf(cur) + 1) % order.length];
-    setAssign((a) => ({ ...a, [key]: next }));
-  };
-  const personOf = (key: string) => {
-    const v = assign[key] ?? "";
-    if (v === "" || v === "shared") return v;
-    return v;
-  };
+  // brush model: tap a dish → assign it to the active guest (`brush`); tap it
+  // again while that guest is active → unassign. One tap per dish, any table size.
+  const paint = (key: string) => setAssign((a) => ({ ...a, [key]: (a[key] ?? "") === brush ? "" : brush }));
+  const personOf = (key: string) => assign[key] ?? "";
+  const unassignedKeys = units.filter((u) => (assign[u.key] ?? "") === "").map((u) => u.key);
+  // split whatever's still unassigned evenly (drop it in the shared bucket)
+  const fillRemaining = () => setAssign((a) => { const n = { ...a }; for (const k of unassignedKeys) n[k] = "shared"; return n; });
+  // keep the brush valid when a guest is removed
+  useEffect(() => { if (brush !== "shared" && !people.some((p) => p.id === brush)) setBrush(people[0]?.id ?? "shared"); }, [people, brush]);
 
   // ── build split payload ────────────────────────────────────────────────────
   function buildSplit(): SplitPayload | null {
@@ -354,19 +355,32 @@ export default function CheckoutModal({
                       <div className="flex items-center gap-3">
                         <button onClick={() => setPeople((ps) => (ps.length > 2 ? ps.slice(0, -1) : ps))} className="grid h-9 w-9 place-items-center rounded-full border border-slate-300 text-lg text-ink">−</button>
                         <span className="w-6 text-center text-lg font-bold text-ink">{people.length}</span>
-                        <button onClick={() => setPeople((ps) => (ps.length < 10 ? [...ps, { id: `p${ps.length}${Date.now() % 1000}`, method: "cash", tendered: "", tip: "" }] : ps))} className="grid h-9 w-9 place-items-center rounded-full border border-slate-300 text-lg text-ink">＋</button>
+                        <button onClick={() => setPeople((ps) => (ps.length < 12 ? [...ps, { id: `p${ps.length}${Date.now() % 1000}`, method: "cash", tendered: "", tip: "" }] : ps))} className="grid h-9 w-9 place-items-center rounded-full border border-slate-300 text-lg text-ink">＋</button>
                       </div>
                     </div>
-                    <p className="mb-2 text-[11px] text-ink-faint">{t(T.tapAssign)}</p>
-                    {/* dish units */}
-                    <div className="mb-3 flex flex-wrap gap-1.5">
+                    {/* brush picker — select the active guest, then tap dishes */}
+                    <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1">
+                      <span className="flex-none text-xs text-ink-faint">{t(T.assignTo)}</span>
+                      {people.map((p, i) => (
+                        <button key={p.id} onClick={() => setBrush(p.id)}
+                          className={`flex flex-none items-center gap-1 rounded-full border px-2.5 py-1 text-sm font-medium ${brush === p.id ? "border-transparent text-white" : "border-slate-200 text-ink"}`}
+                          style={brush === p.id ? { background: DOT[i % DOT.length] } : undefined}>
+                          <span className="h-2 w-2 rounded-full" style={{ background: brush === p.id ? "#fff" : DOT[i % DOT.length] }} />#{i + 1}
+                        </button>
+                      ))}
+                      <button onClick={() => setBrush("shared")}
+                        className={`flex-none rounded-full border px-2.5 py-1 text-sm font-medium ${brush === "shared" ? "border-transparent bg-slate-500 text-white" : "border-slate-200 text-ink"}`}>{t(T.shared)}</button>
+                    </div>
+                    <p className="mb-2 text-[11px] text-ink-faint">{t(T.brushHint)}</p>
+                    {/* dish units — tap assigns to the active brush */}
+                    <div className="mb-2 flex flex-wrap gap-1.5">
                       {units.map((u) => {
                         const who = personOf(u.key);
                         const pIdx = people.findIndex((p) => p.id === who);
                         const color = who === "shared" ? "#64748B" : pIdx >= 0 ? DOT[pIdx % DOT.length] : undefined;
                         return (
-                          <button key={u.key} onClick={() => cycle(u.key)}
-                            className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${who === "" ? "border-dashed border-slate-300 text-ink-faint" : "border-slate-200 text-ink"}`}>
+                          <button key={u.key} onClick={() => paint(u.key)}
+                            className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs ${who === "" ? "border-dashed border-slate-300 text-ink-faint" : "border-slate-200 text-ink"}`}>
                             {color && <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: color }} />}
                             <span>{u.name_zh}</span>
                             <span className="text-ink-faint">{who === "shared" ? t(T.shared) : who === "" ? "?" : `#${pIdx + 1}`}</span>
@@ -374,6 +388,11 @@ export default function CheckoutModal({
                         );
                       })}
                     </div>
+                    {unassignedKeys.length > 0 && (
+                      <button onClick={fillRemaining} className="mb-3 w-full rounded-lg border border-slate-200 py-2 text-xs font-medium text-ink-soft transition hover:bg-slate-50">
+                        {t(T.fillRest).replace("{n}", String(unassignedKeys.length))}
+                      </button>
+                    )}
                     {/* per-person summary */}
                     <div className="space-y-2">
                       {people.map((p, i) => {
