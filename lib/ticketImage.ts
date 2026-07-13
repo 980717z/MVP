@@ -90,6 +90,19 @@ function typeBadge(o: Order): { badge: string; sub?: string; tel?: string } {
   return { badge: o.table_no ? `堂食  台号 ${displayTable(o.table_no)}` : "堂食" };
 }
 
+// ── Bilingual (中文 + English) for PRICE bills only — the kitchen ticket stays
+//    Chinese (drawTicket uses typeBadge above, untouched). English dish names come
+//    from the order items; these map the fixed labels + type/method badges.
+function billBadgeBi(o: Order): string {
+  const t = (o as any).order_type ?? "dine_in";
+  if (t === "delivery") return "外卖 Delivery";
+  if (t === "togo") return "自取 Takeout";
+  return o.table_no ? `堂食 Dine-in · 台号 Table ${displayTable(o.table_no)}` : "堂食 Dine-in";
+}
+function methodBi(m?: string): string {
+  return m === "cash" ? "现金 Cash" : m === "card" ? "刷卡 Card" : m === "emt" ? "EMT" : m === "split" ? "分单 Split" : "其他 Other";
+}
+
 type Op =
   | { kind: "text"; x: number; y: number; text: string; size: number; bold: boolean }
   | { kind: "rule"; y: number; dbl: boolean };
@@ -212,26 +225,28 @@ function drawReceipt(orders: Order[], shopName: string): { canvas: Canvas; heigh
   const mc = createCanvas(W, 10).getContext("2d");
   const b = newBuilder(mc);
   b.centered(shopName, SHOP, true, LH_SHOP);
-  b.left(`账单  ${t.badge}${rounds > 1 ? `  (${rounds}单合并)` : ""}`, MID, true, LH_MID);
+  b.left(`账单 Bill · ${billBadgeBi(first)}${rounds > 1 ? `  (${rounds}单合并 Merged)` : ""}`, MID, true, LH_MID);
   if (t.sub) b.left(t.sub, SM, false, LH_SM);      // delivery address
-  if (t.tel) b.left(`电话 ${t.tel}`, SM, false, LH_SM); // contact / callback number
+  if (t.tel) b.left(`电话 Tel ${t.tel}`, SM, false, LH_SM); // contact / callback number
   b.left(fmtTime(latest), SM, false, LH_SM);
   b.rule(true);
   for (const { it } of lines) {
     const qty = Number(it.qty) || 1;
-    const name = (it.name_zh || it.name_en || "菜品").trim();
-    // Item rows are read up close on the bill → SM keeps long names on one line.
-    b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    const zh = (it.name_zh || it.name_en || "菜品").trim();
+    const en = (it.name_en || "").trim();
+    // Chinese name + qty + price on line 1; English on an indented sub-line.
+    b.row(qty >= 2 ? `${zh} ×${qty}` : zh, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    if (en && en !== zh) b.left(`  ${en}`, SM, false, LH_SM);
     const inote = ((it as { note?: string }).note || "").trim();
     if (inote) b.left(`  → ${inote}`, SM, false, LH_SM); // staff per-item note
   }
   b.rule();
-  b.row("小计", money(subtotal), MID, false, LH_MID);
+  b.row("小计 Subtotal", money(subtotal), MID, false, LH_MID);
   // Ontario HST is a single 13% tax — show one line (= GST+PST components, so
   // it still reconciles penny-for-penny with the split stored in the ledger).
   b.row("HST 13%", money(Math.round((tax.gst + tax.pst) * 100) / 100), SM, false, LH_SM);
   b.rule();
-  b.row("合计", money(tax.total), BIG, true, LH_BIG);
+  b.row("合计 Total", money(tax.total), BIG, true, LH_BIG);
   b.gap(40);
   const height = b.height();
   return { canvas: paint(b.ops, height), height };
@@ -247,9 +262,6 @@ interface SplitReceiptPayload {
   lines?: { name_zh?: string; name_en?: string; qty?: number; price?: number | null }[];
   splits?: { label?: string; method?: string; total?: number; tip?: number }[];
 }
-function methodZh(m?: string): string {
-  return m === "cash" ? "现金" : m === "card" ? "刷卡" : m === "emt" ? "EMT" : m === "split" ? "分单" : "其他";
-}
 const hstOf = (p: SplitReceiptPayload) => p.hst != null ? p.hst : Math.round(((p.gst || 0) + (p.pst || 0)) * 100) / 100;
 
 function drawSplitShare(p: SplitReceiptPayload, shopName: string): { canvas: Canvas; height: number } | null {
@@ -258,28 +270,30 @@ function drawSplitShare(p: SplitReceiptPayload, shopName: string): { canvas: Can
   const b = newBuilder(mc);
   b.centered(shopName, SHOP, true, LH_SHOP);
   b.rule(true);
-  b.left(`账单 · 桌 ${p.tableNo ?? ""}`, MID, true, LH_MID);
-  b.left(`第 ${p.idx ?? 1}/${p.n ?? 1} 份${p.evenOfN ? `  均分 1/${p.evenOfN}` : ""}`, SM, false, LH_SM);
+  b.left(`账单 Bill · 桌 Table ${p.tableNo ?? ""}`, MID, true, LH_MID);
+  b.left(`第 ${p.idx ?? 1}/${p.n ?? 1} 份 Share${p.evenOfN ? `  均分 Even 1/${p.evenOfN}` : ""}`, SM, false, LH_SM);
   b.rule();
   const lines = p.lines ?? [];
   for (const it of lines) {
     const qty = Number(it.qty) || 1;
-    const name = (it.name_zh || it.name_en || "菜品").trim();
-    b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    const zh = (it.name_zh || it.name_en || "菜品").trim();
+    const en = (it.name_en || "").trim();
+    b.row(qty >= 2 ? `${zh} ×${qty}` : zh, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    if (en && en !== zh) b.left(`  ${en}`, SM, false, LH_SM);
   }
   if (lines.length) b.rule();
-  b.row("小计", money(p.subtotal || 0), MID, false, LH_MID);
+  b.row("小计 Subtotal", money(p.subtotal || 0), MID, false, LH_MID);
   b.row("HST 13%", money(hstOf(p)), SM, false, LH_SM);
   b.rule();
-  b.row("合计", money(p.total || 0), BIG, true, LH_BIG);
+  b.row("合计 Total", money(p.total || 0), BIG, true, LH_BIG);
   if ((p.tip || 0) > 0) {
-    b.row("小费", money(p.tip || 0), SM, false, LH_SM);
-    b.row("实收", money((p.total || 0) + (p.tip || 0)), MID, true, LH_MID);
+    b.row("小费 Tip", money(p.tip || 0), SM, false, LH_SM);
+    b.row("实收 Paid", money((p.total || 0) + (p.tip || 0)), MID, true, LH_MID);
   }
-  b.left(`付款  ${methodZh(p.method)}`, MID, true, LH_MID);
+  b.left(`付款 Payment  ${methodBi(p.method)}`, MID, true, LH_MID);
   if (p.method === "cash" && p.tendered != null) {
-    b.row("收", money(p.tendered), SM, false, LH_SM);
-    b.row("找", money(p.change || 0), SM, false, LH_SM);
+    b.row("收 Tendered", money(p.tendered), SM, false, LH_SM);
+    b.row("找 Change", money(p.change || 0), SM, false, LH_SM);
   }
   b.gap(40);
   const height = b.height();
@@ -291,27 +305,29 @@ function drawSplitFull(p: SplitReceiptPayload, shopName: string): { canvas: Canv
   const mc = createCanvas(W, 10).getContext("2d");
   const b = newBuilder(mc);
   b.centered(shopName, SHOP, true, LH_SHOP);
-  b.left(`账单 · 桌 ${p.tableNo ?? ""} · 合并`, MID, true, LH_MID);
+  b.left(`账单 Bill · 桌 Table ${p.tableNo ?? ""} · 合并 Full`, MID, true, LH_MID);
   b.rule(true);
   for (const it of p.lines ?? []) {
     const qty = Number(it.qty) || 1;
-    const name = (it.name_zh || it.name_en || "菜品").trim();
-    b.row(qty >= 2 ? `${name} ×${qty}` : name, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    const zh = (it.name_zh || it.name_en || "菜品").trim();
+    const en = (it.name_en || "").trim();
+    b.row(qty >= 2 ? `${zh} ×${qty}` : zh, money((Number(it.price) || 0) * qty), SM, false, LH_SM);
+    if (en && en !== zh) b.left(`  ${en}`, SM, false, LH_SM);
   }
   b.rule();
-  b.row("小计", money(p.subtotal || 0), MID, false, LH_MID);
+  b.row("小计 Subtotal", money(p.subtotal || 0), MID, false, LH_MID);
   b.row("HST 13%", money(hstOf(p)), SM, false, LH_SM);
   b.rule();
-  b.row("合计", money(p.total || 0), BIG, true, LH_BIG);
+  b.row("合计 Total", money(p.total || 0), BIG, true, LH_BIG);
   if ((p.tip || 0) > 0) {
-    b.row("小费", money(p.tip || 0), SM, false, LH_SM);
-    b.row("实收", money((p.total || 0) + (p.tip || 0)), MID, true, LH_MID);
+    b.row("小费 Tip", money(p.tip || 0), SM, false, LH_SM);
+    b.row("实收 Paid", money((p.total || 0) + (p.tip || 0)), MID, true, LH_MID);
   }
   const splits = p.splits ?? [];
   if (splits.length) {
     b.rule();
-    b.left(`分 ${splits.length} 单`, MID, true, LH_MID);
-    splits.forEach((s, i) => b.row(`${s.label || `第 ${i + 1} 份`} · ${methodZh(s.method)}`, money(s.total || 0), SM, false, LH_SM));
+    b.left(`分 ${splits.length} 单 Split ${splits.length} ways`, MID, true, LH_MID);
+    splits.forEach((s, i) => b.row(`${s.label || `第 ${i + 1} 份`} · ${methodBi(s.method)}`, money(s.total || 0), SM, false, LH_SM));
   }
   b.gap(40);
   const height = b.height();
