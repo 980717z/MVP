@@ -754,11 +754,21 @@ export default function PublicMenu() {
       {/* 多规格 size selector — tap 选规格 opens this */}
       {sidesOpen && hotpotSides.length > 0 && (
         <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSidesOpen(false)}>
-          <div className="mx-auto max-h-[80vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-lg font-bold text-ink">🍲 {tri("火锅配菜", "Hot-pot sides", "Accompagnements fondue")}</div>
-              <button onClick={() => setSidesOpen(false)} className="flex-none text-ink-faint">✕</button>
+          <div className="mx-auto flex max-h-[82vh] w-full max-w-[440px] flex-col rounded-t-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+            {/* sticky header — the top-right action is ALWAYS visible (no scroll to skip/finish) */}
+            <div className="flex flex-none items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-lg font-bold text-ink">🍲 {tri("火锅配菜", "Hot-pot sides", "Accompagnements fondue")}</div>
+                <div className="mt-0.5 text-xs text-ink-faint">{tri("加点更丰富 · 可跳过", "Optional add-ons", "Extras (optionnel)")}</div>
+              </div>
+              <button
+                onClick={() => setSidesOpen(false)}
+                className={`flex-none rounded-full px-4 py-2 text-sm font-semibold transition ${sidesCount > 0 ? "bg-jade text-white hover:opacity-90" : "border border-slate-300 text-ink-soft hover:bg-slate-50"}`}
+              >
+                {sidesCount > 0 ? `${tri("完成", "Done", "Terminé")} · ${sidesCount} ${t("items")}` : tri("跳过", "Skip", "Passer")}
+              </button>
             </div>
+            <div className="flex-1 overflow-y-auto p-5">
             <div className="grid grid-cols-2 gap-2">
               {hotpotSides.map((d) => {
                 const hasV = (d.variants?.length ?? 0) > 0;
@@ -791,9 +801,7 @@ export default function PublicMenu() {
                 );
               })}
             </div>
-            <button onClick={() => setSidesOpen(false)} className="mt-5 w-full rounded-full bg-jade py-3 text-base font-semibold text-white">
-              {tri("完成", "Done", "Terminé")}{sidesCount > 0 ? ` · ${sidesCount} ${t("items")}` : ""}
-            </button>
+            </div>
           </div>
         </div>
       )}
