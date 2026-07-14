@@ -108,16 +108,16 @@ export default function UofTLanding() {
 
       {/* hero */}
       <section className="mx-auto max-w-3xl px-5 pb-10 pt-8 text-center sm:pt-16">
-        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/5 px-3 py-1 text-xs font-semibold text-brand-ink">
+        <div className="rise mb-5 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/5 px-3 py-1 text-xs font-semibold text-brand-ink">
           🎓 {t(T.soon)}
         </div>
-        <h1 className="text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl">
+        <h1 className="rise text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl" style={{ animationDelay: "60ms" }}>
           {t(T.hero)}
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-balance text-lg text-ink-soft">{t(T.sub)}</p>
+        <p className="rise mx-auto mt-4 max-w-xl text-balance text-lg text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.sub)}</p>
 
         {/* waitlist card */}
-        <div id="join" className="mx-auto mt-8 max-w-md scroll-mt-20 rounded-2xl border border-[#EBEAE5] bg-white p-5 text-left shadow-sm">
+        <div id="join" style={{ animationDelay: "180ms" }} className="rise mx-auto mt-8 max-w-md scroll-mt-20 rounded-2xl border border-[#EBEAE5] bg-white p-5 text-left shadow-sm">
           {status === "done" ? (
             <div className="py-6 text-center">
               <div className="text-2xl">🎉</div>
@@ -131,7 +131,7 @@ export default function UofTLanding() {
                   <button
                     key={r}
                     onClick={() => { setRole(r); if (status === "error") setStatus("idle"); }}
-                    className={`flex-1 rounded-lg py-2 transition ${role === r ? "bg-white text-brand-ink shadow-sm" : "text-ink-faint hover:text-ink-soft"}`}
+                    className={`flex-1 rounded-lg py-2 transition ${role === r ? "bg-white text-brand-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
                   >
                     {t(r === "student" ? T.student : T.vendor)}
                   </button>
@@ -170,22 +170,31 @@ export default function UofTLanding() {
             </>
           )}
         </div>
-        <p className="mt-3 text-xs text-ink-faint">✓ {t(T.proof)}</p>
+        <p className="rise mt-3 text-xs text-ink-soft" style={{ animationDelay: "240ms" }}>✓ {t(T.proof)}</p>
       </section>
 
-      {/* vision strip */}
-      <section className="mx-auto max-w-5xl px-5 py-14">
-        <h2 className="mb-8 text-center text-sm font-bold uppercase tracking-[0.15em] text-ink-faint">{t(T.how)}</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
+      {/* vision strip — a connected LEFT→RIGHT journey (browse → order → skip the line),
+          not a 3-up card grid. Big ghost numerals + arrows read as a storyboard. */}
+      <section className="mx-auto max-w-5xl px-5 py-16">
+        <h2 className="mb-10 text-center text-sm font-bold uppercase tracking-[0.15em] text-ink-soft">{t(T.how)}</h2>
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:gap-3">
           {[
             { n: "1", t: T.s1t, b: T.s1b },
             { n: "2", t: T.s2t, b: T.s2b },
             { n: "3", t: T.s3t, b: T.s3b },
-          ].map((s) => (
-            <div key={s.n} className="rounded-2xl border border-[#EBEAE5] bg-white p-5">
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand/10 text-sm font-bold text-brand-ink">{s.n}</div>
-              <div className="mt-3 text-base font-bold text-ink">{t(s.t)}</div>
-              <p className="mt-1 text-sm text-ink-soft">{t(s.b)}</p>
+          ].map((s, i) => (
+            <div key={s.n} className="contents">
+              <div className="rise flex-1" style={{ animationDelay: `${i * 90}ms` }}>
+                <div className="text-5xl font-extrabold leading-none text-brand/20">{s.n}</div>
+                <div className="mt-2 text-lg font-bold text-ink">{t(s.t)}</div>
+                <p className="mt-1 text-sm text-ink-soft">{t(s.b)}</p>
+              </div>
+              {i < 2 && (
+                <div className="select-none self-center text-2xl font-light text-brand/40 sm:pt-4" aria-hidden="true">
+                  <span className="hidden sm:inline">→</span>
+                  <span className="block text-center sm:hidden">↓</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
