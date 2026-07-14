@@ -1,8 +1,9 @@
 import { ImageResponse } from "next/og";
 
 // Shared PWA/app-icon renderer. Full-bleed emerald tile (brand #0E9F6E) with a
-// BentoOS bento-box mark drawn as pure geometry — one big compartment + two
-// stacked, separated by emerald gaps. Deliberately EMOJI-FREE: Satori/next-og
+// BentoOS bento-box mark drawn as pure geometry — one big white compartment +
+// two stacked (top-right a warm gold #F2C14E accent), separated by emerald
+// gaps. Deliberately EMOJI-FREE: Satori/next-og
 // emoji rendering can silently fail on some runtimes (→ blank icon → the browser
 // shows its globe fallback). Plain divs render identically everywhere and stay
 // legible when a 48px favicon is downscaled to 16px. Full-bleed so it doubles as
@@ -28,7 +29,7 @@ export function renderAppIcon(size: number): ImageResponse {
           <div style={{ flex: 1.5, background: "#fff", borderRadius: r }} />
           {/* two stacked right compartments (sides) */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap }}>
-            <div style={{ flex: 1, background: "#fff", borderRadius: r }} />
+            <div style={{ flex: 1, background: "#F2C14E", borderRadius: r }} />
             <div style={{ flex: 1, background: "#fff", borderRadius: r }} />
           </div>
         </div>
