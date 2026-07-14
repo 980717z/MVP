@@ -15,8 +15,10 @@ export const METHODS: Method[] = ["cash", "card", "emt", "other"];
 const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const norm = (m: unknown): Method => (m === "cash" || m === "card" || m === "emt" ? m : "other");
 
-export interface StatsSplit { method?: string; total?: number; tip?: number }
+export interface StatsSplit { method?: string; total?: number; tip?: number; label?: string }
 export interface SessionRow {
+  id?: string; // table_sessions PK — used to drill into the settled orders' dishes
+  table_no?: string; // dine-in table label (blank for togo/delivery); enables 桌号 sort
   closed_at: string;
   business_date: string;
   payment_method: string; // cash | card | emt | other | split

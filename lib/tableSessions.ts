@@ -82,7 +82,7 @@ export async function listTableCheckouts(slug: string, tableNo?: string): Promis
 export async function listSessionsInRange(slug: string, from: string, to: string): Promise<import("./salesStats").SessionRow[]> {
   const { data, error } = await supabase
     .from("table_sessions")
-    .select("closed_at,business_date,payment_method,subtotal,gst,pst,total,tip,splits")
+    .select("id,table_no,closed_at,business_date,payment_method,subtotal,gst,pst,total,tip,splits")
     .eq("tenant_slug", slug)
     .gte("business_date", from)
     .lte("business_date", to)
@@ -93,6 +93,32 @@ export async function listSessionsInRange(slug: string, from: string, to: string
     return [];
   }
   return (data ?? []) as import("./salesStats").SessionRow[];
+}
+
+/** Dishes billed on a settled table session — the merged items of every order the
+ *  checkout claimed (orders.table_session_id was stamped at settle). Sorted oldest
+ *  round first, cancelled items dropped. Empty for pre-feature/togo sessions (which
+ *  never carried a table_session_id) — the caller shows a graceful empty state. */
+export interface SessionItem { name_zh: string; name_en: string; qty: number; price: number | null; note?: string; adjust?: number }
+export async function listSessionOrders(sessionId: string): Promise<SessionItem[]> {
+  if (!sessionId) return [];
+  const { data, error } = await supabase
+    .from("orders")
+    .select("items,created_at")
+    .eq("table_session_id", sessionId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("listSessionOrders", error);
+    return [];
+  }
+  const out: SessionItem[] = [];
+  for (const o of (data ?? []) as { items?: SessionItem[] & { cancelled?: boolean }[] }[]) {
+    for (const it of (o.items ?? []) as (SessionItem & { cancelled?: boolean })[]) {
+      if (it.cancelled) continue;
+      out.push({ name_zh: it.name_zh, name_en: it.name_en, qty: Number(it.qty) || 1, price: it.price, note: it.note, adjust: it.adjust });
+    }
+  }
+  return out;
 }
 
 export interface CheckoutResult {
