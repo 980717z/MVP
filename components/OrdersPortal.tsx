@@ -8,6 +8,7 @@ import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTra
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
 import { supabase } from "@/lib/supabase";
+import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
@@ -32,6 +33,23 @@ const T: Record<string, Dict> = {
   pendingPill: { en: "{n} pending", zh: "{n} 单待处理", fr: "{n} en attente" },
   enableSoundTitle: { en: "New-order sound alert", zh: "新订单提示音", fr: "Alerte sonore des nouvelles commandes" },
   enableSound: { en: "🔔 Enable sound", zh: "🔔 开启提示音", fr: "🔔 Activer le son" },
+  pushTitle: {
+    en: "Push notifications — get a system alert on new orders even when this app is closed",
+    zh: "推送通知 — 即使关闭本应用,来新订单也会收到系统通知",
+    fr: "Notifications push — recevez une alerte système à chaque commande même app fermée",
+  },
+  pushEnable: { en: "🔔 Enable push", zh: "🔔 开启推送", fr: "🔔 Activer push" },
+  pushOn: { en: "🔔 Push on", zh: "🔔 推送已开", fr: "🔔 Push activé" },
+  pushDenied: {
+    en: "Notifications are blocked. Allow them in the browser/OS settings, then retry.",
+    zh: "通知被浏览器/系统屏蔽了。请到设置里允许本站通知后重试。",
+    fr: "Notifications bloquées. Autorisez-les dans les réglages, puis réessayez.",
+  },
+  pushUnsupported: {
+    en: "Push needs the installed app. Add to Home Screen / Install first, then open it.",
+    zh: "推送需要先「安装/添加到主屏幕」,从安装后的图标打开本应用再开启。",
+    fr: "Le push nécessite l'app installée. Ajoutez à l'écran d'accueil, puis rouvrez.",
+  },
   sampleTicketTitle: { en: "See what the ticket looks like", zh: "看看小票长什么样", fr: "Voir à quoi ressemble le ticket" },
   sampleTicket: { en: "🖨️ Sample ticket", zh: "🖨️ 出单样张", fr: "🖨️ Ticket d'exemple" },
   reprintAllTitle: {
@@ -215,6 +233,29 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       /* ignore */
     }
   }, []);
+
+  // Web Push: reflect the current subscription state, and toggle on click. When
+  // ON, /api/push/send delivers an OS notification per new order even if this
+  // app is closed / the device is locked (see lib/push.ts + public/sw.js).
+  const [pushState, setPushState] = useState<PushState>("off");
+  const [pushBusy, setPushBusy] = useState(false);
+  useEffect(() => {
+    currentPushState().then(setPushState).catch(() => {});
+  }, []);
+  const togglePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      const next = pushState === "on" ? await disablePush() : await enablePush(slug);
+      setPushState(next);
+      if (next === "denied") alert(t(T.pushDenied));
+      else if (next === "unsupported") alert(t(T.pushUnsupported));
+    } catch {
+      /* surfaced via state; keep the screen alive */
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const beep = useCallback(() => {
     const ctx = audioCtx.current;
@@ -578,6 +619,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           {!soundOn && (
             <button onClick={enableSound} className="btn-ghost border border-slate-300 text-sm" title={t(T.enableSoundTitle)}>
               {t(T.enableSound)}
+            </button>
+          )}
+          {pushState !== "unsupported" && (
+            <button
+              onClick={togglePush}
+              disabled={pushBusy}
+              title={t(T.pushTitle)}
+              className={`text-sm ${pushState === "on" ? "btn-ghost border border-brand bg-brand-wash text-brand-ink" : "btn-ghost border border-slate-300"}`}
+            >
+              {pushState === "on" ? t(T.pushOn) : t(T.pushEnable)}
             </button>
           )}
           <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">{t(T.refresh)}</button>
