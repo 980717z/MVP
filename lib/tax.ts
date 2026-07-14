@@ -36,7 +36,7 @@ export function computeTax(amount: number, taxIncluded = false): TaxBreakdown {
 //   delivery  total = subtotal × 1.13 + 10% tip  (pay first; subtotal ≥ $30)
 //   Tip = 10% of PRE-TAX subtotal; tips are never taxed.
 
-export type OrderType = "dine_in" | "togo" | "delivery";
+export type OrderType = "dine_in" | "togo" | "delivery" | "pickup";
 
 export const DELIVERY_TIP_RATE = 0.10;
 export const DELIVERY_MIN_SUBTOTAL = 30;

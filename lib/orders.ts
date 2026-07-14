@@ -57,6 +57,14 @@ export interface Order {
   address: OrderAddress | null;
   eta_minutes: number | null;
   paid_at: string | null;
+  // Campus order-ahead PICKUP (supabase/campus-pickup.sql). Additive timestamps —
+  // status enum stays untouched. ready_at set → fires the consumer "ready" push;
+  // picked_up_at set → order settled. tracking_token = server capability for the
+  // anon pickup-tracking read (NOT the order UUID); pickup_code = shown at the truck.
+  ready_at: string | null;
+  picked_up_at: string | null;
+  pickup_code: string | null;
+  tracking_token: string | null;
   printed_at: string | null; // Epson: kitchen ticket, null = needs printing
   bill_at: string | null; // customer bill requested (queued for the printer)
   bill_printed_at: string | null; // customer bill printed; null while pending

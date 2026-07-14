@@ -64,7 +64,7 @@ async function handle(req: Request): Promise<Response> {
     // shop name + print switch
     const { data: tenant } = await db
       .from("tenants")
-      .select("name, print_enabled")
+      .select("name, print_enabled, payment_mode")
       .eq("slug", slug)
       .maybeSingle();
     if (tenant && tenant.print_enabled === false) return empty();
@@ -72,16 +72,24 @@ async function handle(req: Request): Promise<Response> {
     // (lib/ticketImage.ts) so CJK prints fine. Falls back to en/slug.
     const shopName = (tenant?.name as any)?.zh || (tenant?.name as any)?.en || slug;
 
-    // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query
-    // itself (dine-in always; togo/delivery only when paid) — filtering after a
-    // limit() would let 10 stale unpaid togo orders block dine-in printing forever.
+    // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query itself
+    // (filtering after limit() would let stale unpaid orders block printing forever):
+    //   • dine-in            → always
+    //   • pickup @ order_only → always (order-ahead, pay at pickup / no online charge)
+    //   • togo / delivery / pickup@pay_first → only when payment_status='paid'
+    // payment_mode defaults to 'order_only' (campus trucks); a tenant that wires up
+    // payment flips to 'pay_first' and pickup then requires paid, like togo.
+    const orderOnly = !tenant?.payment_mode || tenant.payment_mode === "order_only";
+    const eligOr = orderOnly
+      ? "order_type.eq.dine_in,order_type.eq.pickup,payment_status.eq.paid"
+      : "order_type.eq.dine_in,payment_status.eq.paid";
     const { data, error } = await db
       .from("orders")
       .select("*")
       .eq("tenant_slug", slug)
       .is("printed_at", null)
       .neq("status", "cancelled")
-      .or("order_type.eq.dine_in,payment_status.eq.paid")
+      .or(eligOr)
       .order("created_at", { ascending: true })
       .limit(5);
     if (error) {
