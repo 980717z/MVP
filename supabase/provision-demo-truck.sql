@@ -15,7 +15,7 @@ values (
   '[]'::jsonb,
   '[]'::jsonb,
   '["招牌饭","面 & 小食","饮品"]'::jsonb,
-  'PASTE_YOUR_SUPABASE_AUTH_UID_HERE'::uuid
+  'e8871942-9b75-4c00-9f62-802122fdd26f'::uuid
 )
 on conflict (slug) do update set
   enabled = excluded.enabled,
@@ -25,8 +25,8 @@ on conflict (slug) do update set
 
 -- 店主计入成员名册（roster UI）
 insert into public.members (tenant_slug, member_id)
-select 'demo-truck', 'PASTE_YOUR_SUPABASE_AUTH_UID_HERE'::uuid
-where not exists (select 1 from public.members where tenant_slug = 'demo-truck' and member_id = 'PASTE_YOUR_SUPABASE_AUTH_UID_HERE'::uuid);
+select 'demo-truck', 'e8871942-9b75-4c00-9f62-802122fdd26f'::uuid
+where not exists (select 1 from public.members where tenant_slug = 'demo-truck' and member_id = 'e8871942-9b75-4c00-9f62-802122fdd26f'::uuid);
 
 -- 菜单（按 template_key 幂等 upsert —— 重跑不会双倍菜）
 insert into public.menu_items (tenant_slug, name_zh, name_en, price, category, image_url, is_market, variants, template_key, sort)

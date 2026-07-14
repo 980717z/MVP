@@ -63,6 +63,28 @@ const T = {
   // proof + footer
   proof: { zh: "已在多伦多一家繁忙的海鲜厨房运行", en: "Already powering a busy Toronto seafood kitchen", fr: "Déjà en service dans une cuisine de fruits de mer achalandée à Toronto" },
   soon: { zh: "校园招募中 · 敬请期待", en: "Recruiting on campus now · coming soon", fr: "Recrutement sur le campus · bientôt" },
+  // header merchant-demo link
+  merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
+  // back-office (vendor) section
+  boEyebrow: { zh: "不止点单", en: "More than ordering", fr: "Plus que la commande" },
+  boTitle: { zh: "一套系统,管好整间店", en: "One system runs the whole shop", fr: "Un système pour toute la boutique" },
+  boSub: {
+    zh: "免费的扫码点餐只是入口。销售分析、库存采购、每日对账记账——后台都替你算好。",
+    en: "Free QR ordering is just the front door. Sales analytics, inventory, daily cash & books — the back office does the math for you.",
+    fr: "La commande QR gratuite n'est que la porte d'entrée. Analyses des ventes, stocks, caisse et comptes quotidiens — l'arrière-boutique fait les calculs.",
+  },
+  boLive: { zh: "看看实时后台 →", en: "Try the live dashboard →", fr: "Voir le tableau de bord →" },
+  boTour: { zh: "先逛一圈演示 →", en: "Take the guided tour →", fr: "Faire la visite guidée →" },
+  boSample: { zh: "演示为示例数据", en: "Demo shows sample data", fr: "Démo avec données d'exemple" },
+  // four capability shots
+  capOrdersT: { zh: "实时订单 · 取餐", en: "Live orders & pickup", fr: "Commandes en direct" },
+  capOrdersB: { zh: "新单即时提醒:接单 → 备餐 → 可取餐 → 已取,一屏搞定。", en: "Orders land in real time — accept, prep, ready, picked-up, all on one screen.", fr: "Commandes en temps réel — accepter, préparer, prêt, récupéré, sur un écran." },
+  capSalesT: { zh: "销售分析", en: "Sales analytics", fr: "Analyse des ventes" },
+  capSalesB: { zh: "营业额、热销菜、按时段与桌号,趋势一目了然。", en: "Revenue, top dishes, trends by hour and table — see what sells.", fr: "Revenus, plats vedettes, tendances par heure — voyez ce qui se vend." },
+  capInvT: { zh: "库存 · 采购", en: "Inventory & purchasing", fr: "Stock et achats" },
+  capInvB: { zh: "库存水位、补货预警、供应商——别再断货。", en: "Stock levels, low-stock alerts, suppliers — stop running out.", fr: "Niveaux de stock, alertes, fournisseurs — ne manquez plus de rien." },
+  capBooksT: { zh: "对账 · 记账", en: "Daily books & reconcile", fr: "Comptes et caisse" },
+  capBooksB: { zh: "每日现金刷卡对账,差异自动标红,月底不头疼。", en: "Daily cash & card reconciliation, variances flagged — month-end made easy.", fr: "Rapprochement caisse/carte quotidien, écarts signalés — fin de mois facile." },
 } satisfies Record<string, Dict>;
 
 export default function UofTLanding() {
@@ -103,7 +125,10 @@ export default function UofTLanding() {
       {/* header */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
         <div className="text-lg font-extrabold tracking-tight text-ink">{t(T.wordmark)}</div>
-        <LangToggle />
+        <div className="flex items-center gap-3">
+          <a href="#backoffice" className="hidden text-sm font-semibold text-brand-ink hover:text-brand sm:inline">{t(T.merchantDemo)}</a>
+          <LangToggle />
+        </div>
       </header>
 
       {/* hero */}
@@ -200,8 +225,46 @@ export default function UofTLanding() {
         </div>
       </section>
 
+      {/* back-office (vendor) section — "way more than a QR menu": the free QR
+          ordering is the front door; the paid platform runs the whole shop. Real
+          screenshots (public/shots) captured from the /demo tour. */}
+      <section id="backoffice" className="scroll-mt-16 border-y border-[#EBEAE5] bg-white">
+        <div className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="rise text-xs font-bold uppercase tracking-[0.15em] text-brand-ink">{t(T.boEyebrow)}</div>
+            <h2 className="rise mt-2 text-balance text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" style={{ animationDelay: "60ms" }}>{t(T.boTitle)}</h2>
+            <p className="rise mx-auto mt-3 max-w-xl text-balance text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.boSub)}</p>
+            <div className="rise mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "180ms" }}>
+              <a href="/login?demo=1" className="w-full rounded-full bg-brand px-5 py-2.5 text-center text-sm font-bold text-white transition hover:opacity-90 sm:w-auto">{t(T.boLive)}</a>
+              <a href="/demo" className="w-full rounded-full border border-[#E3E2DC] bg-white px-5 py-2.5 text-center text-sm font-semibold text-ink transition hover:border-brand/40 sm:w-auto">{t(T.boTour)}</a>
+            </div>
+          </div>
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2">
+            {[
+              { img: "/shots/orders.png", title: T.capOrdersT, body: T.capOrdersB },
+              { img: "/shots/sales.png", title: T.capSalesT, body: T.capSalesB },
+              { img: "/shots/inventory.png", title: T.capInvT, body: T.capInvB },
+              { img: "/shots/books.png", title: T.capBooksT, body: T.capBooksB },
+            ].map((c, i) => (
+              <div key={c.img} className="rise" style={{ animationDelay: `${i * 70}ms` }}>
+                <div className="overflow-hidden rounded-xl border border-[#EBEAE5] bg-[#FBFAF8] shadow-sm">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={c.img} alt={t(c.title)} loading="lazy" className="block w-full" />
+                </div>
+                <div className="mt-3 px-1">
+                  <div className="text-base font-bold text-ink">{t(c.title)}</div>
+                  <p className="mt-0.5 text-sm text-ink-soft">{t(c.body)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-6 text-center text-xs text-ink-faint">{t(T.boSample)}</p>
+        </div>
+      </section>
+
       {/* vendor band */}
-      <section className="mx-auto max-w-5xl px-5 pb-16">
+      <section className="mx-auto max-w-5xl px-5 py-16">
         <div className="flex flex-col items-start gap-4 rounded-2xl bg-brand p-7 text-white sm:flex-row sm:items-center sm:justify-between">
           <div className="max-w-xl">
             <div className="text-xl font-extrabold">{t(T.vbTitle)}</div>

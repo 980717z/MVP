@@ -28,6 +28,11 @@ const T: Record<string, Dict> = {
     fr: "Compte créé. Si la vérification par courriel est activée, consultez votre boîte avant de vous connecter.",
   },
   genericErr: { en: "Something went wrong", zh: "出错了", fr: "Une erreur s'est produite" },
+  demoHint: {
+    en: "Demo account filled in — just tap Sign in to explore the back office.",
+    zh: "演示账号已填好 —— 直接点「登录」即可体验后台。",
+    fr: "Compte démo pré-rempli — appuyez sur « Se connecter » pour explorer.",
+  },
   needCreds: {
     en: "Enter your email and password.",
     zh: "请填写邮箱和密码。",
@@ -60,6 +65,7 @@ export default function Login() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [demo, setDemo] = useState(false); // ?demo=1 → prefill the public demo account
   // Uncontrolled inputs (ref + read at submit). iPad/iOS Safari (iCloud Keychain)
   // autofills without firing React's onChange; with controlled inputs a re-render
   // would then wipe the autofilled text back to empty. Uncontrolled keeps it.
@@ -75,6 +81,14 @@ export default function Login() {
     const inviteEmail = params.get("email");
     if (inviteEmail && emailRef.current) emailRef.current.value = inviteEmail;
     if (params.get("invite") === "1") setMode("signup");
+    // Public demo entrance (utoronto landing): /login?demo=1 → prefill the shared
+    // demo merchant so a vendor can tap straight into the real back office.
+    if (params.get("demo") === "1") {
+      setDemo(true);
+      setMode("signin");
+      if (emailRef.current) emailRef.current.value = "demo@bentoos.io";
+      if (passwordRef.current) passwordRef.current.value = "demo123";
+    }
   }, [router]);
 
   const submit = async () => {
@@ -150,6 +164,12 @@ export default function Login() {
               {t(T.signup)}
             </button>
           </div>
+
+          {demo && (
+            <div className="mb-3 rounded-lg bg-brand-wash px-3 py-2 text-center text-xs font-medium text-brand-ink">
+              🎬 {t(T.demoHint)}
+            </div>
+          )}
 
           {/* No <form>: a native form submit reloads the page (GET with the creds in
               the URL) if a tap lands before React hydrates — which never reaches
