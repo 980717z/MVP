@@ -23,9 +23,10 @@ on conflict (slug) do update set
   delivery_fsas = excluded.delivery_fsas,
   cat_order = excluded.cat_order;
 
--- 店主计入成员名册（roster UI）
-insert into public.members (tenant_slug, member_id)
-select 'demo-truck', 'e8871942-9b75-4c00-9f62-802122fdd26f'::uuid
+-- 店主计入成员名册（roster UI）。members.name 与 role 均 NOT NULL，
+-- 店主 role = 'owner'，name 缺省用中文店名（无个人姓名可填时的安全默认）。
+insert into public.members (tenant_slug, member_id, name, role)
+select 'demo-truck', 'e8871942-9b75-4c00-9f62-802122fdd26f'::uuid, '校园餐车', 'owner'
 where not exists (select 1 from public.members where tenant_slug = 'demo-truck' and member_id = 'e8871942-9b75-4c00-9f62-802122fdd26f'::uuid);
 
 -- 菜单（按 template_key 幂等 upsert —— 重跑不会双倍菜）

@@ -167,9 +167,10 @@ export function buildProvisionSql(template: TenantTemplate, target: ProvisionTar
   lines.push(`  delivery_fsas = excluded.delivery_fsas,`);
   lines.push(`  cat_order = excluded.cat_order;`);
   lines.push(``);
-  lines.push(`-- 店主计入成员名册（roster UI）`);
-  lines.push(`insert into public.members (tenant_slug, member_id)`);
-  lines.push(`select ${lit(target.slug)}, ${lit(target.owner_id)}::uuid`);
+  lines.push(`-- 店主计入成员名册（roster UI）。members.name 与 role 均 NOT NULL，`);
+  lines.push(`-- 店主 role = 'owner'，name 缺省用中文店名（无个人姓名可填时的安全默认）。`);
+  lines.push(`insert into public.members (tenant_slug, member_id, name, role)`);
+  lines.push(`select ${lit(target.slug)}, ${lit(target.owner_id)}::uuid, ${lit(target.name_zh)}, 'owner'`);
   lines.push(`where not exists (select 1 from public.members where tenant_slug = ${lit(target.slug)} and member_id = ${lit(target.owner_id)}::uuid);`);
   lines.push(``);
   if (template.menu.length > 0) {
