@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { listOrders, setOrderStatus, claimOrderDone, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupReady, claimPickedUp, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
@@ -72,6 +72,16 @@ const T: Record<string, Dict> = {
   deliverTo: { en: "Deliver to", zh: "送至", fr: "Livrer à" },
   emptyTogo: { en: "No pickup orders yet.", zh: "还没有自取订单。", fr: "Aucune commande à emporter." },
   emptyDelivery: { en: "No delivery orders yet.", zh: "还没有外送订单。", fr: "Aucune commande de livraison." },
+  // Campus order-ahead pickup (🚚) — distinct from fulai's takeout (自取)
+  viewPickup: { en: "Order-ahead", zh: "取餐", fr: "Sur commande" },
+  emptyPickup: { en: "No order-ahead pickups yet.", zh: "还没有取餐订单。", fr: "Aucune commande à ramasser." },
+  puAcceptHint: { en: "Accept · prep time", zh: "接单 · 预计时间", fr: "Accepter · délai" },
+  puReady: { en: "✅ Ready", zh: "✅ 可取餐", fr: "✅ Prêt" },
+  puPickedUp: { en: "🎉 Picked up", zh: "🎉 已取餐", fr: "🎉 Récupéré" },
+  puDone: { en: "Picked up", zh: "已取餐", fr: "Récupéré" },
+  puReadyBadge: { en: "READY", zh: "可取餐", fr: "PRÊT" },
+  puEta: { en: "~{n} min", zh: "约 {n} 分钟", fr: "~{n} min" },
+  puReadyPush: { en: "Customer notified 🔔", zh: "已通知顾客 🔔", fr: "Client averti 🔔" },
   // Empty state
   emptyOrders: {
     en: "No orders yet. Once customers order via the “📱 QR menu”, they show up here in real time.",
@@ -201,7 +211,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
   const [tenant, setTenant] = useState<Tenant | undefined>();
-  const [view, setView] = useState<"dine" | "togo" | "delivery" | "market">("dine");
+  const [view, setView] = useState<"dine" | "togo" | "delivery" | "pickup" | "market">("dine");
   const [headerMenu, setHeaderMenu] = useState(false); // ⋯ overflow for the header's utility actions
   const [trackPay, setTrackPay] = useState(true); // record cash/EMT/card at checkout + method stats (tenant setting)
   const toggleTrackPay = () => { const next = !trackPay; setTrackPay(next); saveTrackPayments(slug, next).catch(() => {}); };
@@ -212,7 +222,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   // Restore/persist the selected view.
   useEffect(() => {
-    try { const v = localStorage.getItem("bento_orders_view"); if (v === "dine" || v === "togo" || v === "delivery" || v === "market") setView(v); } catch { /* ignore */ }
+    try { const v = localStorage.getItem("bento_orders_view"); if (v === "dine" || v === "togo" || v === "delivery" || v === "pickup" || v === "market") setView(v); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
     try { localStorage.setItem("bento_orders_view", view); } catch { /* ignore */ }
@@ -428,8 +438,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
       if (to === "done") {
         // CAS: exactly ONE device/tap wins the done-transition, so ledger,
-        // dish counts and member spend post exactly once.
-        const { claimed, error } = await claimOrderDone(o.id);
+        // dish counts and member spend post exactly once. Pickup orders claim
+        // via picked_up_at (also stamps the pickup time) — same single-winner.
+        const { claimed, error } = o.order_type === "pickup"
+          ? await claimPickedUp(o.id)
+          : await claimOrderDone(o.id);
         if (error) {
           alert(t(T.statusFailed) + error);
           return;
@@ -460,6 +473,38 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
   };
 
+  // Pickup: accept + set prep ETA (new → preparing). Advances the customer's
+  // tracker to step 2 ("制作中 · 约 N 分钟").
+  const acceptPickupOrder = async (o: Order, eta: number) => {
+    if (advancing.current.has(o.id)) return;
+    advancing.current.add(o.id);
+    try {
+      const { error } = await acceptPickup(o.id, eta);
+      if (error) alert(t(T.statusFailed) + error);
+      load();
+    } finally {
+      advancing.current.delete(o.id);
+    }
+  };
+
+  // Pickup: mark READY (CAS on ready_at). The winner fires the consumer push
+  // (Slice 5) — for now the tracker flips to "可取餐" on its next ~8s poll.
+  const readyPickupOrder = async (o: Order) => {
+    if (advancing.current.has(o.id)) return;
+    advancing.current.add(o.id);
+    try {
+      const { readied, error } = await markPickupReady(o.id);
+      if (error) alert(t(T.statusFailed) + error);
+      if (readied) {
+        // Slice 5 will POST /api/pickup/notify here to push the "ready" alert.
+        void 0;
+      }
+      load();
+    } finally {
+      advancing.current.delete(o.id);
+    }
+  };
+
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -467,9 +512,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   const active = orders.filter((o) => o.status === "new" || o.status === "preparing");
 
-  // Buckets by order type — dine-in goes to the floor plan; togo/delivery to lists.
+  // Buckets by order type — dine-in goes to the floor plan; togo/delivery/pickup to lists.
   const togoOrders = orders.filter((o) => o.order_type === "togo");
   const deliveryOrders = orders.filter((o) => o.order_type === "delivery");
+  const pickupOrders = orders.filter((o) => o.order_type === "pickup");
+  const pickupActive = pickupOrders.filter((o) => !o.picked_up_at && o.status !== "cancelled").length;
   const dineUnpaid = orders.filter((o) => o.order_type === "dine_in" && o.payment_status === "unpaid").length;
   const togoActive = togoOrders.filter((o) => o.status === "new" || o.status === "preparing").length;
   const deliveryActive = deliveryOrders.filter((o) => o.status === "new" || o.status === "preparing" || o.status === "delivering").length;
@@ -478,10 +525,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     (o) => o.order_type === "dine_in" && o.payment_status === "unpaid" && o.status !== "cancelled" &&
       (o.items ?? []).some((it: any) => it.market && !(Number(it.price) > 0) && !it.cancelled),
   ).length;
-  const VIEWS: { key: "dine" | "togo" | "delivery" | "market"; label: string; icon: string; count: number }[] = [
+  const VIEWS: { key: "dine" | "togo" | "delivery" | "pickup" | "market"; label: string; icon: string; count: number }[] = [
     { key: "dine", label: t(T.viewDine), icon: "🗺️", count: dineUnpaid },
     { key: "togo", label: t(T.viewTogo), icon: "📦", count: togoActive },
     { key: "delivery", label: t(T.viewDelivery), icon: "🚴", count: deliveryActive },
+    { key: "pickup", label: t(T.viewPickup), icon: "🚚", count: pickupActive },
     { key: "market", label: t(T.viewMarket), icon: "💰", count: marketPending },
   ];
 
@@ -530,6 +578,30 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     </button>
   );
 
+  // Pickup card primary action: new → accept+ETA chips → Ready → Picked up.
+  const ETA_CHIPS = [5, 10, 15, 20];
+  const pickupPrimary = (o: Order) => {
+    if (o.status === "cancelled") return null;
+    if (o.picked_up_at) return <span className="pill bg-green-100 text-green-700">✓ {t(T.puDone)}</span>;
+    if (o.ready_at) return <button onClick={() => advance(o, "done")} className="btn-primary px-4 text-sm">{t(T.puPickedUp)}</button>;
+    if (o.status === "preparing") return <button onClick={() => readyPickupOrder(o)} className="btn-primary px-4 text-sm">{t(T.puReady)}</button>;
+    // status "new": accept + set a prep ETA in one tap
+    return (
+      <div className="flex items-center gap-1">
+        <span className="mr-0.5 hidden text-xs text-ink-faint sm:inline">{t(T.puAcceptHint)}</span>
+        {ETA_CHIPS.map((m) => (
+          <button
+            key={m}
+            onClick={() => acceptPickupOrder(o, m)}
+            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+          >
+            {m}′
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   const renderCard = (o: Order) => {
     const sibs = siblingsOf(o);          // this table's active rounds (self if none)
     const multi = sibs.length > 1;       // part of a multi-round tab (加餐)
@@ -539,6 +611,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         <div className="mb-2 flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`pill ${STATUS[o.status].cls}`}>{t(T[STATUS[o.status].key])}</span>
+            {o.order_type === "pickup" && o.pickup_code && (
+              <span className="pill bg-emerald-50 font-bold tracking-wider text-emerald-700">🎫 {o.pickup_code}</span>
+            )}
+            {o.order_type === "pickup" && o.ready_at && !o.picked_up_at && (
+              <span className="pill bg-green-100 font-bold text-green-700">{t(T.puReadyBadge)}</span>
+            )}
+            {o.order_type === "pickup" && o.status === "preparing" && !o.ready_at && o.eta_minutes && (
+              <span className="text-xs text-ink-faint">{t(T.puEta).replace("{n}", String(o.eta_minutes))}</span>
+            )}
             {o.table_no && <span className="text-sm font-medium text-ink">{t(T.table)} {displayTable(o.table_no)}</span>}
             {o.phone && o.phone !== "N/A" ? (
               <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">📞 {fmtPhone(o.phone)}</a>
@@ -566,7 +647,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="font-semibold text-ink">{t(T.cardTotal).replace("{sum}", fmtPrice(o.total))}</span>
           <div className="flex items-center gap-2">
-            {(() => {
+            {o.order_type === "pickup" ? pickupPrimary(o) : (() => {
               const n = nextStep(o);
               return n ? <button onClick={() => advance(o, n.to)} className="btn-primary px-4 text-sm">{t(T[n.key])}</button> : null;
             })()}
@@ -712,6 +793,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyDelivery)}</div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">{deliveryOrders.map((o) => renderCard(o))}</div>
+        )
+      )}
+
+      {view === "pickup" && (
+        pickupOrders.length === 0 ? (
+          <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyPickup)}</div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">{pickupOrders.map((o) => renderCard(o))}</div>
         )
       )}
 

@@ -193,6 +193,61 @@ export async function claimOrderDone(id: string): Promise<{ claimed: boolean; er
   return { claimed: !!data };
 }
 
+// ── Campus PICKUP lifecycle ────────────────────────────────────────────────
+//  Fulfillment state rides on additive timestamps (eta_minutes / ready_at /
+//  picked_up_at); the status enum is untouched. Consumer step is derived in
+//  lib/pickup.ts: new→1, preparing→2, ready_at→3, picked_up_at→4.
+
+/** Accept a pickup order and set the prep ETA: new → preparing + eta_minutes.
+ *  Moving to "preparing" advances the consumer tracker to step 2 ("制作中"). */
+export async function acceptPickup(id: string, etaMinutes: number): Promise<{ error?: string }> {
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: "preparing", eta_minutes: etaMinutes })
+    .eq("id", id);
+  if (error) {
+    console.error("acceptPickup", error);
+    return { error: error.message };
+  }
+  return {};
+}
+
+/** CAS-flip a pickup order to READY: stamp ready_at exactly once (WHERE
+ *  ready_at IS NULL) so the consumer "ready" push fires a single time even on
+ *  double-tap or two staff devices. Returns readied=true only for the winner. */
+export async function markPickupReady(id: string): Promise<{ readied: boolean; error?: string }> {
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ ready_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("ready_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("markPickupReady", error);
+    return { readied: false, error: error.message };
+  }
+  return { readied: !!data };
+}
+
+/** CAS-claim pickup completion: stamp picked_up_at + status "done" exactly once
+ *  (WHERE picked_up_at IS NULL), so sales/dish/member posting runs a single time
+ *  — the pickup analogue of claimOrderDone. */
+export async function claimPickedUp(id: string): Promise<{ claimed: boolean; error?: string }> {
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ status: "done", picked_up_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("picked_up_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("claimPickedUp", error);
+    return { claimed: false, error: error.message };
+  }
+  return { claimed: !!data };
+}
+
 export async function deleteOrder(id: string): Promise<void> {
   const { error } = await supabase.from("orders").delete().eq("id", id);
   if (error) console.error("deleteOrder", error);
