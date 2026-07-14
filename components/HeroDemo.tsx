@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useLang, type Dict } from "@/app/i18n";
+import { BentoMark } from "@/components/BentoMark";
 
 const NAV: { id: string; icon: string; label: Dict }[] = [
   { id: "overview", icon: "▦", label: { zh: "概览", en: "Overview", fr: "Aperçu" } },
@@ -360,7 +361,7 @@ export default function HeroDemo() {
         {/* sidebar — clickable tabs */}
         <aside className="hidden w-28 shrink-0 border-r border-slate-100 bg-slate-50/40 p-2 sm:block">
           <div className="mb-3 flex items-center gap-1.5 px-1">
-            <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-emerald-500 to-sky-500 text-[10px]">🍱</span>
+            <BentoMark className="h-5 w-5" />
             <span className="text-[11px] font-bold text-slate-800">BentoOS</span>
           </div>
           <nav className="space-y-0.5">

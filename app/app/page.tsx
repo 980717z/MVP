@@ -6,6 +6,7 @@ import { createTenant, loadTenants } from "@/lib/store";
 import { useAuth, signOut } from "@/lib/useAuth";
 import { isValidSlug } from "@/lib/qrContract";
 import { useLang, type Dict } from "@/app/i18n";
+import { BentoMark } from "@/components/BentoMark";
 
 function slugify(s: string): string {
   return s
@@ -112,7 +113,7 @@ export default function AppGate() {
     <main className="grid min-h-screen place-items-center px-6">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-center gap-2">
-          <span className="text-2xl">🍱</span>
+          <BentoMark className="h-7 w-7" />
           <span className="text-lg font-bold tracking-tight">BentoOS</span>
         </div>
 

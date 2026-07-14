@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/lib/useAuth";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
+import { BentoMark } from "@/components/BentoMark";
 
 const T = {
   navPricing: { zh: "价格", en: "Pricing", fr: "Tarifs" },
@@ -158,7 +159,7 @@ export default function HowItWorks() {
       {/* nav */}
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
+          <BentoMark className="h-8 w-8 shadow-sm" />
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
@@ -253,7 +254,7 @@ export default function HowItWorks() {
       {/* footer */}
       <footer className="border-t border-slate-100">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
-          <span>🍱 BentoOS · {t(T.footer)}</span>
+          <span className="inline-flex items-center gap-1.5"><BentoMark className="h-4 w-4" /> BentoOS · {t(T.footer)}</span>
           <div className="flex items-center gap-4">
             <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
             <span>© 2026 BentoOS</span>

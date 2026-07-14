@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { claimInvites } from "@/lib/store";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
+import { BentoMark } from "@/components/BentoMark";
 
 // Trilingual copy (EN default, + 中 / FR). Chrome only — Supabase auth errors
 // come back in English and are shown as-is.
@@ -143,7 +144,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-sky-500 text-lg shadow-sm">🍱</div>
+            <BentoMark className="h-9 w-9 shadow-sm" />
             <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
           </div>
           <LangToggle />

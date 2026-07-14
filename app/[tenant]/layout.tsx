@@ -7,6 +7,7 @@ import { getTenant, myAccess, type Tenant } from "@/lib/store";
 import { CATEGORIES, DOMAINS, MODULE_BY_ID } from "@/lib/catalog";
 import { useLang, LangToggle } from "@/app/i18n";
 import { signOut } from "@/lib/useAuth";
+import { BentoMark } from "@/components/BentoMark";
 
 // Back-office shell font (DESIGN-PLATFORM.md): Plus Jakarta Sans + Noto Sans SC,
 // scoped here so the jade customer menu and the landing keep their own faces.
@@ -152,7 +153,7 @@ function SidebarHead({ slug, tenant, onClose }: { slug: string; tenant?: Tenant;
     <div className="flex items-start justify-between border-b border-[#F3F2EE] px-4 py-4">
       <div>
         <Link href="/app" className="flex items-center gap-2">
-          <span className="grid h-6 w-6 place-items-center rounded-[7px] bg-brand text-[13px] text-white">🍱</span>
+          <BentoMark className="h-6 w-6" />
           <span className="text-sm font-extrabold tracking-tight">BentoOS</span>
         </Link>
         <div className="mt-3">

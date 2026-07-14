@@ -11,6 +11,7 @@ import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
 import CheckoutSheet from "@/components/CheckoutSheet";
 import { resolveMenuView, MENU_VIEW_KEY, type MenuView } from "@/lib/menuView";
+import { BentoMark } from "@/components/BentoMark";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -1353,7 +1354,7 @@ export default function PublicMenu() {
           className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] text-ink-faint transition hover:bg-white hover:text-jade"
           title={tri("BentoOS — 小商家的轻量后台", "BentoOS — lightweight back-office for small merchants", "BentoOS — arrière-guichet léger pour petits commerçants")}
         >
-          🍱 Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
+          <BentoMark className="h-3.5 w-3.5" /> Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
         </a>
       </footer>
     </main>

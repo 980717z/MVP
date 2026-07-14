@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
+import { BentoMark } from "@/components/BentoMark";
 
 const TYPES: { key: string; label: Dict }[] = [
   { key: "restaurant", label: { zh: "餐厅", en: "Restaurant", fr: "Restaurant" } },
@@ -126,7 +127,7 @@ export default function GetStarted() {
       {/* nav */}
       <header className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
+          <BentoMark className="h-8 w-8 shadow-sm" />
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
