@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
+import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
@@ -72,6 +73,11 @@ export default function PublicMenu() {
 
   // 外卖/自取 mode: entered via the separate QR (?m=togo). Dine-in tables use ?t=N.
   const [togoMode, setTogoMode] = useState(false);
+  // Campus order-ahead PICKUP (?m=pickup): a food-truck / single-window vendor.
+  // Implies togoMode's layout (no table, phone required, cart checkout) but is
+  // always pickup (no delivery chooser), order-only, and on submit routes through
+  // the server pickup-create route → redirects to the /order/[id]?t=<token> tracker.
+  const [pickupMode, setPickupMode] = useState(false);
   // ?embed=1 (landing showcase): hide the shop's name until we have written
   // authorization to feature it. Purely additive — printed QR params untouched.
   const [embed, setEmbed] = useState(false);
@@ -155,6 +161,9 @@ export default function PublicMenu() {
       setTableNo(tParam);
     }
     if (params.get("m") === "togo") setTogoMode(true);
+    // pickup QR: /menu/<slug>?m=pickup → campus order-ahead. Reuses the togo
+    // layout (togoMode) but is pickup-only + routes to the tracking screen.
+    if (params.get("m") === "pickup") { setTogoMode(true); setPickupMode(true); }
     if (params.get("embed") === "1") setEmbed(true);
     if (params.get("staff") === "1") setStaff(true);
     // Separate query so a pre-migration storefront view (no delivery_fsas
@@ -394,6 +403,20 @@ export default function PublicMenu() {
         };
       });
     });
+    // Campus pickup: route through the server (it mints the tracking_token +
+    // pickup_code), then hand off to the anonymous /order/[id] tracking screen.
+    // Order-only — no online charge; staff settle at the truck.
+    if (pickupMode) {
+      const pu = await createPickupOrder({ slug, items, phone: phoneToSave, note });
+      setSubmitting(false);
+      if ("error" in pu) {
+        alert(tri("提交失败：", "Couldn't place the order: ", "Échec de la commande : ") + pu.error);
+        return;
+      }
+      window.location.href = `/order/${pu.id}?t=${encodeURIComponent(pu.tracking_token)}`;
+      return;
+    }
+
     const res = await createOrder(slug, {
       items,
       total,
@@ -714,9 +737,14 @@ export default function PublicMenu() {
           🪑 {tri(`您正在为 ${displayTable(lockedTable)} 号桌点餐`, `Ordering for Table ${displayTable(lockedTable)}`, `Commande pour la table ${displayTable(lockedTable)}`)}
         </div>
       )}
-      {togoMode && (
+      {togoMode && !pickupMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
           🛵 {t("togoBadge")} · {PAYMENTS_LIVE ? t("payFirst") : t("callbackHint")}
+        </div>
+      )}
+      {pickupMode && (
+        <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
+          🚚 {tri("到餐车取餐 · 做好后通知你来取", "Pickup at the truck · we'll ping you when it's ready", "Ramassage au camion · on vous avertit quand c'est prêt")}
         </div>
       )}
 
@@ -725,8 +753,9 @@ export default function PublicMenu() {
           <p className="py-20 text-center text-sm text-ink-faint">{tri("菜单还没准备好。", "The menu isn't ready yet.", "Le menu n'est pas encore prêt.")}</p>
         )}
 
-        {/* togo: pickup-vs-delivery chooser + up-front address (postal-first) */}
-        {togoMode && dishes.length > 0 && (
+        {/* togo: pickup-vs-delivery chooser + up-front address (postal-first).
+            Pickup mode is always pickup — no chooser. */}
+        {togoMode && !pickupMode && dishes.length > 0 && (
           <div className="mb-6">
             <div className="mb-2 text-sm font-semibold text-ink">{t("chooseMode")}</div>
             <div className="grid grid-cols-2 gap-2">
@@ -1144,9 +1173,11 @@ export default function PublicMenu() {
                   </button>
                 )}
 
-                {/* togo: pickup/delivery toggle + delivery address */}
+                {/* togo: pickup/delivery toggle + delivery address.
+                    Pickup mode is pickup-only (no toggle), keeps the email field. */}
                 {togoMode && (
                   <div className="mt-4 grid gap-2">
+                    {!pickupMode && (
                     <div className="flex rounded-lg bg-slate-100 p-1 text-sm">
                       <button
                         onClick={() => setTogoType("togo")}
@@ -1161,6 +1192,7 @@ export default function PublicMenu() {
                         🛵 {t("delivery")}
                       </button>
                     </div>
+                    )}
                     {isDelivery && (
                       <>
                         {renderAddress()}
@@ -1222,7 +1254,7 @@ export default function PublicMenu() {
                 </div>
 
                 <div className="mt-4">
-                  {togoMode ? (
+                  {togoMode && !pickupMode ? (
                     /* takeout/delivery: full price breakdown — HST + mandatory delivery tip */
                     <div className="mb-3 space-y-1 text-sm tabular-nums">
                       <div className="flex justify-between text-ink-soft"><span>{t("subtotal")}</span><span>${pricing.subtotal.toFixed(2)}</span></div>
