@@ -63,6 +63,7 @@ const T = {
   // proof + footer
   proof: { zh: "已在多伦多一家繁忙的海鲜厨房运行", en: "Already powering a busy Toronto seafood kitchen", fr: "Déjà en service dans une cuisine de fruits de mer achalandée à Toronto" },
   soon: { zh: "校园招募中 · 敬请期待", en: "Recruiting on campus now · coming soon", fr: "Recrutement sur le campus · bientôt" },
+  heroBadge: { zh: "正在招募 UofT 周边餐饮商家", en: "Now onboarding food spots around UofT", fr: "Recrutement des comptoirs autour de UofT" },
   // header merchant-demo link
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
   // back-office (vendor) section
@@ -134,7 +135,7 @@ export default function UofTLanding() {
       {/* hero */}
       <section className="mx-auto max-w-3xl px-5 pb-10 pt-8 text-center sm:pt-16">
         <div className="rise mb-5 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/5 px-3 py-1 text-xs font-semibold text-brand-ink">
-          🎓 {t(T.soon)}
+          🎓 {t(T.heroBadge)}
         </div>
         <h1 className="rise text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl" style={{ animationDelay: "60ms" }}>
           {t(T.hero)}

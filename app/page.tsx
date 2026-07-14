@@ -17,7 +17,7 @@ import { BentoMark } from "@/components/BentoMark";
 
 const T = {
   nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, how: { zh: "怎么用", en: "How it works", fr: "Fonctionnement" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" } },
-  badge: { zh: "多伦多真实门店正在使用", en: "Live in a real Toronto restaurant", fr: "En service dans un vrai resto de Toronto" },
+  badge: { zh: "从 Spadina 到 Yonge 快速拓展中", en: "Fast-growing from Spadina to Yonge", fr: "En pleine croissance, de Spadina à Yonge" },
   promo: { zh: "开业优惠 · 免费配置 + 首月免费", en: "Launch offer · free setup + first month free", fr: "Offre de lancement · installation gratuite + 1er mois offert" },
   slogan: {
     lead: { zh: "一个后台，管好", en: "One dashboard for your ", fr: "Un tableau de bord pour " },
