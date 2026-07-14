@@ -206,6 +206,11 @@ export default function UofTLanding() {
           <div className="max-w-xl">
             <div className="text-xl font-extrabold">{t(T.vbTitle)}</div>
             <p className="mt-1 text-sm text-white/90">{t(T.vbBody)}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/90">
+              <span className="font-semibold">Allen Zhang</span>
+              <a href="tel:+15143574178" className="underline-offset-2 hover:text-white hover:underline">📞 +1 (514) 357-4178</a>
+              <a href="mailto:support@bentoos.io" className="underline-offset-2 hover:text-white hover:underline">✉️ support@bentoos.io</a>
+            </div>
           </div>
           <button
             onClick={() => { setRole("vendor"); scrollToJoin(); }}
