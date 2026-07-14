@@ -65,10 +65,19 @@ export async function POST(req: Request) {
     }
   }
 
-  // 2) Notify support@bentoos.io by email (Resend HTTP API)
+  // 2) Notify by email (Resend HTTP API). Every signup goes to BOTH the shop
+  //    inbox and the owner (azhang@alpinedd.com) — guaranteed, not env-overridable.
+  //    LEADS_TO (comma-separated) can add extra recipients on top.
   const resendKey = process.env.RESEND_API_KEY;
   const from = process.env.LEADS_FROM || "BentoOS Leads <onboarding@resend.dev>";
-  const to = process.env.LEADS_TO || "support@bentoos.io";
+  const recipients = [
+    ...new Set([
+      "support@bentoos.io",
+      "azhang@alpinedd.com",
+      ...(process.env.LEADS_TO || "").split(",").map((s) => s.trim()).filter(Boolean),
+    ]),
+  ];
+  const to = recipients.join(", ");
 
   if (resendKey) {
     const rows: [string, string][] = [
@@ -91,7 +100,7 @@ ${rows.map(([k, v]) => `<tr><td style="color:#64748b;vertical-align:top">${k}</t
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from, to: [to], reply_to: d.email, subject: `New lead: ${d.business_name}`, text, html }),
+        body: JSON.stringify({ from, to: recipients, reply_to: d.email, subject: `New lead: ${d.business_name}`, text, html }),
       });
       emailStatus = r.status;
       if (r.ok) {
