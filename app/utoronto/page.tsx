@@ -16,6 +16,7 @@
 import { useState } from "react";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 import LiveOrderFlow from "@/components/LiveOrderFlow";
+import RequestDemo from "@/components/RequestDemo";
 
 type Role = "student" | "vendor";
 
@@ -239,9 +240,8 @@ export default function UofTLanding() {
             <div className="rise text-xs font-bold uppercase tracking-[0.15em] text-brand-ink">{t(T.boEyebrow)}</div>
             <h2 className="rise mt-2 text-balance text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" style={{ animationDelay: "60ms" }}>{t(T.boTitle)}</h2>
             <p className="rise mx-auto mt-3 max-w-xl text-balance text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.boSub)}</p>
-            <div className="rise mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "180ms" }}>
-              <a href="/login?demo=1" className="w-full rounded-full bg-brand px-5 py-2.5 text-center text-sm font-bold text-white transition hover:opacity-90 sm:w-auto">{t(T.boLive)}</a>
-              <a href="/demo" className="w-full rounded-full border border-[#E3E2DC] bg-white px-5 py-2.5 text-center text-sm font-semibold text-ink transition hover:border-brand/40 sm:w-auto">{t(T.boTour)}</a>
+            <div className="rise mt-6" style={{ animationDelay: "180ms" }}>
+              <RequestDemo />
             </div>
           </div>
 
