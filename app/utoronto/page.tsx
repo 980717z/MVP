@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
+import LiveOrderFlow from "@/components/LiveOrderFlow";
 
 type Role = "student" | "vendor";
 
@@ -225,6 +226,9 @@ export default function UofTLanding() {
           ))}
         </div>
       </section>
+
+      {/* live QR → dashboard demo (real scannable QR + animated order arrival) */}
+      <LiveOrderFlow />
 
       {/* back-office (vendor) section — "way more than a QR menu": the free QR
           ordering is the front door; the paid platform runs the whole shop. Real

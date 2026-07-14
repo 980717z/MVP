@@ -17,6 +17,44 @@
   .rise { animation: none; }
 }
 
+/* ── "See it work" loop (utoronto landing): scan → order lands in the truck's
+   dashboard. One ~4.5s cycle: a dot travels the connector, then the dashboard
+   pings (bell + ring) and the new-order card slides in and holds. ───────────── */
+@keyframes flowDot {
+  0%, 3% { opacity: 0; transform: translateX(0); }
+  7% { opacity: 1; }
+  15% { opacity: 1; transform: translateX(88px); }
+  19%, 100% { opacity: 0; transform: translateX(88px); }
+}
+@keyframes orderArrive {
+  0%, 11% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  20% { opacity: 1; transform: translateY(0) scale(1); }
+  92% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-6px) scale(0.99); }
+}
+@keyframes bellRing {
+  0%, 13%, 26%, 100% { transform: rotate(0); }
+  15% { transform: rotate(-18deg); }
+  17% { transform: rotate(14deg); }
+  19% { transform: rotate(-10deg); }
+  21% { transform: rotate(6deg); }
+  23% { transform: rotate(-3deg); }
+}
+@keyframes pingRing {
+  0%, 13% { opacity: 0; transform: scale(0.5); }
+  15% { opacity: 0.55; }
+  34% { opacity: 0; transform: scale(1.9); }
+  100% { opacity: 0; }
+}
+.anim-dot { animation: flowDot 4.5s ease-in-out infinite; }
+.anim-order { animation: orderArrive 4.5s ease-in-out infinite; }
+.anim-bell { animation: bellRing 4.5s ease-in-out infinite; transform-origin: 50% 20%; }
+.anim-ping { animation: pingRing 4.5s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-dot, .anim-bell, .anim-ping { animation: none; opacity: 0; }
+  .anim-order { animation: none; opacity: 1; transform: none; }
+}
+
 /* ── Menu layout override (phone ⇄ desktop toggle) ──────────────────────────
    The auto layout is pure Tailwind `md:` breakpoints — correct on first paint,
    no hydration flash. These rules fire ONLY when the diner manually forces a
