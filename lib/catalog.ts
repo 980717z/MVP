@@ -24,7 +24,7 @@ export interface Field {
   label: Bi;
   type: FieldType;
   options?: Bi[];
-  suffix?: string;
+  suffix?: string | Bi; // language-neutral units (kg, /h, ★) stay strings; word units use a Bi dict
   required?: boolean;
   /** half-width on the form grid */
   half?: boolean;
@@ -133,10 +133,10 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "date", label: { zh: "日期", en: "Date", fr: "Date" }, type: "date", half: true, required: true },
       { key: "dish", label: { zh: "招牌菜", en: "Dish", fr: "Plat" }, type: "text", half: true, required: true },
-      { key: "prepped", label: { zh: "备货份数", en: "Prepped", fr: "Préparé" }, type: "number", suffix: "份", half: true },
-      { key: "sold", label: { zh: "实际售出", en: "Sold", fr: "Vendu" }, type: "number", suffix: "份", half: true },
-      { key: "leftover", label: { zh: "剩余/报废", en: "Leftover", fr: "Restant" }, type: "number", suffix: "份", half: true },
-      { key: "suggest", label: { zh: "明日建议", en: "Suggested tomorrow", fr: "Suggéré demain" }, type: "number", suffix: "份", half: true },
+      { key: "prepped", label: { zh: "备货份数", en: "Prepped", fr: "Préparé" }, type: "number", suffix: { zh: "份", en: "servings", fr: "portions" }, half: true },
+      { key: "sold", label: { zh: "实际售出", en: "Sold", fr: "Vendu" }, type: "number", suffix: { zh: "份", en: "servings", fr: "portions" }, half: true },
+      { key: "leftover", label: { zh: "剩余/报废", en: "Leftover", fr: "Restant" }, type: "number", suffix: { zh: "份", en: "servings", fr: "portions" }, half: true },
+      { key: "suggest", label: { zh: "明日建议", en: "Suggested tomorrow", fr: "Suggéré demain" }, type: "number", suffix: { zh: "份", en: "servings", fr: "portions" }, half: true },
       { key: "note", label: { zh: "备注", en: "Note", fr: "Note" }, type: "textarea" },
     ],
     outputs: [
@@ -200,7 +200,7 @@ export const MODULES: ModuleDef[] = [
     fields: [
       { key: "dish", label: { zh: "菜名", en: "Dish", fr: "Plat" }, type: "text", half: true, required: true },
       { key: "price", label: { zh: "售价", en: "Price", fr: "Prix" }, type: "money", half: true, unit: true },
-      { key: "soldMonth", label: { zh: "月销量", en: "Sold / month", fr: "Vendu / mois" }, type: "number", suffix: "份", half: true },
+      { key: "soldMonth", label: { zh: "月销量", en: "Sold / month", fr: "Vendu / mois" }, type: "number", suffix: { zh: "份", en: "servings", fr: "portions" }, half: true },
       { key: "revenue", label: { zh: "销售额", en: "Sales", fr: "Ventes" }, type: "money", half: true },
     ],
     outputs: [

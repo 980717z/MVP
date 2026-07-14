@@ -15,6 +15,7 @@ const T: Record<string, Dict> = {
   noOrder: { zh: "还没有订单", en: "No orders yet", fr: "Aucune commande" },
   emptyHint: { zh: "点单即可开台", en: "Take an order to open the table", fr: "Commander pour ouvrir la table" },
   round: { zh: "第 {n} 单", en: "Round {n}", fr: "Tournée {n}" },
+  ordersCount: { zh: "{n}单", en: "{n} orders", fr: "{n} cmd" },
   reprint: { zh: "重打厨房单", en: "Reprint kitchen", fr: "Réimprimer" },
   printBill: { zh: "打印账单", en: "Print bill", fr: "Imprimer l'addition" },
   billSent: { zh: "账单已送打印机", en: "Bill sent to printer", fr: "Addition envoyée à l'imprimante" },
@@ -77,6 +78,7 @@ export default function TableFloor({
   onChanged: () => void | Promise<void>;
 }) {
   const { t } = useLang();
+  const nOrders = (n: number) => t(T.ordersCount).replace("{n}", String(n));
   const occ = tableOccupancy(orders);
   const [sel, setSel] = useState<string | null>(null);
   const [checkout, setCheckout] = useState(false);
@@ -160,7 +162,7 @@ export default function TableFloor({
             >
               {isNew(s) && <span className="absolute -right-1.5 -top-1.5 h-4 w-4 animate-pulse rounded-full bg-amber-500 ring-2 ring-white" />}
               <span className="text-xl font-extrabold leading-none">{displayTable(sp.label)}</span>
-              {s?.hasOrder && <span className="mt-1 text-xs font-semibold leading-none">{fmtPrice(s.total)} · {s.orders.length}单</span>}
+              {s?.hasOrder && <span className="mt-1 text-xs font-semibold leading-none">{fmtPrice(s.total)} · {nOrders(s.orders.length)}</span>}
             </button>
           );
         })}
@@ -180,7 +182,7 @@ export default function TableFloor({
                 {isNew(s) && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-amber-500" />}
                 <span className="text-base font-bold">{displayTable(sp.label)}</span>
               </span>
-              <span className="text-sm">{s?.hasOrder ? `${fmtPrice(s.total)} · ${s.orders.length}单` : t(T.empty)}</span>
+              <span className="text-sm">{s?.hasOrder ? `${fmtPrice(s.total)} · ${nOrders(s.orders.length)}` : t(T.empty)}</span>
             </button>
           );
         })}
@@ -195,7 +197,7 @@ export default function TableFloor({
               <div className="flex items-baseline gap-2">
                 <span className="text-lg font-bold text-ink">{displayTable(sel)}</span>
                 <span className={`text-xs font-medium ${!state(sel)?.hasOrder ? "text-ink-faint" : state(sel)?.served ? "text-amber-600" : "text-brand-ink"}`}>
-                  {!state(sel)?.hasOrder ? t(T.legendEmpty) : `${t(state(sel)!.served ? T.legendServed : T.legendBusy)} · ${state(sel)!.orders.length}单`}
+                  {!state(sel)?.hasOrder ? t(T.legendEmpty) : `${t(state(sel)!.served ? T.legendServed : T.legendBusy)} · ${nOrders(state(sel)!.orders.length)}`}
                 </span>
               </div>
               <button onClick={() => setSel(null)} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-faint hover:bg-slate-50">✕</button>

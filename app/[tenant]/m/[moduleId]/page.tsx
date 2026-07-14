@@ -243,10 +243,11 @@ function mondayOf(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** "5月26日" from a YYYY-MM-DD string. */
-function fmtMonthDay(dateStr: string): string {
+/** Short "month day" from a YYYY-MM-DD string, localized: zh 5月26日 · en May 26 · fr 26 mai. */
+function fmtMonthDay(dateStr: string, lang: "zh" | "en" | "fr" = "en"): string {
   const d = new Date(dateStr + "T00:00:00");
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  if (lang === "zh") return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { month: "short", day: "numeric" });
 }
 
 function getMoneyFields(mod: ModuleDef): Field[] {
@@ -333,11 +334,12 @@ async function importCsv(
   mod: ModuleDef,
   slug: string,
   moduleId: string,
+  lang: "zh" | "en" | "fr" = "en",
 ): Promise<{ count: number; error?: string }> {
   const text = await file.text();
   const clean = text.replace(/^﻿/, "");
   const parsed = parseCsv(clean);
-  if (parsed.length < 2) return { count: 0, error: "CSV 文件为空或只有表头" };
+  if (parsed.length < 2) return { count: 0, error: lang === "zh" ? "CSV 文件为空或只有表头" : lang === "fr" ? "Le fichier CSV est vide ou ne contient qu'un en-tête" : "The CSV file is empty or has only a header row" };
 
   const headerRow = parsed[0].map((h) => h.trim());
   const fieldMap: (Field | null)[] = headerRow.map((h) => {
@@ -345,7 +347,7 @@ async function importCsv(
   });
 
   if (fieldMap.every((f) => f === null)) {
-    return { count: 0, error: "表头无法匹配任何字段，请确认 CSV 列名与模块字段一致" };
+    return { count: 0, error: lang === "zh" ? "表头无法匹配任何字段，请确认 CSV 列名与模块字段一致" : lang === "fr" ? "Aucune colonne ne correspond à un champ — vérifiez que les noms de colonnes correspondent aux champs du module" : "No column headers matched any field — check that the CSV column names match the module fields" };
   }
 
   let count = 0;
@@ -450,7 +452,7 @@ function GroupedRows({
   cancelEdit: () => void;
   deleteRecord: (id: string) => Promise<void>;
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const groups = useMemo(() => {
     const map = new Map<string, RecordRow[]>();
     for (const r of rows) {
@@ -474,7 +476,7 @@ function GroupedRows({
   };
 
   const renderCellCompact = (f: Field, value: any) => {
-    if (compactDates && f.type === "date" && value) return fmtMonthDay(String(value));
+    if (compactDates && f.type === "date" && value) return fmtMonthDay(String(value), lang);
     return renderCell(f, value);
   };
 
@@ -1287,7 +1289,7 @@ export default function ModulePage() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   setImporting(true);
-                  const { count, error } = await importCsv(file, mod, slug, moduleId);
+                  const { count, error } = await importCsv(file, mod, slug, moduleId, lang);
                   setImporting(false);
                   if (fileRef.current) fileRef.current.value = "";
                   if (error) {
@@ -1560,7 +1562,7 @@ export default function ModulePage() {
               {t(T.prevWeek)}
             </button>
             <span className="min-w-[9.5rem] text-center font-medium text-ink">
-              {fmtMonthDay(dateFrom)} – {fmtMonthDay(dateTo)}
+              {fmtMonthDay(dateFrom, lang)} – {fmtMonthDay(dateTo, lang)}
             </span>
             <button
               className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
@@ -1909,7 +1911,7 @@ function FieldInput({
       <label className="label">
         {biLabel(field.label, lang)}
         {field.required && <span className="text-red-500"> *</span>}
-        {field.suffix && <span className="text-ink-faint"> ({field.suffix})</span>}
+        {field.suffix && <span className="text-ink-faint"> ({typeof field.suffix === "string" ? field.suffix : t(field.suffix)})</span>}
         {readOnly && <span className="text-brand">{t(T.autoComputed)}</span>}
       </label>
       {field.type === "textarea" ? (
