@@ -12,8 +12,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { getTracking, pickupStep, type Tracking } from "@/lib/pickup";
-import { price as fmtPrice } from "@/lib/format";
+import { getTracking, pickupStep, subscribePickupPush, type Tracking, type PickupPushState } from "@/lib/pickup";
 
 const STEPS = [
   { zh: "已接单", en: "Received" },
@@ -30,7 +29,13 @@ export default function PickupTracking() {
 
   const [track, setTrack] = useState<Tracking | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "notfound">("loading");
+  const [push, setPush] = useState<PickupPushState | "idle" | "asking">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const enableNotify = async () => {
+    setPush("asking");
+    setPush(await subscribePickupPush(id, token));
+  };
 
   useEffect(() => {
     if (!id || !token) { setState("notfound"); return; }
@@ -116,6 +121,26 @@ export default function PickupTracking() {
                   <p className="text-sm font-medium text-ink-soft">已收到订单 · Order received</p>
                 )}
               </div>
+
+              {/* Diner opt-in: OS push when it's ready. Hidden once ready/done. */}
+              {!ready && (
+                push === "on" ? (
+                  <p className="mt-4 text-xs font-medium text-jade">🔔 已开启提醒 · You'll be notified when it's ready</p>
+                ) : push === "denied" ? (
+                  <p className="mt-4 text-xs text-ink-faint">通知已被浏览器屏蔽 · Notifications are blocked in your browser</p>
+                ) : push === "unsupported" ? (
+                  <p className="mt-4 text-xs text-ink-faint">保持此页开启即可看到进度 · Keep this page open to see updates</p>
+                ) : (
+                  <button
+                    onClick={enableNotify}
+                    disabled={push === "asking"}
+                    className="mt-4 w-full rounded-xl border border-jade/30 bg-jade/5 py-2.5 text-sm font-semibold text-jade transition hover:bg-jade/10 disabled:opacity-60"
+                  >
+                    {push === "asking" ? "…" : "🔔 做好通知我 · Notify me when it's ready"}
+                    {push === "error" && <span className="ml-1 text-xs font-normal text-ink-faint">(重试 retry)</span>}
+                  </button>
+                )
+              )}
             </div>
 
             {/* order summary */}

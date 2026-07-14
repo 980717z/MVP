@@ -4,7 +4,10 @@
 //  getTracking       → token-gated SECURITY DEFINER RPC (public fields only).
 // ─────────────────────────────────────────────────────────────────────────
 import { supabase } from "./supabase";
+import { pushSupported } from "./push";
 import type { OrderItem } from "./orders";
+
+const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
 export interface Tracking {
   status: string;
@@ -42,6 +45,47 @@ export async function createPickupOrder(input: {
     return { id: j.id, tracking_token: j.tracking_token, pickup_code: j.pickup_code };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "network error" };
+  }
+}
+
+// base64url (VAPID public key) → Uint8Array for applicationServerKey.
+function urlB64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+export type PickupPushState = "unsupported" | "denied" | "on" | "error";
+
+/** Diner opt-in: subscribe THIS browser to a push for when the order goes
+ *  READY. The subscription is verified + stored server-side against the
+ *  tracking_token (no raw anon insert — see /api/pickup/subscribe). */
+export async function subscribePickupPush(orderId: string, token: string): Promise<PickupPushState> {
+  if (!pushSupported() || !VAPID_PUBLIC) return "unsupported";
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") return perm === "denied" ? "denied" : "error";
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC) as BufferSource,
+      });
+    }
+    const res = await fetch("/api/pickup/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId, token, subscription: sub.toJSON() }),
+    });
+    const j = await res.json().catch(() => ({}));
+    return res.ok && j?.ok ? "on" : "error";
+  } catch (e) {
+    console.error("subscribePickupPush", e);
+    return "error";
   }
 }
 

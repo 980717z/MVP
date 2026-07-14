@@ -496,8 +496,17 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       const { readied, error } = await markPickupReady(o.id);
       if (error) alert(t(T.statusFailed) + error);
       if (readied) {
-        // Slice 5 will POST /api/pickup/notify here to push the "ready" alert.
-        void 0;
+        // Only the CAS winner pushes, so the diner gets the "ready" alert once.
+        try {
+          const { data: sess } = await supabase.auth.getSession();
+          await fetch("/api/pickup/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
+            body: JSON.stringify({ order_id: o.id }),
+          });
+        } catch (e) {
+          console.error("pickup notify", e); // push is best-effort; the tracker still flips on poll
+        }
       }
       load();
     } finally {
