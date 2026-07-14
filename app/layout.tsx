@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { LangProvider } from "./i18n";
+import RegisterSW from "@/components/RegisterSW";
 
 const SITE = "https://bentoos.io";
 
@@ -29,6 +30,10 @@ export const metadata: Metadata = {
     "POS alternative",
   ],
   applicationName: "BentoOS",
+  // Installable-PWA hints. The manifest itself is served by app/manifest.ts and
+  // auto-linked by Next; these add the iOS/iPadOS "Add to Home Screen" behaviour
+  // (standalone, no Safari chrome) and the home-screen title.
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "BentoOS" },
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
@@ -54,6 +59,12 @@ export const metadata: Metadata = {
   verification: process.env.GOOGLE_SITE_VERIFICATION
     ? { google: process.env.GOOGLE_SITE_VERIFICATION }
     : undefined,
+};
+
+// Brand emerald as the browser/OS theme color (address bar, PWA splash, iOS
+// status bar). Kept in a viewport export per Next 16 (themeColor moved off metadata).
+export const viewport: Viewport = {
+  themeColor: "#0E9F6E",
 };
 
 // Site-wide structured data. Organization + SoftwareApplication only — NOT
@@ -107,6 +118,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           data-* attributes onto <body> before React hydrates — this silences that
           benign mismatch without hiding real hydration bugs in child components. */}
       <body className="font-sans antialiased" suppressHydrationWarning>
+        <RegisterSW />
         <LangProvider>{children}</LangProvider>
       </body>
     </html>
