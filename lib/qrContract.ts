@@ -16,6 +16,8 @@ export const TABLE_PARAM = "t";
 /** 模式参数：/menu/<slug>?m=togo — 印在外卖码上，永不改名 */
 export const MODE_PARAM = "m";
 export const TOGO_MODE = "togo";
+/** 校园取餐模式：/menu/<slug>?m=pickup — 印在餐车牌上，永不改名 */
+export const PICKUP_MODE = "pickup";
 /** 嵌入参数（landing 展示用，可自由演化 — 不在任何印刷品上） */
 export const EMBED_PARAM = "embed";
 /** 菜单路由前缀 — 印在所有牌子上，永不改名 */
@@ -29,6 +31,9 @@ export const tableUrl = (origin: string, slug: string, label: string) =>
 /** 外卖/自取码 URL */
 export const togoUrl = (origin: string, slug: string) =>
   `${menuUrl(origin, slug)}?${MODE_PARAM}=${TOGO_MODE}`;
+/** 餐车取餐码 URL — 校园订餐-取餐(order-ahead pickup)一码 */
+export const pickupUrl = (origin: string, slug: string) =>
+  `${menuUrl(origin, slug)}?${MODE_PARAM}=${PICKUP_MODE}`;
 
 // ── slug 规则（与 supabase/qr-lock.sql 的 tenants_slug_format 同步；
 //    守卫测试断言 RESERVED_SLUGS ⊇ app/ 顶级路由目录）────────────────────
