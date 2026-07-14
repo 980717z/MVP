@@ -1,0 +1,215 @@
+"use client";
+
+// ─────────────────────────────────────────────────────────────────────────
+//  utoronto.bentoos.io — vision/waitlist manifesto for the UofT food-pickup
+//  community. Served at /utoronto (next.config host-rewrite maps the subdomain).
+//
+//  Strategy (see ~/.gstack/projects/980717z-MVP/ceo-plans/2026-07-14-utoronto-
+//  food-pickup.md): this page is a CREDIBILITY PROP — the 1:1 selling closes
+//  merchants. So it captures BOTH sides to a waitlist and funnels vendors to a
+//  conversation. NO public pricing (name the service, ask for a meet). Flagship
+//  name stays anonymized until written authorization.
+//
+//  Brand: BentoOS platform (DESIGN-PLATFORM.md) — emerald accent, warm neutrals.
+// ─────────────────────────────────────────────────────────────────────────
+
+import { useState } from "react";
+import { useLang, LangToggle, type Dict } from "@/app/i18n";
+
+type Role = "student" | "vendor";
+
+const T = {
+  wordmark: { zh: "BentoOS · 多大", en: "BentoOS · UofT", fr: "BentoOS · UofT" },
+  hero: {
+    zh: "多大校园取餐社区的操作系统",
+    en: "The operating system for UofT's food pickup community",
+    fr: "Le système d'exploitation de la communauté de ramassage alimentaire de UofT",
+  },
+  sub: {
+    zh: "免排队。提前下单，校园餐车与小吃摊，到店即取。",
+    en: "Skip the line. Order ahead from campus food trucks and kiosks — ready when you arrive.",
+    fr: "Sautez la file. Commandez à l'avance des camions et kiosques du campus — prêt à votre arrivée.",
+  },
+  // waitlist card
+  join: { zh: "加入候补名单", en: "Join the waitlist", fr: "Rejoindre la liste" },
+  student: { zh: "我是学生", en: "I'm a student", fr: "Je suis étudiant·e" },
+  vendor: { zh: "我是商家", en: "I run a food truck/kiosk", fr: "J'ai un camion/kiosque" },
+  emailPh: { zh: "你的邮箱", en: "Your email", fr: "Votre courriel" },
+  namePh: { zh: "餐车 / 档口名字", en: "Food truck / kiosk name", fr: "Nom du camion / kiosque" },
+  ctaStudent: { zh: "抢先体验 →", en: "Get early access →", fr: "Accès anticipé →" },
+  ctaVendor: { zh: "带上你的菜单 →", en: "Bring your menu →", fr: "Apportez votre menu →" },
+  sending: { zh: "提交中…", en: "Sending…", fr: "Envoi…" },
+  okStudent: { zh: "搞定！开放时第一个通知你 🎉", en: "You're on the list — we'll ping you first 🎉", fr: "Vous êtes inscrit·e — on vous écrit en premier 🎉" },
+  okVendor: { zh: "收到！我们会尽快联系你聊聊 🎉", en: "Got it — we'll reach out to talk soon 🎉", fr: "Reçu — on vous contacte bientôt 🎉" },
+  err: { zh: "出错了，请填写邮箱后重试", en: "Something went wrong — check your email and retry", fr: "Une erreur — vérifiez le courriel et réessayez" },
+  needEmail: { zh: "请填写邮箱", en: "Enter your email", fr: "Entrez votre courriel" },
+  needName: { zh: "请填写餐车名字", en: "Enter your truck name", fr: "Entrez le nom du camion" },
+  // vision strip
+  how: { zh: "怎么用", en: "How it works", fr: "Comment ça marche" },
+  s1t: { zh: "一处逛全部", en: "Browse in one place", fr: "Parcourez au même endroit" },
+  s1b: { zh: "校园每个餐车、档口，一个页面全看到。", en: "Every campus truck and kiosk, on one page.", fr: "Chaque camion et kiosque du campus, sur une page." },
+  s2t: { zh: "提前下单", en: "Order ahead", fr: "Commandez à l'avance" },
+  s2b: { zh: "上课前点好，付款用你习惯的方式。", en: "Tap before class; pay however you like.", fr: "Commandez avant le cours; payez comme vous voulez." },
+  s3t: { zh: "到店即取", en: "Walk up, skip the line", fr: "Arrivez, sautez la file" },
+  s3b: { zh: "不排队，到了直接拿。", en: "No lineup — it's ready when you get there.", fr: "Pas de file — c'est prêt à votre arrivée." },
+  // vendor band
+  vbTitle: { zh: "有餐车或档口?", en: "Run a truck or kiosk?", fr: "Un camion ou kiosque?" },
+  vbBody: {
+    zh: "免费的扫码点餐系统，我们把学生带给你。没有抽成套路——每单只收几分钱。我们帮你上线。",
+    en: "Free QR ordering. We bring you the students. No commission games — just a few cents an order. We get you set up.",
+    fr: "Commande QR gratuite. On vous amène les étudiants. Pas de commissions — quelques cents par commande. On vous installe.",
+  },
+  vbCta: { zh: "聊一聊 →", en: "Let's talk →", fr: "Parlons-en →" },
+  // proof + footer
+  proof: { zh: "已在多伦多一家繁忙的海鲜厨房运行", en: "Already powering a busy Toronto seafood kitchen", fr: "Déjà en service dans une cuisine de fruits de mer achalandée à Toronto" },
+  soon: { zh: "校园招募中 · 敬请期待", en: "Recruiting on campus now · coming soon", fr: "Recrutement sur le campus · bientôt" },
+} satisfies Record<string, Dict>;
+
+export default function UofTLanding() {
+  const { t } = useLang();
+  const [role, setRole] = useState<Role>("student");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [status, setStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+
+  const submit = async () => {
+    if (!email.trim()) { setStatus("error"); return; }
+    if (role === "vendor" && !name.trim()) { setStatus("error"); return; }
+    setStatus("busy");
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_name: role === "vendor" ? name.trim() : (name.trim() || "UofT student"),
+          business_type: role === "vendor" ? "food-truck" : "student",
+          email: email.trim(),
+          notes: `source: utoronto-waitlist · role: ${role}`,
+        }),
+      });
+      if (!res.ok) throw new Error("bad status");
+      setStatus("done");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  const scrollToJoin = () => document.getElementById("join")?.scrollIntoView({ behavior: "smooth" });
+
+  return (
+    <main className="min-h-screen bg-[#FBFAF8] text-ink" style={{ fontFamily: '"Plus Jakarta Sans", "Noto Sans SC", system-ui, sans-serif' }}>
+      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+      {/* header */}
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+        <div className="text-lg font-extrabold tracking-tight text-ink">{t(T.wordmark)}</div>
+        <LangToggle />
+      </header>
+
+      {/* hero */}
+      <section className="mx-auto max-w-3xl px-5 pb-10 pt-8 text-center sm:pt-16">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/5 px-3 py-1 text-xs font-semibold text-brand-ink">
+          🎓 {t(T.soon)}
+        </div>
+        <h1 className="text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl">
+          {t(T.hero)}
+        </h1>
+        <p className="mx-auto mt-4 max-w-xl text-balance text-lg text-ink-soft">{t(T.sub)}</p>
+
+        {/* waitlist card */}
+        <div id="join" className="mx-auto mt-8 max-w-md scroll-mt-20 rounded-2xl border border-[#EBEAE5] bg-white p-5 text-left shadow-sm">
+          {status === "done" ? (
+            <div className="py-6 text-center">
+              <div className="text-2xl">🎉</div>
+              <p className="mt-2 font-semibold text-ink">{t(role === "vendor" ? T.okVendor : T.okStudent)}</p>
+            </div>
+          ) : (
+            <>
+              {/* role toggle */}
+              <div className="mb-3 flex rounded-xl bg-[#F3F2EE] p-1 text-sm font-semibold">
+                {(["student", "vendor"] as Role[]).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => { setRole(r); if (status === "error") setStatus("idle"); }}
+                    className={`flex-1 rounded-lg py-2 transition ${role === r ? "bg-white text-brand-ink shadow-sm" : "text-ink-faint hover:text-ink-soft"}`}
+                  >
+                    {t(r === "student" ? T.student : T.vendor)}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-2">
+                {(role === "vendor") && (
+                  <input
+                    value={name}
+                    onChange={(e) => { setName(e.target.value); if (status === "error") setStatus("idle"); }}
+                    placeholder={t(T.namePh)}
+                    className="w-full rounded-lg border border-[#E3E2DC] bg-white px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                  />
+                )}
+                <input
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); if (status === "error") setStatus("idle"); }}
+                  type="email"
+                  inputMode="email"
+                  placeholder={t(T.emailPh)}
+                  className="w-full rounded-lg border border-[#E3E2DC] bg-white px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+                <button
+                  onClick={submit}
+                  disabled={status === "busy"}
+                  className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  {status === "busy" ? t(T.sending) : t(role === "vendor" ? T.ctaVendor : T.ctaStudent)}
+                </button>
+                {status === "error" && (
+                  <p className="text-center text-xs font-medium text-red-600">
+                    {!email.trim() ? t(T.needEmail) : role === "vendor" && !name.trim() ? t(T.needName) : t(T.err)}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        <p className="mt-3 text-xs text-ink-faint">✓ {t(T.proof)}</p>
+      </section>
+
+      {/* vision strip */}
+      <section className="mx-auto max-w-5xl px-5 py-14">
+        <h2 className="mb-8 text-center text-sm font-bold uppercase tracking-[0.15em] text-ink-faint">{t(T.how)}</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            { n: "1", t: T.s1t, b: T.s1b },
+            { n: "2", t: T.s2t, b: T.s2b },
+            { n: "3", t: T.s3t, b: T.s3b },
+          ].map((s) => (
+            <div key={s.n} className="rounded-2xl border border-[#EBEAE5] bg-white p-5">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-brand/10 text-sm font-bold text-brand-ink">{s.n}</div>
+              <div className="mt-3 text-base font-bold text-ink">{t(s.t)}</div>
+              <p className="mt-1 text-sm text-ink-soft">{t(s.b)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* vendor band */}
+      <section className="mx-auto max-w-5xl px-5 pb-16">
+        <div className="flex flex-col items-start gap-4 rounded-2xl bg-brand p-7 text-white sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-xl">
+            <div className="text-xl font-extrabold">{t(T.vbTitle)}</div>
+            <p className="mt-1 text-sm text-white/90">{t(T.vbBody)}</p>
+          </div>
+          <button
+            onClick={() => { setRole("vendor"); scrollToJoin(); }}
+            className="flex-none rounded-full bg-white px-5 py-2.5 text-sm font-bold text-brand-ink transition hover:bg-white/90"
+          >
+            {t(T.vbCta)}
+          </button>
+        </div>
+      </section>
+
+      <footer className="border-t border-[#EBEAE5] px-5 py-8 text-center text-xs text-ink-faint">
+        BentoOS · {t(T.soon)}
+      </footer>
+    </main>
+  );
+}

@@ -9,6 +9,20 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/api/epson": ["./assets/fonts/NotoSansSC.ttf"],
   },
+  // Subdomain → path: utoronto.bentoos.io serves the UofT food-pickup manifesto
+  // at /utoronto. Requires the DNS/Vercel domain `utoronto.bentoos.io` to point
+  // at this project; this rewrite maps its root to the page. Assets/api stay shared.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/",
+          has: [{ type: "host", value: "utoronto.bentoos.io" }],
+          destination: "/utoronto",
+        },
+      ],
+    };
+  },
 };
 
 export default nextConfig;
