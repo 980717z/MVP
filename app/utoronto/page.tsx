@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 import LiveOrderFlow from "@/components/LiveOrderFlow";
 import RequestDemo from "@/components/RequestDemo";
+import { BentoMark } from "@/components/BentoMark";
 
 type Role = "student" | "vendor";
 
@@ -66,6 +67,13 @@ const T = {
   proof: { zh: "已在多伦多一家繁忙的海鲜厨房运行", en: "Already powering a busy Toronto seafood kitchen", fr: "Déjà en service dans une cuisine de fruits de mer achalandée à Toronto" },
   soon: { zh: "校园招募中 · 敬请期待", en: "Recruiting on campus now · coming soon", fr: "Recrutement sur le campus · bientôt" },
   heroBadge: { zh: "正在招募 UofT 周边餐饮商家", en: "Now onboarding food spots around UofT", fr: "Recrutement des comptoirs autour de UofT" },
+  // footer
+  ftTagline: { zh: "多大校园的订餐-取餐操作系统。", en: "Order-ahead pickup for the UofT food community.", fr: "Commande-retrait pour la communauté alimentaire de UofT." },
+  ftExplore: { zh: "探索", en: "Explore", fr: "Explorer" },
+  ftContact: { zh: "联系我们", en: "Contact", fr: "Contact" },
+  ftStudents: { zh: "学生候补名单", en: "For students", fr: "Pour étudiants" },
+  ftVendors: { zh: "商家申请演示", en: "For vendors", fr: "Pour commerçants" },
+  ftBuilt: { zh: "多伦多制造 🇨🇦", en: "Built in Toronto 🇨🇦", fr: "Conçu à Toronto 🇨🇦" },
   // header merchant-demo link
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
   // back-office (vendor) section
@@ -289,8 +297,48 @@ export default function UofTLanding() {
         </div>
       </section>
 
-      <footer className="border-t border-[#EBEAE5] px-5 py-8 text-center text-xs text-ink-faint">
-        BentoOS · {t(T.soon)}
+      <footer className="border-t border-[#EBEAE5] bg-white">
+        <div className="mx-auto max-w-5xl px-5 py-12">
+          <div className="flex flex-col gap-9 sm:flex-row sm:justify-between">
+            {/* brand */}
+            <div className="max-w-xs">
+              <div className="flex items-center gap-2">
+                <BentoMark className="h-8 w-8 shadow-sm" />
+                <span className="text-lg font-extrabold tracking-tight text-ink">BentoOS</span>
+              </div>
+              <p className="mt-3 text-sm text-ink-soft">{t(T.ftTagline)}</p>
+              <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-brand/20 bg-brand/5 px-2.5 py-1 text-xs font-semibold text-brand-ink">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {t(T.soon)}
+              </div>
+            </div>
+
+            {/* link columns */}
+            <div className="grid grid-cols-2 gap-10 sm:gap-16">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.12em] text-ink-faint">{t(T.ftExplore)}</div>
+                <ul className="mt-3 space-y-2.5 text-sm text-ink-soft">
+                  <li><button onClick={() => { setRole("student"); scrollToJoin(); }} className="transition hover:text-brand-ink">{t(T.ftStudents)}</button></li>
+                  <li><a href="#backoffice" className="transition hover:text-brand-ink">{t(T.ftVendors)}</a></li>
+                  <li><a href="/demo" className="transition hover:text-brand-ink">{t(T.boTour)}</a></li>
+                </ul>
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.12em] text-ink-faint">{t(T.ftContact)}</div>
+                <ul className="mt-3 space-y-2.5 text-sm text-ink-soft">
+                  <li className="font-semibold text-ink">Allen Zhang</li>
+                  <li><a href="tel:+15143574178" className="transition hover:text-brand-ink">+1 (514) 357-4178</a></li>
+                  <li><a href="mailto:support@bentoos.io" className="transition hover:text-brand-ink">support@bentoos.io</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* bottom bar */}
+          <div className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-[#EBEAE5] pt-6 text-xs text-ink-faint sm:flex-row">
+            <span>© 2026 BentoOS · {t(T.ftBuilt)}</span>
+            <span className="tracking-wide">utoronto.bentoos.io</span>
+          </div>
+        </div>
       </footer>
     </main>
   );
