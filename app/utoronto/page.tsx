@@ -13,7 +13,7 @@
 //  Brand: BentoOS platform (DESIGN-PLATFORM.md) — emerald accent, warm neutrals.
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 import LiveOrderFlow from "@/components/LiveOrderFlow";
 import RequestDemo from "@/components/RequestDemo";
@@ -23,6 +23,8 @@ type Role = "student" | "vendor";
 
 const T = {
   wordmark: { zh: "BentoOS · 多大", en: "BentoOS · UofT", fr: "BentoOS · UofT" },
+  atUofT: { zh: "· 多大", en: "at UofT", fr: "à UofT" },
+  joinCta: { zh: "加入候补 →", en: "Join waitlist →", fr: "Rejoindre →" },
   hero: {
     zh: "多大校园取餐社区的操作系统",
     en: "The operating system for UofT's food pickup community",
@@ -129,16 +131,41 @@ export default function UofTLanding() {
 
   const scrollToJoin = () => document.getElementById("join")?.scrollIntoView({ behavior: "smooth" });
 
+  // Sticky-header CTA: the "Join waitlist" button fades in once the hero signup
+  // card has scrolled out of view (so there's always a one-tap path back to it).
+  const [pastHero, setPastHero] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById("join");
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setPastHero(!e.isIntersecting), { rootMargin: "-72px 0px 0px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <main className="min-h-screen bg-[#FBFAF8] text-ink" style={{ fontFamily: '"Plus Jakarta Sans", "Noto Sans SC", system-ui, sans-serif' }}>
+    <main id="top" className="min-h-screen bg-[#FBFAF8] text-ink" style={{ fontFamily: '"Plus Jakarta Sans", "Noto Sans SC", system-ui, sans-serif' }}>
       <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
       {/* header */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
-        <div className="text-lg font-extrabold tracking-tight text-ink">{t(T.wordmark)}</div>
-        <div className="flex items-center gap-3">
-          <a href="#backoffice" className="hidden text-sm font-semibold text-brand-ink hover:text-brand sm:inline">{t(T.merchantDemo)}</a>
-          <LangToggle />
+      <header className="sticky top-0 z-30 border-b border-[#EBEAE5]/70 bg-[#FBFAF8]/85 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
+          <a href="#top" className="flex items-center gap-2" aria-label="BentoOS at UofT">
+            <BentoMark className="h-7 w-7 shadow-sm" />
+            <span className="text-lg tracking-tight">
+              <span className="font-extrabold text-ink">BentoOS</span>
+              <span className="ml-1 font-semibold text-brand-ink/70">{t(T.atUofT)}</span>
+            </span>
+          </a>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={scrollToJoin}
+              className={`hidden rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-white transition-all duration-300 hover:opacity-90 sm:inline-flex ${pastHero ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0"}`}
+            >
+              {t(T.joinCta)}
+            </button>
+            <a href="#backoffice" className="hidden text-sm font-semibold text-brand-ink hover:text-brand sm:inline">{t(T.merchantDemo)}</a>
+            <LangToggle />
+          </div>
         </div>
       </header>
 
@@ -206,7 +233,6 @@ export default function UofTLanding() {
             </>
           )}
         </div>
-        <p className="rise mt-3 text-xs text-ink-soft" style={{ animationDelay: "240ms" }}>✓ {t(T.proof)}</p>
       </section>
 
       {/* vision strip — a connected LEFT→RIGHT journey (browse → order → skip the line),
