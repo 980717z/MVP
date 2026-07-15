@@ -3,13 +3,25 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getTenant, type Tenant } from "@/lib/store";
+import { getTenant, getTrackPayments, type Tenant } from "@/lib/store";
 import { MODULE_BY_ID, type ModuleDef } from "@/lib/catalog";
-import { displayTable, money, num, sum } from "@/lib/format";
+import { displayTable, money, moneyExact, num, sum } from "@/lib/format";
 import { listOrders, type Order } from "@/lib/orders";
+import { listSessionsInRange } from "@/lib/tableSessions";
+import { aggregateSales, torontoToday, METHODS, type Method } from "@/lib/salesStats";
 import { useLang, type Dict } from "@/app/i18n";
 
 const ORDERS_MODULE = "online-orders";
+const STATS_MODULE = "sales-stats";
+
+// Payment-method colours + labels for the dashboard "today's money" panel
+// (mirrors SalesStatsPortal so the two surfaces read the same).
+const METHOD_META: Record<Method, { label: Dict; dot: string }> = {
+  cash: { label: { zh: "现金", en: "Cash", fr: "Comptant" }, dot: "#D97706" },
+  emt: { label: { zh: "EMT", en: "EMT", fr: "Virement" }, dot: "#0891B2" },
+  card: { label: { zh: "刷卡", en: "Card", fr: "Carte" }, dot: "#7C3AED" },
+  other: { label: { zh: "其他", en: "Other", fr: "Autre" }, dot: "#64748B" },
+};
 
 // Trilingual UI chrome (EN default, + 中 / FR). Merchant data (store name, dish
 // names, numbers) is never translated here — only labels, headings and hints.
@@ -61,6 +73,11 @@ const T: Record<string, Dict> = {
   now: { en: "now", zh: "刚刚", fr: "à l'instant" },
   quickAccess: { en: "Quick access", zh: "快速进入", fr: "Accès rapide" },
   rows: { en: "", zh: "条", fr: "" },
+  todaysMoney: { en: "Today's money", zh: "今日收款", fr: "Encaissé aujourd'hui" },
+  collectedLabel: { en: "Collected · tax + tips", zh: "实收 · 含税 + 小费", fr: "Encaissé · taxes + pourboires" },
+  noSettle: { en: "No settled bills yet today.", zh: "今日还没有结账单。", fr: "Aucune facture réglée aujourd'hui." },
+  tipLabel: { en: "Tips", zh: "小费", fr: "Pourboires" },
+  txnsN: { en: "{n} txns", zh: "{n} 笔", fr: "{n} trans." },
 };
 
 export default function Dashboard() {
@@ -68,9 +85,19 @@ export default function Dashboard() {
   const { lang, t } = useLang();
   const [tenant, setTenant] = useState<Tenant | undefined>();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [agg, setAgg] = useState<ReturnType<typeof aggregateSales> | null>(null);
+  const [trackPay, setTrackPay] = useState(true);
 
   useEffect(() => {
     getTenant(slug).then(setTenant);
+    getTrackPayments(slug).then(setTrackPay).catch(() => {});
+    // Today's settled sessions → the real revenue + payment-method split. The
+    // finance-module KPI misses order-driven shops (they never key in a close),
+    // so orders/checkouts are the authoritative "what came in today".
+    const d = torontoToday(new Date());
+    listSessionsInRange(slug, d, d)
+      .then((sessions) => setAgg(aggregateSales(sessions)))
+      .catch(() => {});
   }, [slug]);
 
   useEffect(() => {
@@ -116,10 +143,15 @@ export default function Dashboard() {
     .map((id) => MODULE_BY_ID[id])
     .filter((m): m is ModuleDef => !!m && !!m.amountKey && m.amountKind === "money");
 
-  const todayRevenue = moneyKpis.reduce((acc, m) => {
+  const financeRevenue = moneyKpis.reduce((acc, m) => {
     const rows = (tenant.records[m.id] ?? []).filter((r) => r.date === today);
     return acc + sum(rows, m.amountKey!);
   }, 0);
+  // Order-driven shops earn through checkouts, not a keyed-in daily close — so
+  // prefer today's settled sessions when there are any; fall back to the
+  // finance module otherwise. Keeps the dashboard honest (no "$0" over real sales).
+  const hasSessions = !!agg && agg.txns > 0;
+  const todayRevenue = hasSessions ? agg!.sales : financeRevenue;
 
   const activeOrders = orders.filter((o) => o.status === "new" || o.status === "preparing");
 
@@ -184,7 +216,7 @@ export default function Dashboard() {
                 <div className="mt-1.5 text-[34px] font-extrabold leading-none tracking-tight text-ink [font-variant-numeric:tabular-nums]">
                   {money(todayRevenue)}
                 </div>
-                {moneyKpis.length === 0 && (
+                {!hasSessions && moneyKpis.length === 0 && (
                   <div className="mt-2 text-[11px] text-ink-faint">{t(T.noFinance)}</div>
                 )}
               </div>
@@ -255,32 +287,57 @@ export default function Dashboard() {
               )}
             </section>
 
-            {/* quick access */}
+            {/* today's money — the real daily number, split by payment method.
+                Replaces the old quick-access module list (which duplicated the
+                sidebar). Navigation lives in the sidebar; this shows STATE. */}
             <section className="overflow-hidden rounded-xl border border-[#EBEAE5] bg-white">
-              <div className="border-b border-[#F3F2EE] px-4 py-3">
-                <h2 className="text-[13px] font-bold text-ink">{t(T.quickAccess)}</h2>
+              <div className="flex items-center justify-between border-b border-[#F3F2EE] px-4 py-3">
+                <h2 className="text-[13px] font-bold text-ink">{t(T.todaysMoney)}</h2>
+                {tenant.enabled.includes(STATS_MODULE) && (
+                  <Link href={`/${slug}/m/${STATS_MODULE}`} className="text-[11.5px] font-semibold text-brand-ink hover:underline">
+                    {t(T.viewAll)} →
+                  </Link>
+                )}
               </div>
-              <div className="p-2">
-                {tenant.enabled.map((id) => {
-                  const m = MODULE_BY_ID[id];
-                  if (!m) return null;
-                  const rows = tenant.records[id] ?? [];
-                  const isMoney = !!m.amountKey && m.amountKind === "money";
-                  const todayRows = rows.filter((r) => r.date === today);
-                  const stat = isMoney
-                    ? money(sum(todayRows, m.amountKey!))
-                    : `${rows.length} ${t(T.rows)}`.trim();
-                  return (
-                    <Link key={id} href={`/${slug}/m/${id}`} className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-[#F3F2EE]">
-                      <span className="grid h-9 w-9 flex-none place-items-center rounded-[9px] bg-brand-wash text-base">{m.icon}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-semibold text-ink">{tl(m.label)}</span>
-                        <span className="block truncate text-[11px] text-ink-faint">{tl(m.pain)}</span>
-                      </span>
-                      <span className="flex-none text-[11px] text-ink-faint [font-variant-numeric:tabular-nums]">{stat}</span>
-                    </Link>
-                  );
-                })}
+              <div className="p-4">
+                <div className="text-[26px] font-extrabold leading-none tracking-tight text-ink [font-variant-numeric:tabular-nums]">
+                  {moneyExact(agg?.collected ?? 0)}
+                </div>
+                <div className="mt-1 text-[11px] text-ink-faint">{t(T.collectedLabel)}</div>
+
+                {!agg || agg.collected === 0 ? (
+                  <p className="mt-4 text-xs text-ink-soft">{t(T.noSettle)}</p>
+                ) : (
+                  <div className="mt-4">
+                    {trackPay && (
+                      <>
+                        <div className="flex h-2 overflow-hidden rounded-full bg-[#F3F2EE]">
+                          {METHODS.filter((m) => agg.byMethod[m].collected > 0).map((m) => (
+                            <div key={m} style={{ width: `${(agg.byMethod[m].collected / agg.collected) * 100}%`, background: METHOD_META[m].dot }} />
+                          ))}
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {METHODS.filter((m) => agg.byMethod[m].collected > 0).map((m) => (
+                            <div key={m} className="flex items-center justify-between text-[13px]">
+                              <span className="flex items-center gap-2 text-ink-soft">
+                                <span className="h-2 w-2 rounded-full" style={{ background: METHOD_META[m].dot }} />
+                                {tl(METHOD_META[m].label)}
+                                <span className="text-ink-faint">· {t(T.txnsN).replace("{n}", String(agg.byMethod[m].txns))}</span>
+                              </span>
+                              <span className="font-medium tabular-nums text-ink">{moneyExact(agg.byMethod[m].collected)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {agg.tips > 0 && (
+                      <div className="mt-3 flex items-center justify-between border-t border-[#F3F2EE] pt-2.5 text-[13px]">
+                        <span className="text-jade">{t(T.tipLabel)}</span>
+                        <span className="font-medium tabular-nums text-jade">{moneyExact(agg.tips)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </section>
           </div>
