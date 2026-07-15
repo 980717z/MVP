@@ -725,10 +725,12 @@ export default function PublicMenu() {
             >🖥️</button>
           </div>
           <button
-            onClick={() => setLang((l) => (l === "zh" ? "en" : l === "en" ? "fr" : "zh"))}
+            // FR omitted from the diner menu for now (menu content is zh/en only;
+            // French fell back to English anyway). Landing keeps EN/FR/中.
+            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
             className="flex-none rounded-full border border-slate-200 px-3 py-1 text-xs text-ink-soft"
           >
-            {lang === "zh" ? "EN" : lang === "en" ? "FR" : "中"}
+            {lang === "zh" ? "EN" : "中"}
           </button>
         </div>
       </header>

@@ -16,6 +16,7 @@
 import { useEffect, useState } from "react";
 import { useLang, LangToggle, type Dict } from "@/app/i18n";
 import LiveOrderFlow from "@/components/LiveOrderFlow";
+import StudentFlowFrames from "@/components/StudentFlowFrames";
 import RequestDemo from "@/components/RequestDemo";
 import { BentoMark } from "@/components/BentoMark";
 
@@ -60,9 +61,9 @@ const T = {
   // vendor band
   vbTitle: { zh: "有餐车或档口?", en: "Run a truck or kiosk?", fr: "Un camion ou kiosque?" },
   vbBody: {
-    zh: "免费的扫码点餐系统，我们把学生带给你。没有抽成套路——每单只收几分钱。我们帮你上线。",
-    en: "Free QR ordering. We bring you the students. No commission games — just a few cents an order. We get you set up.",
-    fr: "Commande QR gratuite. On vous amène les étudiants. Pas de commissions — quelques cents par commande. On vous installe.",
+    zh: "我们把学生带到你面前。没有月费、没有抽成——只在我们带来的订单上收几分钱。免费帮你上线。",
+    en: "We bring you the students. No monthly fee, no commission — just a few cents on the orders we send you. Free to get set up.",
+    fr: "On vous amène les étudiants. Pas d'abonnement, pas de commission — quelques cents sur les commandes qu'on vous envoie. Installation gratuite.",
   },
   vbCta: { zh: "聊一聊 →", en: "Let's talk →", fr: "Parlons-en →" },
   // proof + footer
@@ -83,9 +84,9 @@ const T = {
   boEyebrow: { zh: "商家专区 · 不止点单", en: "For vendors · more than ordering", fr: "Pour commerçants · plus que la commande" },
   boTitle: { zh: "一套系统,管好整间店", en: "One system runs the whole shop", fr: "Un système pour toute la boutique" },
   boSub: {
-    zh: "免费的扫码点餐只是入口。销售分析、库存采购、每日对账记账——后台都替你算好。",
-    en: "Free QR ordering is just the front door. Sales analytics, inventory, daily cash & books — the back office does the math for you.",
-    fr: "La commande QR gratuite n'est que la porte d'entrée. Analyses des ventes, stocks, caisse et comptes quotidiens — l'arrière-boutique fait les calculs.",
+    zh: "扫码点餐只是入口。销售分析、库存采购、每日对账记账——后台都替你算好。",
+    en: "QR ordering is just the front door. Sales analytics, inventory, daily cash & books — the back office does the math for you.",
+    fr: "La commande QR n'est que la porte d'entrée. Analyses des ventes, stocks, caisse et comptes quotidiens — l'arrière-boutique fait les calculs.",
   },
   boLive: { zh: "看看实时后台 →", en: "Try the live dashboard →", fr: "Voir le tableau de bord →" },
   boTour: { zh: "先逛一圈演示 →", en: "Take the guided tour →", fr: "Faire la visite guidée →" },
@@ -241,32 +242,9 @@ export default function UofTLanding() {
         </div>
       </section>
 
-      {/* vision strip — a connected LEFT→RIGHT journey (browse → order → skip the line),
-          not a 3-up card grid. Big ghost numerals + arrows read as a storyboard. */}
-      <section className="mx-auto max-w-5xl px-5 py-16">
-        <h2 className="mb-10 text-center text-sm font-bold uppercase tracking-[0.15em] text-ink-soft">{t(T.how)}</h2>
-        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:gap-3">
-          {[
-            { n: "1", t: T.s1t, b: T.s1b },
-            { n: "2", t: T.s2t, b: T.s2b },
-            { n: "3", t: T.s3t, b: T.s3b },
-          ].map((s, i) => (
-            <div key={s.n} className="contents">
-              <div className="rise flex-1" style={{ animationDelay: `${i * 90}ms` }}>
-                <div className="text-5xl font-extrabold leading-none text-brand/20">{s.n}</div>
-                <div className="mt-2 text-lg font-bold text-ink">{t(s.t)}</div>
-                <p className="mt-1 text-sm text-ink-soft">{t(s.b)}</p>
-              </div>
-              {i < 2 && (
-                <div className="select-none self-center text-2xl font-light text-brand/40 sm:pt-4" aria-hidden="true">
-                  <span className="hidden sm:inline">→</span>
-                  <span className="block text-center sm:hidden">↓</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* the student flow, shown: choose a truck → menu → order ahead → skip line.
+          The captioned phone frames ARE the how-it-works (no separate text storyboard). */}
+      <StudentFlowFrames />
 
       {/* live QR → dashboard demo (real scannable QR + animated order arrival) */}
       <LiveOrderFlow />
