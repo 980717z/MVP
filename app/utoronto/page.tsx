@@ -53,9 +53,9 @@ const T = {
   // vendor band
   vbTitle: { zh: "有餐车或档口?", en: "Run a truck or kiosk?", fr: "Un camion ou kiosque?" },
   vbBody: {
-    zh: "我们把学生带到你面前。没有月费、没有抽成,只在我们带来的订单上收几分钱。免费帮你上线。",
-    en: "We bring you the students. No monthly fee, no commission. Just a few cents on the orders we send you. Free to get set up.",
-    fr: "On vous amène les étudiants. Pas d'abonnement, pas de commission. Quelques cents sur les commandes qu'on vous envoie. Installation gratuite.",
+    zh: "我们把学生带到你面前。没有月费、没有抽成,每单只收几分钱。免费帮你上线。",
+    en: "We bring you the students. No monthly fee, no commission. Just a few cents per order. Free to get set up.",
+    fr: "On vous amène les étudiants. Pas d'abonnement, pas de commission. Quelques cents par commande. Installation gratuite.",
   },
   vbCta: { zh: "聊一聊 →", en: "Let's talk →", fr: "Parlons-en →" },
   // proof + footer
