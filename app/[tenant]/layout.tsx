@@ -65,6 +65,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   // Label resolver: fr falls back to en when a dict has no fr (e.g. catalog
   // module labels are {zh,en}), so the nav never blanks in French.
   const tl = (b: { zh: string; en: string; fr?: string }) => b[lang] ?? b.en;
+  const shopInitial = (tenant?.name.zh || tenant?.name.en || slug || "·").trim().charAt(0);
 
   // staff with a restricted access[] only see their allowed modules (owner sees all)
   const visibleModules = (tenant?.enabled ?? []).filter((id) => !allowed || allowed.includes(id));
@@ -73,12 +74,12 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   );
 
   return (
-    <div className="flex min-h-screen bg-[#FBFAF8]" style={{ fontFamily: SHELL_FONT }}>
+    <div className="flex h-screen overflow-hidden bg-[#FBFAF8]" style={{ fontFamily: SHELL_FONT }}>
       <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
 
       {/* desktop sidebar */}
       <aside className="hidden w-60 flex-none border-r border-[#EBEAE5] bg-white md:flex md:flex-col">
-        <SidebarHead slug={slug} tenant={tenant} tl={tl} />
+        <SidebarHead />
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
         <div className="border-t border-[#F3F2EE] px-2.5 py-3">
           <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
@@ -99,7 +100,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/30" onClick={() => setNavOpen(false)} />
           <div className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col bg-white shadow-xl">
-            <SidebarHead slug={slug} tenant={tenant} tl={tl} onClose={() => setNavOpen(false)} />
+            <SidebarHead onClose={() => setNavOpen(false)} />
             <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
             <div className="border-t border-[#F3F2EE] px-2.5 py-3">
               <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
@@ -121,70 +122,60 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
       <div className="flex min-w-0 flex-1 flex-col">
         {/* shared top bar */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#EBEAE5] bg-white/90 px-4 py-2.5 backdrop-blur lg:px-7">
-          {/* Shop identity here is MOBILE-ONLY — on desktop the sidebar shows it,
-              so repeating it would double up. On mobile the sidebar is a drawer,
-              so this is the only persistent "whose shop is this". */}
-          <div className="flex min-w-0 items-center gap-2.5 md:hidden">
+          {/* Shop identity lives HERE (the top bar), not the sidebar — the rail
+              is the BentoOS product brand, this is the "you are here" workspace.
+              Legible on every size; → this shop's Overview. The hamburger is the
+              only mobile-only piece (desktop has the persistent sidebar). */}
+          <div className="flex min-w-0 items-center gap-2.5">
             <button
               onClick={() => setNavOpen(true)}
-              className="grid h-9 w-9 flex-none place-items-center rounded-lg border border-[#EBEAE5] text-ink-soft"
+              className="grid h-9 w-9 flex-none place-items-center rounded-lg border border-[#EBEAE5] text-ink-soft md:hidden"
               aria-label="open navigation"
             >
               ☰
             </button>
-            <div className="min-w-0">
-              <div className="truncate text-[15px] font-bold text-ink" style={{ fontFamily: lang === "zh" ? '"Noto Sans SC",sans-serif' : SHELL_FONT }}>
-                {tenant?.name.zh}
-                {tenant?.name.en && tenant.name.en !== tenant.name.zh && (
-                  <span className="ml-2 text-xs font-medium text-ink-faint">{tenant.name.en}</span>
-                )}
+            <Link href={`/${slug}`} className="flex min-w-0 items-center gap-2.5">
+              <div
+                className="grid h-8 w-8 flex-none place-items-center rounded-[9px] bg-brand-wash text-[15px] font-semibold text-brand-ink"
+                style={{ fontFamily: '"Noto Sans SC",sans-serif' }}
+                aria-hidden="true"
+              >
+                {shopInitial}
               </div>
-              {tenant?.address && <div className="truncate text-[11px] text-ink-faint">{tenant.address}</div>}
-            </div>
+              <div className="min-w-0">
+                <div className="truncate text-[15px] font-bold leading-tight text-ink" style={{ fontFamily: lang === "zh" ? '"Noto Sans SC",sans-serif' : SHELL_FONT }}>
+                  {tenant?.name.zh}
+                  {tenant?.name.en && tenant.name.en !== tenant.name.zh && (
+                    <span className="ml-2 text-xs font-medium text-ink-faint">{tenant.name.en}</span>
+                  )}
+                </div>
+                {tenant?.address && <div className="truncate text-[11px] text-ink-faint">{tenant.address}</div>}
+              </div>
+            </Link>
           </div>
           <LangToggle className="flex-none" />
         </header>
 
-        <div className="min-w-0 flex-1 overflow-x-hidden">{children}</div>
+        <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </div>
     </div>
   );
 }
 
-function SidebarHead({ slug, tenant, onClose, tl }: { slug: string; tenant?: Tenant; onClose?: () => void; tl: (b: { zh: string; en: string; fr?: string }) => string }) {
-  // Shop-first: this is the merchant's OWN back office, so the shop is the
-  // identity. BentoOS shrinks to a quiet, still-clickable home affordance.
-  const initial = (tenant?.name.zh || tenant?.name.en || slug || "·").trim().charAt(0);
+function SidebarHead({ onClose }: { onClose?: () => void }) {
+  // Product brand owns the rail: one clean BentoOS lockup with room to breathe
+  // (the warm bento mark carries the friendliness so the wordmark can stay
+  // simple, not a heavy slab). The shop identity lives in the top bar instead,
+  // so nothing competes here. → the BentoOS landing (bentoos.io).
   return (
-    <div className="border-b border-[#F3F2EE] px-4 py-4">
-      <div className="flex items-start justify-between gap-2">
-        {/* shop logo → this shop's Overview */}
-        <Link href={`/${slug}`} onClick={onClose} className="flex min-w-0 items-center gap-2.5">
-          <div
-            className="grid h-9 w-9 flex-none place-items-center rounded-[10px] bg-brand-wash text-[17px] font-semibold text-brand-ink"
-            style={{ fontFamily: '"Noto Sans SC",sans-serif' }}
-            aria-hidden="true"
-          >
-            {initial}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-[15px] font-bold leading-tight text-ink" style={{ fontFamily: '"Noto Sans SC",sans-serif' }}>{tenant?.name.zh}</div>
-            {tenant?.name.en && tenant.name.en !== tenant.name.zh && (
-              <div className="truncate text-xs text-ink-soft">{tenant.name.en}</div>
-            )}
-          </div>
-        </Link>
-        {onClose && (
-          <button onClick={onClose} className="flex-none text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>
-        )}
-      </div>
-      {/* humble attribution → the BentoOS landing (bentoos.io) */}
-      <div className="mt-2.5 flex justify-end">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-[10.5px] text-ink-faint transition hover:text-ink" title="BentoOS">
-          <BentoMark className="h-3.5 w-3.5" />
-          {tl({ zh: "由 BentoOS 提供支持", en: "powered by BentoOS", fr: "propulsé par BentoOS" })}
-        </Link>
-      </div>
+    <div className="flex items-center justify-between gap-2 border-b border-[#F3F2EE] px-4 py-4">
+      <Link href="/" onClick={onClose} className="flex items-center gap-2.5" title="BentoOS">
+        <BentoMark className="h-7 w-7 flex-none" />
+        <span className="text-[16px] font-bold tracking-[-0.01em] text-ink">BentoOS</span>
+      </Link>
+      {onClose && (
+        <button onClick={onClose} className="flex-none text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>
+      )}
     </div>
   );
 }
