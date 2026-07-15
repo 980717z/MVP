@@ -4,7 +4,7 @@
 // qualified lead — contact name, email, phone, business, revenue range —
 // and posts to /api/leads (persists + emails the team). The fake-data guided
 // tour (/demo) stays as the no-account instant peek. Brand: DESIGN-PLATFORM.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLang, type Dict } from "@/app/i18n";
 
 const REVENUE: { v: string; label: Dict }[] = [
@@ -33,9 +33,12 @@ const T = {
   errGeneric: { zh: "出错了,请重试", en: "Something went wrong — please retry", fr: "Une erreur — réessayez" },
 } satisfies Record<string, Dict>;
 
-export default function RequestDemo() {
+export default function RequestDemo({ openSignal = 0 }: { openSignal?: number }) {
   const { t, lang } = useLang();
   const [open, setOpen] = useState(false);
+  // Let another section (the vendor band) open this form so every vendor CTA
+  // funnels to the same qualified request — one path, not three.
+  useEffect(() => { if (openSignal > 0) setOpen(true); }, [openSignal]);
   const [status, setStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [f, setF] = useState({ name: "", email: "", phone: "", business: "", revenue: "" });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

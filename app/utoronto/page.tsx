@@ -80,7 +80,7 @@ const T = {
   // header merchant-demo link
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
   // back-office (vendor) section
-  boEyebrow: { zh: "不止点单", en: "More than ordering", fr: "Plus que la commande" },
+  boEyebrow: { zh: "商家专区 · 不止点单", en: "For vendors · more than ordering", fr: "Pour commerçants · plus que la commande" },
   boTitle: { zh: "一套系统,管好整间店", en: "One system runs the whole shop", fr: "Un système pour toute la boutique" },
   boSub: {
     zh: "免费的扫码点餐只是入口。销售分析、库存采购、每日对账记账——后台都替你算好。",
@@ -135,6 +135,11 @@ export default function UofTLanding() {
   // Sticky-header CTA: the "Join waitlist" button fades in once the hero signup
   // card has scrolled out of view (so there's always a one-tap path back to it).
   const [pastHero, setPastHero] = useState(false);
+  const [demoOpenSignal, setDemoOpenSignal] = useState(0); // vendor band → opens the Request-a-demo form
+  const openDemo = () => {
+    setDemoOpenSignal((n) => n + 1);
+    document.getElementById("backoffice")?.scrollIntoView({ behavior: "smooth" });
+  };
   useEffect(() => {
     const el = document.getElementById("join");
     if (!el || typeof IntersectionObserver === "undefined") return;
@@ -276,7 +281,7 @@ export default function UofTLanding() {
             <h2 className="rise mt-2 text-balance text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" style={{ animationDelay: "60ms" }}>{t(T.boTitle)}</h2>
             <p className="rise mx-auto mt-3 max-w-xl text-balance text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.boSub)}</p>
             <div className="rise mt-6" style={{ animationDelay: "180ms" }}>
-              <RequestDemo />
+              <RequestDemo openSignal={demoOpenSignal} />
             </div>
           </div>
 
@@ -316,7 +321,7 @@ export default function UofTLanding() {
             </div>
           </div>
           <button
-            onClick={() => { setRole("vendor"); scrollToJoin(); }}
+            onClick={openDemo}
             className="flex-none rounded-full bg-white px-5 py-2.5 text-sm font-bold text-brand-ink transition hover:bg-white/90"
           >
             {t(T.vbCta)}
