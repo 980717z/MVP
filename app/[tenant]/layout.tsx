@@ -149,22 +149,34 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 }
 
 function SidebarHead({ slug, tenant, onClose }: { slug: string; tenant?: Tenant; onClose?: () => void }) {
+  // Shop-first: this is the merchant's OWN back office, so the shop is the
+  // identity. BentoOS shrinks to a quiet, still-clickable home affordance.
+  const initial = (tenant?.name.zh || tenant?.name.en || slug || "·").trim().charAt(0);
   return (
     <div className="flex items-start justify-between border-b border-[#F3F2EE] px-4 py-4">
-      <div>
-        <Link href="/app" className="flex items-center gap-2">
-          <BentoMark className="h-6 w-6" />
-          <span className="text-sm font-extrabold tracking-tight">BentoOS</span>
+      <div className="min-w-0">
+        <Link href="/app" className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-faint transition hover:text-ink" title="BentoOS — account & shops">
+          <BentoMark className="h-4 w-4" />
+          BentoOS
         </Link>
-        <div className="mt-3">
-          <div className="text-sm font-bold text-ink" style={{ fontFamily: '"Noto Sans SC",sans-serif' }}>{tenant?.name.zh}</div>
-          {tenant?.name.en && tenant.name.en !== tenant.name.zh && (
-            <div className="text-[11px] uppercase tracking-wide text-ink-faint">{tenant.name.en}</div>
-          )}
+        <div className="mt-3 flex items-center gap-2.5">
+          <div
+            className="grid h-9 w-9 flex-none place-items-center rounded-[10px] bg-brand-wash text-[17px] font-semibold text-brand-ink"
+            style={{ fontFamily: '"Noto Sans SC",sans-serif' }}
+            aria-hidden="true"
+          >
+            {initial}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-bold leading-tight text-ink" style={{ fontFamily: '"Noto Sans SC",sans-serif' }}>{tenant?.name.zh}</div>
+            {tenant?.name.en && tenant.name.en !== tenant.name.zh && (
+              <div className="truncate text-xs text-ink-soft">{tenant.name.en}</div>
+            )}
+          </div>
         </div>
       </div>
       {onClose && (
-        <button onClick={onClose} className="text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>
+        <button onClick={onClose} className="flex-none text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>
       )}
     </div>
   );
