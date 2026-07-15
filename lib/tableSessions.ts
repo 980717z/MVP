@@ -100,6 +100,19 @@ export async function listSessionsInRange(slug: string, from: string, to: string
  *  round first, cancelled items dropped. Empty for pre-feature/togo sessions (which
  *  never carried a table_session_id) — the caller shows a graceful empty state. */
 export interface SessionItem { name_zh: string; name_en: string; qty: number; price: number | null; note?: string; adjust?: number }
+/** Order ids for a settled session — used to re-queue the combined bill (总单)
+ *  to the printer (requestBill nulls bill_printed_at → the Epson merges the
+ *  table's pending orders and reprints). */
+export async function listSessionOrderIds(sessionId: string): Promise<string[]> {
+  if (!sessionId) return [];
+  const { data, error } = await supabase.from("orders").select("id").eq("table_session_id", sessionId);
+  if (error) {
+    console.error("listSessionOrderIds", error);
+    return [];
+  }
+  return ((data ?? []) as { id: string }[]).map((o) => o.id);
+}
+
 export async function listSessionOrders(sessionId: string): Promise<SessionItem[]> {
   if (!sessionId) return [];
   const { data, error } = await supabase

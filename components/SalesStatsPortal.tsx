@@ -5,9 +5,10 @@ import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { supabase } from "@/lib/supabase";
 import { getTrackPayments } from "@/lib/store";
-import { listSessionsInRange, listSessionOrders, type SessionItem } from "@/lib/tableSessions";
+import { listSessionsInRange, listSessionOrders, listSessionOrderIds, type SessionItem } from "@/lib/tableSessions";
+import { requestBill } from "@/lib/orders";
 import { aggregateSales, torontoToday, shiftDate, METHODS, type SessionRow, type Method } from "@/lib/salesStats";
-import { money, displayTable } from "@/lib/format";
+import { moneyExact, displayTable } from "@/lib/format";
 import { signedMoney } from "@/lib/billFormat";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -45,6 +46,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   const [detail, setDetail] = useState<{ id?: string; table_no: string; at: string; split: boolean; splits: SessionRow["splits"]; methods: Method[]; sales: number; tax: number; tip: number; collected: number } | null>(null);
   const [detailItems, setDetailItems] = useState<SessionItem[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [reprint, setReprint] = useState<"idle" | "busy" | "done" | "error">("idle");
   useEffect(() => { getTrackPayments(slug).then(setTrackPay).catch(() => {}); }, [slug]);
 
   // range preset → concrete [from, to] business dates
@@ -116,6 +118,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   const openDetail = useCallback(async (r: TxnRow) => {
     setDetail(r);
     setDetailItems([]);
+    setReprint("idle");
     if (!r.id) return; // pre-feature/togo row — no linked orders; drawer shows empty state
     setDetailLoading(true);
     try {
@@ -124,6 +127,16 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
       setDetailLoading(false);
     }
   }, []);
+
+  // Re-queue this settled session's combined bill (总单) to the printer.
+  const reprintBill = useCallback(async () => {
+    if (!detail?.id || reprint === "busy") return;
+    setReprint("busy");
+    const ids = await listSessionOrderIds(detail.id);
+    if (ids.length === 0) { setReprint("error"); return; }
+    const { error } = await requestBill(ids);
+    setReprint(error ? "error" : "done");
+  }, [detail, reprint]);
   // Esc closes the detail drawer.
   useEffect(() => {
     if (!detail) return;
@@ -166,15 +179,15 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
 
       {/* headline KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label={headline} value={money(agg.sales)} sub={`${agg.txns} ${t({ zh: "笔", en: "txns", fr: "trans." })}`} big />
-        <Kpi label={t({ zh: "客单价", en: "Avg ticket", fr: "Panier moyen" })} value={money(agg.avgTicket)} />
-        <Kpi label={t({ zh: "小费（归员工）", en: "Tips (to staff)", fr: "Pourboires (au personnel)" })} value={money(agg.tips)} accent="jade" />
-        <Kpi label={t({ zh: "实收（含税+小费）", en: "Collected (tax + tips)", fr: "Encaissé (taxes + pourboires)" })} value={money(agg.collected)} />
+        <Kpi label={headline} value={moneyExact(agg.sales)} sub={`${agg.txns} ${t({ zh: "笔", en: "txns", fr: "trans." })}`} big />
+        <Kpi label={t({ zh: "客单价", en: "Avg ticket", fr: "Panier moyen" })} value={moneyExact(agg.avgTicket)} />
+        <Kpi label={t({ zh: "小费（归员工）", en: "Tips (to staff)", fr: "Pourboires (au personnel)" })} value={moneyExact(agg.tips)} accent="jade" />
+        <Kpi label={t({ zh: "实收（含税+小费）", en: "Collected (tax + tips)", fr: "Encaissé (taxes + pourboires)" })} value={moneyExact(agg.collected)} />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="HST 13%" value={money(agg.hst)} sub={t({ zh: "应申报", en: "to remit", fr: "à remettre" })} muted />
-        <Kpi label={t({ zh: "GST 5%", en: "GST 5%", fr: "TPS 5%" })} value={money(agg.gst)} muted />
-        <Kpi label={t({ zh: "PST 8%", en: "PST 8%", fr: "TVP 8%" })} value={money(agg.pst)} muted />
+        <Kpi label="HST 13%" value={moneyExact(agg.hst)} sub={t({ zh: "应申报", en: "to remit", fr: "à remettre" })} muted />
+        <Kpi label={t({ zh: "GST 5%", en: "GST 5%", fr: "TPS 5%" })} value={moneyExact(agg.gst)} muted />
+        <Kpi label={t({ zh: "PST 8%", en: "PST 8%", fr: "TVP 8%" })} value={moneyExact(agg.pst)} muted />
         <Kpi label={t({ zh: "自取 / 外送单", en: "Togo / delivery", fr: "À emporter / livraison" })} value={togoCount == null ? "—" : String(togoCount)} sub={t({ zh: "线下结算", en: "settled offline", fr: "réglé hors ligne" })} muted />
       </div>
 
@@ -192,9 +205,9 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
                   <span className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ background: METHOD_META[m].dot }} />
                     <span className="font-medium text-ink">{bi(METHOD_META[m].label)}</span>
-                    <span className="text-xs text-ink-faint">{mm.txns} {t({ zh: "笔", en: "txns", fr: "trans." })}{mm.tips > 0 ? ` · ${t({ zh: "小费", en: "tips", fr: "pourb." })} ${money(mm.tips)}` : ""}</span>
+                    <span className="text-xs text-ink-faint">{mm.txns} {t({ zh: "笔", en: "txns", fr: "trans." })}{mm.tips > 0 ? ` · ${t({ zh: "小费", en: "tips", fr: "pourb." })} ${moneyExact(mm.tips)}` : ""}</span>
                   </span>
-                  <span className="font-bold tabular-nums text-ink">{money(mm.collected)} <span className="text-xs font-normal text-ink-faint">{pct}%</span></span>
+                  <span className="font-bold tabular-nums text-ink">{moneyExact(mm.collected)} <span className="text-xs font-normal text-ink-faint">{pct}%</span></span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                   <div className="h-full rounded-full" style={{ width: `${pct}%`, background: METHOD_META[m].dot }} />
@@ -253,10 +266,10 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
                       </span>
                     </td>
                   )}
-                  <td className="py-2 px-2 text-right tabular-nums text-ink">{money(r.sales)}</td>
-                  <td className="py-2 px-2 text-right tabular-nums text-ink-faint">{money(r.tax)}</td>
-                  <td className="py-2 px-2 text-right tabular-nums text-jade">{r.tip > 0 ? money(r.tip) : "—"}</td>
-                  <td className="py-2 pl-2 text-right font-semibold tabular-nums text-ink">{money(r.collected)}</td>
+                  <td className="py-2 px-2 text-right tabular-nums text-ink">{moneyExact(r.sales)}</td>
+                  <td className="py-2 px-2 text-right tabular-nums text-ink-faint">{moneyExact(r.tax)}</td>
+                  <td className="py-2 px-2 text-right tabular-nums text-jade">{r.tip > 0 ? moneyExact(r.tip) : "—"}</td>
+                  <td className="py-2 pl-2 text-right font-semibold tabular-nums text-ink">{moneyExact(r.collected)}</td>
                 </tr>
               ))}
               {txnRows.length === 0 && (
@@ -304,7 +317,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
                         <span className="min-w-0 text-sm font-medium text-ink">
                           {lang === "zh" ? it.name_zh : it.name_en || it.name_zh}{it.qty > 1 && <span className="ml-1 text-ink-faint">×{it.qty}</span>}
                         </span>
-                        <span className="flex-none text-sm tabular-nums text-ink">{it.price == null ? t({ zh: "时价", en: "Market", fr: "Prix du jour" }) : money((Number(it.price) || 0) * it.qty)}</span>
+                        <span className="flex-none text-sm tabular-nums text-ink">{it.price == null ? t({ zh: "时价", en: "Market", fr: "Prix du jour" }) : moneyExact((Number(it.price) || 0) * it.qty)}</span>
                       </div>
                       {(it.note || it.adjust) && (
                         <div className="mt-0.5 text-xs text-gold">→ {it.note || t({ zh: "加价", en: "Adjust", fr: "Ajust." })}{it.adjust ? ` ${signedMoney(it.adjust)}` : ""}</div>
@@ -321,7 +334,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
                     {detail.splits!.map((s, i) => (
                       <div key={i} className="flex items-center justify-between gap-2 text-xs">
                         <span className="text-ink-soft">{s.label || `${t({ zh: "客", en: "Guest", fr: "Client" })} ${i + 1}`} · {bi(METHOD_META[methodLabelKey(String(s.method))].label)}</span>
-                        <span className="tabular-nums text-ink">{money((Number(s.total) || 0) + (Number(s.tip) || 0))}</span>
+                        <span className="tabular-nums text-ink">{moneyExact((Number(s.total) || 0) + (Number(s.tip) || 0))}</span>
                       </div>
                     ))}
                   </div>
@@ -330,10 +343,28 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
             </div>
 
             <div className="flex-none space-y-1 border-t border-slate-100 px-5 py-4 text-sm tabular-nums">
-              <div className="flex justify-between text-ink-soft"><span>{t({ zh: "营业额", en: "Sales", fr: "Ventes" })}</span><span>{money(detail.sales)}</span></div>
-              <div className="flex justify-between text-ink-soft"><span>HST</span><span>{money(detail.tax)}</span></div>
-              {detail.tip > 0 && <div className="flex justify-between text-jade"><span>{t({ zh: "小费", en: "Tip", fr: "Pourboire" })}</span><span>{money(detail.tip)}</span></div>}
-              <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t({ zh: "实收", en: "Collected", fr: "Encaissé" })}</span><span>{money(detail.collected)}</span></div>
+              <div className="flex justify-between text-ink-soft"><span>{t({ zh: "营业额", en: "Sales", fr: "Ventes" })}</span><span>{moneyExact(detail.sales)}</span></div>
+              <div className="flex justify-between text-ink-soft"><span>HST</span><span>{moneyExact(detail.tax)}</span></div>
+              {detail.tip > 0 && <div className="flex justify-between text-jade"><span>{t({ zh: "小费", en: "Tip", fr: "Pourboire" })}</span><span>{moneyExact(detail.tip)}</span></div>}
+              <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t({ zh: "实收", en: "Collected", fr: "Encaissé" })}</span><span>{moneyExact(detail.collected)}</span></div>
+
+              {detail.id && detail.table_no && (
+                <button
+                  onClick={reprintBill}
+                  disabled={reprint === "busy"}
+                  className={`mt-3 w-full rounded-lg py-2.5 text-sm font-semibold transition disabled:opacity-60 ${
+                    reprint === "done" ? "bg-emerald-50 text-emerald-700" : reprint === "error" ? "bg-red-50 text-red-700" : "bg-brand text-white hover:opacity-90"
+                  }`}
+                >
+                  {reprint === "busy"
+                    ? t({ zh: "发送到打印机…", en: "Sending to printer…", fr: "Envoi à l'imprimante…" })
+                    : reprint === "done"
+                    ? t({ zh: "✓ 已发送,打印机将补打总单", en: "✓ Sent — the printer will reprint the bill", fr: "✓ Envoyé — l'imprimante réimprime l'addition" })
+                    : reprint === "error"
+                    ? t({ zh: "打印失败,点此重试", en: "Print failed — tap to retry", fr: "Échec — toucher pour réessayer" })
+                    : t({ zh: "🖨️ 重打总单", en: "🖨️ Reprint bill", fr: "🖨️ Réimprimer l'addition" })}
+                </button>
+              )}
             </div>
           </div>
         </div>
