@@ -121,10 +121,13 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
       <div className="flex min-w-0 flex-1 flex-col">
         {/* shared top bar */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#EBEAE5] bg-white/90 px-4 py-2.5 backdrop-blur lg:px-7">
-          <div className="flex min-w-0 items-center gap-2.5">
+          {/* Shop identity here is MOBILE-ONLY — on desktop the sidebar shows it,
+              so repeating it would double up. On mobile the sidebar is a drawer,
+              so this is the only persistent "whose shop is this". */}
+          <div className="flex min-w-0 items-center gap-2.5 md:hidden">
             <button
               onClick={() => setNavOpen(true)}
-              className="grid h-9 w-9 flex-none place-items-center rounded-lg border border-[#EBEAE5] text-ink-soft md:hidden"
+              className="grid h-9 w-9 flex-none place-items-center rounded-lg border border-[#EBEAE5] text-ink-soft"
               aria-label="open navigation"
             >
               ☰

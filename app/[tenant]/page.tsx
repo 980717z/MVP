@@ -23,14 +23,14 @@ const T: Record<string, Dict> = {
   setupModules: { en: "Set up modules →", zh: "设置后台功能 →", fr: "Configurer les modules →" },
   overview: { en: "Overview", zh: "总览", fr: "Aperçu" },
   metaOne: {
-    en: "{name} · {n} modules · {u} account",
-    zh: "{name} · 共 {n} 个功能 · {u} 个账号",
-    fr: "{name} · {n} modules · {u} compte",
+    en: "{n} modules · {u} account",
+    zh: "共 {n} 个功能 · {u} 个账号",
+    fr: "{n} modules · {u} compte",
   },
   metaMany: {
-    en: "{name} · {n} modules · {u} accounts",
-    zh: "{name} · 共 {n} 个功能 · {u} 个账号",
-    fr: "{name} · {n} modules · {u} comptes",
+    en: "{n} modules · {u} accounts",
+    zh: "共 {n} 个功能 · {u} 个账号",
+    fr: "{n} modules · {u} comptes",
   },
   allSet: { en: "You're all set up", zh: "开张准备就绪", fr: "Tout est prêt" },
   allSetHint: {
