@@ -145,7 +145,12 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
     return () => window.removeEventListener("keydown", on);
   }, [detail]);
   const caret = (col: "time" | "table" | "collected") =>
-    sort.col === col ? <span className="text-emerald-600">{sort.dir === "asc" ? "▲" : "▼"}</span> : <span className="text-slate-300">↕</span>;
+    sort.col === col ? <span className="text-brand">{sort.dir === "asc" ? "▲" : "▼"}</span> : <span className="text-slate-400">↕</span>;
+  // Sortable-header button style: always-visible affordance (darker text than
+  // static columns + a tap/hover background), active column highlighted — so
+  // it's obvious you can sort, no hover required (works on phones).
+  const sortBtn = (col: "time" | "table" | "collected") =>
+    `-mx-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition hover:bg-slate-100 ${sort.col === col ? "font-semibold text-brand-ink" : "text-ink-soft"}`;
 
   const bi = (d: Dict) => t(d);
   const fmtTime = (iso: string) => new Date(iso).toLocaleString(lang === "zh" ? "zh-CN" : lang === "fr" ? "fr-CA" : "en-CA", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -239,17 +244,17 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
             <thead>
               <tr className="border-b border-slate-100 text-left text-xs text-ink-faint">
                 <th className="py-2 pr-2 font-medium">
-                  <button onClick={() => toggleSort("time")} className="inline-flex items-center gap-0.5 hover:text-ink">{t({ zh: "时间", en: "Time", fr: "Heure" })}{caret("time")}</button>
+                  <button onClick={() => toggleSort("time")} className={sortBtn("time")}>{t({ zh: "时间", en: "Time", fr: "Heure" })}{caret("time")}</button>
                 </th>
                 <th className="py-2 px-2 font-medium">
-                  <button onClick={() => toggleSort("table")} className="inline-flex items-center gap-0.5 hover:text-ink">{t({ zh: "桌号", en: "Table", fr: "Table" })}{caret("table")}</button>
+                  <button onClick={() => toggleSort("table")} className={sortBtn("table")}>{t({ zh: "桌号", en: "Table", fr: "Table" })}{caret("table")}</button>
                 </th>
                 {trackPay && <th className="py-2 px-2 font-medium">{t({ zh: "方式", en: "Method", fr: "Mode" })}</th>}
                 <th className="py-2 px-2 text-right font-medium">{t({ zh: "营业额", en: "Sales", fr: "Ventes" })}</th>
                 <th className="py-2 px-2 text-right font-medium">HST</th>
                 <th className="py-2 px-2 text-right font-medium">{t({ zh: "小费", en: "Tip", fr: "Pourb." })}</th>
                 <th className="py-2 pl-2 text-right font-medium">
-                  <button onClick={() => toggleSort("collected")} className="inline-flex items-center gap-0.5 hover:text-ink">{t({ zh: "实收", en: "Collected", fr: "Encaissé" })}{caret("collected")}</button>
+                  <button onClick={() => toggleSort("collected")} className={sortBtn("collected")}>{t({ zh: "实收", en: "Collected", fr: "Encaissé" })}{caret("collected")}</button>
                 </th>
               </tr>
             </thead>
