@@ -78,7 +78,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 
       {/* desktop sidebar */}
       <aside className="hidden w-60 flex-none border-r border-[#EBEAE5] bg-white md:flex md:flex-col">
-        <SidebarHead slug={slug} tenant={tenant} />
+        <SidebarHead slug={slug} tenant={tenant} tl={tl} />
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
         <div className="border-t border-[#F3F2EE] px-2.5 py-3">
           <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
@@ -99,7 +99,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/30" onClick={() => setNavOpen(false)} />
           <div className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col bg-white shadow-xl">
-            <SidebarHead slug={slug} tenant={tenant} onClose={() => setNavOpen(false)} />
+            <SidebarHead slug={slug} tenant={tenant} tl={tl} onClose={() => setNavOpen(false)} />
             <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
             <div className="border-t border-[#F3F2EE] px-2.5 py-3">
               <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
@@ -151,18 +151,15 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   );
 }
 
-function SidebarHead({ slug, tenant, onClose }: { slug: string; tenant?: Tenant; onClose?: () => void }) {
+function SidebarHead({ slug, tenant, onClose, tl }: { slug: string; tenant?: Tenant; onClose?: () => void; tl: (b: { zh: string; en: string; fr?: string }) => string }) {
   // Shop-first: this is the merchant's OWN back office, so the shop is the
   // identity. BentoOS shrinks to a quiet, still-clickable home affordance.
   const initial = (tenant?.name.zh || tenant?.name.en || slug || "·").trim().charAt(0);
   return (
-    <div className="flex items-start justify-between border-b border-[#F3F2EE] px-4 py-4">
-      <div className="min-w-0">
-        <Link href="/app" className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-faint transition hover:text-ink" title="BentoOS — account & shops">
-          <BentoMark className="h-4 w-4" />
-          BentoOS
-        </Link>
-        <div className="mt-3 flex items-center gap-2.5">
+    <div className="border-b border-[#F3F2EE] px-4 py-4">
+      <div className="flex items-start justify-between gap-2">
+        {/* shop logo → this shop's Overview */}
+        <Link href={`/${slug}`} onClick={onClose} className="flex min-w-0 items-center gap-2.5">
           <div
             className="grid h-9 w-9 flex-none place-items-center rounded-[10px] bg-brand-wash text-[17px] font-semibold text-brand-ink"
             style={{ fontFamily: '"Noto Sans SC",sans-serif' }}
@@ -176,11 +173,18 @@ function SidebarHead({ slug, tenant, onClose }: { slug: string; tenant?: Tenant;
               <div className="truncate text-xs text-ink-soft">{tenant.name.en}</div>
             )}
           </div>
-        </div>
+        </Link>
+        {onClose && (
+          <button onClick={onClose} className="flex-none text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>
+        )}
       </div>
-      {onClose && (
-        <button onClick={onClose} className="flex-none text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>
-      )}
+      {/* humble attribution → the BentoOS landing (bentoos.io) */}
+      <div className="mt-2.5 flex justify-end">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-[10.5px] text-ink-faint transition hover:text-ink" title="BentoOS">
+          <BentoMark className="h-3.5 w-3.5" />
+          {tl({ zh: "由 BentoOS 提供支持", en: "powered by BentoOS", fr: "propulsé par BentoOS" })}
+        </Link>
+      </div>
     </div>
   );
 }
