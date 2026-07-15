@@ -76,6 +76,7 @@ const T = {
   ftStudents: { zh: "学生候补名单", en: "For students", fr: "Pour étudiants" },
   ftVendors: { zh: "商家申请演示", en: "For vendors", fr: "Pour commerçants" },
   ftBuilt: { zh: "多伦多制造 🇨🇦", en: "Built in Toronto 🇨🇦", fr: "Conçu à Toronto 🇨🇦" },
+  ftMainSite: { zh: "BentoOS.io 主站 ↗", en: "BentoOS.io main site ↗", fr: "Site principal BentoOS.io ↗" },
   // header merchant-demo link
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
   // back-office (vendor) section
@@ -362,7 +363,7 @@ export default function UofTLanding() {
           {/* bottom bar */}
           <div className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-[#EBEAE5] pt-6 text-xs text-ink-faint sm:flex-row">
             <span>© 2026 BentoOS · {t(T.ftBuilt)}</span>
-            <span className="tracking-wide">utoronto.bentoos.io</span>
+            <a href="https://bentoos.io" className="font-medium text-brand-ink transition hover:text-brand">{t(T.ftMainSite)}</a>
           </div>
         </div>
       </footer>
