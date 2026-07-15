@@ -23,13 +23,13 @@ import { BentoMark } from "@/components/BentoMark";
 type Role = "student" | "vendor";
 
 const T = {
-  wordmark: { zh: "BentoOS · 多大", en: "BentoOS · UofT", fr: "BentoOS · UofT" },
-  atUofT: { zh: "· 多大", en: "at UofT", fr: "à UofT" },
+  wordmark: { zh: "BentoOS 校园", en: "BentoOS Campus", fr: "BentoOS Campus" },
+  atUofT: { zh: "校园", en: "Campus", fr: "Campus" },
   joinCta: { zh: "加入候补 →", en: "Join waitlist →", fr: "Rejoindre →" },
   hero: {
-    zh: "多大校园取餐社区的操作系统",
-    en: "The operating system for UofT's food pickup community",
-    fr: "Le système d'exploitation de la communauté de ramassage alimentaire de UofT",
+    zh: "校园取餐社区的操作系统",
+    en: "The operating system for the campus food pickup community",
+    fr: "Le système d'exploitation de la communauté de ramassage alimentaire du campus",
   },
   sub: {
     zh: "免排队。提前下单，校园餐车与小吃摊，到店即取。",
@@ -61,9 +61,9 @@ const T = {
   // proof + footer
   proof: { zh: "已在多伦多一家繁忙的海鲜厨房运行", en: "Already powering a busy Toronto seafood kitchen", fr: "Déjà en service dans une cuisine de fruits de mer achalandée à Toronto" },
   soon: { zh: "校园招募中 · 敬请期待", en: "Recruiting on campus now · coming soon", fr: "Recrutement sur le campus · bientôt" },
-  heroBadge: { zh: "正在招募 UofT 周边餐饮商家", en: "Now onboarding food spots around UofT", fr: "Recrutement des comptoirs autour de UofT" },
+  heroBadge: { zh: "正在招募圣乔治周边餐饮商家", en: "Now onboarding food spots around St. George", fr: "Recrutement des comptoirs autour de St. George" },
   // footer
-  ftTagline: { zh: "多大校园的订餐-取餐操作系统。", en: "Order-ahead pickup for the UofT food community.", fr: "Commande-retrait pour la communauté alimentaire de UofT." },
+  ftTagline: { zh: "圣乔治校园的订餐取餐操作系统。", en: "Order-ahead pickup for the St. George food community.", fr: "Commande et retrait pour la communauté alimentaire de St. George." },
   ftExplore: { zh: "探索", en: "Explore", fr: "Explorer" },
   ftContact: { zh: "联系我们", en: "Contact", fr: "Contact" },
   ftStudents: { zh: "学生候补名单", en: "For students", fr: "Pour étudiants" },
@@ -153,7 +153,7 @@ export default function UofTLanding() {
       {/* header */}
       <header className="sticky top-0 z-30 border-b border-[#EBEAE5]/70 bg-[#FBFAF8]/85 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <a href="#top" className="flex items-center gap-2" aria-label="BentoOS at UofT">
+          <a href="#top" className="flex items-center gap-2" aria-label="BentoOS Campus">
             <BentoMark className="h-7 w-7 shadow-sm" />
             <span className="text-lg tracking-tight">
               <span className="font-extrabold text-ink">BentoOS</span>
