@@ -213,7 +213,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
 
       <header className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
+          <h1 className="text-2xl font-bold text-ink">{mod.label.zh}</h1>
           <p className="mt-1 max-w-xl text-sm text-ink-soft">{mod.pain.zh}</p>
         </div>
         <span className="pill bg-brand-wash text-brand">{dishes.length} 道菜</span>
@@ -226,7 +226,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
             className="flex w-full items-center justify-between text-left"
             onClick={() => setOrderOpen((o) => !o)}
           >
-            <span className="text-sm font-semibold text-ink">⚙️ 分类顺序</span>
+            <span className="text-sm font-semibold text-ink">分类顺序</span>
             <span className="text-xs text-ink-faint">
               {orderOpen ? "收起" : "拖动调整顾客菜单上的分类排序 ›"}
             </span>
@@ -275,13 +275,13 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
               className={`flex-1 rounded-md py-1.5 ${tab === "manual" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
               onClick={() => setTab("manual")}
             >
-              ✍️ 手动录入
+              手动录入
             </button>
             <button
               className={`flex-1 rounded-md py-1.5 ${tab === "photo" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
               onClick={() => setTab("photo")}
             >
-              📷 上传整张菜单
+              上传整张菜单
             </button>
           </div>
 
@@ -345,7 +345,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
               {dishes.some((d) => d.is_market) && (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
                   <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-sm font-semibold text-ink">💰 时价更新</span>
+                    <span className="text-sm font-semibold text-ink">时价更新</span>
                     <span className="text-xs text-ink-faint">顾客菜单只显示「时价」不显示数字；这里的价格作为完成订单时的默认价，每天更新</span>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -384,7 +384,6 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
               </div>
               {/* search box — find a dish among hundreds */}
               <div className="relative mt-2">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
                 <input
                   className="input w-full !pl-9"
                   value={search}
@@ -557,7 +556,6 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
             </>
           ) : (
             <div className="card flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 p-10 text-center">
-              <div className="text-4xl">📷</div>
               <div className="font-medium text-ink">上传现有菜单照片</div>
               <p className="max-w-sm text-sm text-ink-soft">
                 拍一张你现在的纸质 / 图片菜单，系统自动识别菜名与价格、补上英文翻译，批量生成菜品。

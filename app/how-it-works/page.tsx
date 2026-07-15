@@ -66,9 +66,8 @@ const T = {
   },
 };
 
-const MODULES: { icon: string; status: "live" | "soon"; name: Dict; desc: Dict; how: Dict }[] = [
+const MODULES: { status: "live" | "soon"; name: Dict; desc: Dict; how: Dict }[] = [
   {
-    icon: "📱",
     status: "live",
     name: { zh: "扫码菜单与点餐", en: "QR menu & ordering", fr: "Menu QR et commande" },
     desc: {
@@ -83,7 +82,6 @@ const MODULES: { icon: string; status: "live" | "soon"; name: Dict; desc: Dict; 
     },
   },
   {
-    icon: "🕒",
     status: "soon",
     name: { zh: "排班与薪酬", en: "Shift & Pay", fr: "Horaires et paie" },
     desc: {
@@ -98,7 +96,6 @@ const MODULES: { icon: string; status: "live" | "soon"; name: Dict; desc: Dict; 
     },
   },
   {
-    icon: "🚚",
     status: "soon",
     name: { zh: "供应商管理", en: "Supplier management", fr: "Gestion des fournisseurs" },
     desc: {
@@ -113,7 +110,6 @@ const MODULES: { icon: string; status: "live" | "soon"; name: Dict; desc: Dict; 
     },
   },
   {
-    icon: "📦",
     status: "soon",
     name: { zh: "智能库存 + 自动补货", en: "Smart inventory + auto-reorder", fr: "Inventaire intelligent + recommande auto" },
     desc: {
@@ -128,7 +124,6 @@ const MODULES: { icon: string; status: "live" | "soon"; name: Dict; desc: Dict; 
     },
   },
   {
-    icon: "📊",
     status: "soon",
     name: { zh: "对账、会员与报表", en: "Reconciliation, members & reports", fr: "Rapprochement, membres et rapports" },
     desc: {
@@ -158,7 +153,7 @@ export default function HowItWorks() {
       {/* nav */}
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-base font-extrabold text-white">B</span>
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
@@ -197,7 +192,7 @@ export default function HowItWorks() {
           ))}
         </ol>
         <p className="mx-auto mt-6 max-w-xl rounded-2xl border border-emerald-200 bg-emerald-50/70 px-5 py-3 text-center text-sm font-medium text-emerald-800">
-          ✅ {t(T.resultNote)}
+          ✓ {t(T.resultNote)}
         </p>
       </section>
 
@@ -210,7 +205,6 @@ export default function HowItWorks() {
           {MODULES.map((m) => (
             <div key={m.name.en} className="rounded-2xl border border-slate-100 bg-white/70 p-6 shadow-sm backdrop-blur">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-50 text-lg">{m.icon}</span>
                 <span className="font-semibold text-slate-900">{t(m.name)}</span>
                 <span
                   className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -253,7 +247,7 @@ export default function HowItWorks() {
       {/* footer */}
       <footer className="border-t border-slate-100">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
-          <span>🍱 BentoOS · {t(T.footer)}</span>
+          <span>BentoOS · {t(T.footer)}</span>
           <div className="flex items-center gap-4">
             <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
             <span>© 2026 BentoOS</span>

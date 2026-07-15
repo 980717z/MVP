@@ -126,7 +126,7 @@ export default function GetStarted() {
       {/* nav */}
       <header className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-base font-extrabold text-white">B</span>
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
@@ -140,8 +140,7 @@ export default function GetStarted() {
       <section className="mx-auto max-w-xl px-6 pb-24 pt-6">
         {done ? (
           <div className="rounded-3xl border border-emerald-200 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-2xl">✅</div>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">{t(T.doneTitle)}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t(T.doneTitle)}</h1>
             <p className="mx-auto mt-2 max-w-sm text-pretty text-slate-600">{t(T.doneBody)}</p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link

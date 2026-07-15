@@ -389,7 +389,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
 
       <header className="mt-3 mb-5">
         <h1 className="text-[22px] font-extrabold tracking-tight text-ink">
-          {mod.icon} {bi(mod.label)}
+          {bi(mod.label)}
         </h1>
         <p className="mt-0.5 text-sm text-ink-soft">{bi(mod.pain)}</p>
       </header>
@@ -405,7 +405,7 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
       {/* overdue reminder banner */}
       {overdueCount > 0 && (
         <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
-          🔔 {t({ zh: `${overdueCount} 项检查已到期未做：`, en: `${overdueCount} check(s) overdue: `, fr: `${overdueCount} vérification(s) en retard : ` })}
+          {t({ zh: `${overdueCount} 项检查已到期未做：`, en: `${overdueCount} check(s) overdue: `, fr: `${overdueCount} vérification(s) en retard : ` })}
           {dueItems
             .filter((i) => i.status === "overdue")
             .map((i) => `${i.name}(${fmtMonthDay(i.date)} ${i.time})`)
@@ -426,7 +426,6 @@ export default function FoodSafetyPortal({ slug, mod }: { slug: string; mod: Mod
 
         {dueItems.length === 0 ? (
           <div className="px-6 py-12 text-center">
-            <div className="text-2xl">🧊</div>
             <div className="mt-2 text-sm font-semibold text-ink">
               {t({ zh: "还没有检查项", en: "No check items yet", fr: "Aucun élément de vérification" })}
             </div>

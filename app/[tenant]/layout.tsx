@@ -96,7 +96,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         <SidebarHead slug={slug} tenant={tenant} />
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
         <div className="border-t border-[#F3F2EE] px-2.5 py-3">
-          <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
+          <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
             {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
           </NavLink>
           <button
@@ -118,7 +118,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
             <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
             <div className="border-t border-[#F3F2EE] px-2.5 py-3">
               <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
-                ⚙️ {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
+                {tl({ zh: "设置 · 员工 · 功能", en: "Settings" })}
               </NavLink>
               <button
                 onClick={handleLogout}
@@ -168,7 +168,7 @@ function SidebarHead({ slug, tenant, onClose }: { slug: string; tenant?: Tenant;
     <div className="flex items-start justify-between border-b border-[#F3F2EE] px-4 py-4">
       <div>
         <Link href="/app" className="flex items-center gap-2">
-          <span className="grid h-6 w-6 place-items-center rounded-[7px] bg-brand text-[13px] text-white">🍱</span>
+          <span className="grid h-6 w-6 place-items-center rounded-[7px] bg-brand text-[13px] font-extrabold text-white">B</span>
           <span className="text-sm font-extrabold tracking-tight">BentoOS</span>
         </Link>
         <div className="mt-3">
@@ -216,7 +216,7 @@ function NavTree({
         return (
           <div key={dom.id} className="mt-4">
             <div className="px-2.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">
-              {dom.id === "frontend" ? `🛎️ ${tl({ zh: "前台", en: "Front of house" })}` : `🗄️ ${tl({ zh: "后台", en: "Back office" })}`}
+              {dom.id === "frontend" ? tl({ zh: "前台", en: "Front of house" }) : tl({ zh: "后台", en: "Back office" })}
             </div>
             {mods.map((m) => (
               <NavLink key={m!.id} href={`/${slug}/m/${m!.id}`} active={pathname === `/${slug}/m/${m!.id}`} icon={m!.icon}>

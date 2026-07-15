@@ -368,7 +368,7 @@ function GroupedRows({
             <td className="px-4 py-2.5 text-right whitespace-nowrap">
               {r.photo_url && (
                 <a href={r.photo_url} target="_blank" rel="noreferrer" className="text-xs text-ink-faint hover:text-brand mr-2" title="查看照片">
-                  📷
+                  照片
                 </a>
               )}
               <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
@@ -790,17 +790,17 @@ export default function ModulePage() {
       );
       const low = Object.entries(totals).filter(([, v]) => v > 0 && v <= 5);
       const zero = Object.entries(totals).filter(([, v]) => v <= 0);
-      if (zero.length) list.push({ type: "warn", text: `⚠️ 零库存：${zero.map(([k]) => k).join("、")}` });
-      if (low.length) list.push({ type: "warn", text: `📉 低库存（≤5）：${low.map(([k, v]) => `${k}(${v})`).join("、")}` });
+      if (zero.length) list.push({ type: "warn", text: `零库存：${zero.map(([k]) => k).join("、")}` });
+      if (low.length) list.push({ type: "warn", text: `低库存（≤5）：${low.map(([k, v]) => `${k}(${v})`).join("、")}` });
       const highScrap = Object.entries(flow)
         .filter(([, f]) => f.in > 0 && f.scrap / f.in >= 0.1)
         .map(([k, f]) => `${k}(${Math.round((f.scrap / f.in) * 100)}%)`);
-      if (highScrap.length) list.push({ type: "warn", text: `🗑️ 报废率偏高（≥10%）：${highScrap.join("、")}` });
+      if (highScrap.length) list.push({ type: "warn", text: `报废率偏高（≥10%）：${highScrap.join("、")}` });
     }
     if (moduleId === "group-booking") {
       const today = shopToday();
       const upcoming = rows.filter((r) => r.date && r.date >= today && r.date <= addDays(today, 3));
-      if (upcoming.length) list.push({ type: "info", text: `📅 近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
+      if (upcoming.length) list.push({ type: "info", text: `近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
     }
     if (moduleId === "equipment") {
       // 紧急排在前面，同一优先级内维持原有（最新在前）顺序
@@ -811,8 +811,8 @@ export default function ModulePage() {
         const urgentCount = open.filter((r) => r.priority === "紧急").length;
         list.push({
           type: "warn",
-          text: `🔧 ${open.length} 个设备问题待处理${urgentCount ? `（${urgentCount} 个紧急）` : ""}：${open
-            .map((r) => `${r.priority === "紧急" ? "⚠️" : ""}${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`)
+          text: `${open.length} 个设备问题待处理${urgentCount ? `（${urgentCount} 个紧急）` : ""}：${open
+            .map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`)
             .join("、")}`,
         });
       }
@@ -826,7 +826,7 @@ export default function ModulePage() {
         const overdue = due.filter((r) => r.nextService < today);
         list.push({
           type: "warn",
-          text: `🛠️ ${due.length} 台设备保养到期${overdue.length ? `（${overdue.length} 台已过期）` : ""}：${due
+          text: `${due.length} 台设备保养到期${overdue.length ? `（${overdue.length} 台已过期）` : ""}：${due
             .map((r) => `${r.equipment || "设备"}(${r.nextService})`)
             .join("、")}`,
         });
@@ -834,11 +834,11 @@ export default function ModulePage() {
     }
     if (moduleId === "reviews") {
       const unreplied = rows.filter((r) => r.replied !== "是" && parseFloat(r.rating) <= 3);
-      if (unreplied.length) list.push({ type: "warn", text: `💬 ${unreplied.length} 条低分评价未回复` });
+      if (unreplied.length) list.push({ type: "warn", text: `${unreplied.length} 条低分评价未回复` });
     }
     if (moduleId === "social") {
       const drafts = rows.filter((r) => r.status === "草稿" || r.status === "待发");
-      if (drafts.length) list.push({ type: "info", text: `📣 ${drafts.length} 条内容待发布` });
+      if (drafts.length) list.push({ type: "info", text: `${drafts.length} 条内容待发布` });
     }
     if (moduleId === "members") {
       // 近7天（含今天）生日的会员，按 月-日 比对（忽略年份）
@@ -851,7 +851,7 @@ export default function ModulePage() {
       if (bday.length) {
         list.push({
           type: "info",
-          text: `🎂 近7天 ${bday.length} 位会员生日：${bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")}`,
+          text: `近7天 ${bday.length} 位会员生日：${bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")}`,
         });
       }
     }
@@ -861,12 +861,12 @@ export default function ModulePage() {
       if (soldOut.length) {
         list.push({
           type: "warn",
-          text: `🔥 卖断 ${soldOut.length} 次：${Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")}（可能少备了）`,
+          text: `卖断 ${soldOut.length} 次：${Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")}（可能少备了）`,
         });
       }
       // 浪费提醒：剩余/报废合计
       const waste = rows.reduce((a, r) => a + (parseFloat(r.leftover) || 0), 0);
-      if (waste > 0) list.push({ type: "info", text: `♻️ 累计剩余/报废 ${Math.round(waste)} 份` });
+      if (waste > 0) list.push({ type: "info", text: `累计剩余/报废 ${Math.round(waste)} 份` });
 
       // 明日备货建议 = round(近7天该菜日均售出 × 1.1)，多备10%防卖断
       const cutoffStr = addDays(shopToday(), -7);
@@ -880,7 +880,7 @@ export default function ModulePage() {
       const suggest = Object.entries(byDish)
         .filter(([, g]) => g.days.size > 0)
         .map(([dish, g]) => `${dish} ${Math.round((g.sold / g.days.size) * 1.1)}份`);
-      if (suggest.length) list.push({ type: "info", text: `📋 明日备货建议（近7天均销×1.1）：${suggest.join("、")}` });
+      if (suggest.length) list.push({ type: "info", text: `明日备货建议（近7天均销×1.1）：${suggest.join("、")}` });
     }
     return list;
   }, [rows, moduleId]);
@@ -988,8 +988,7 @@ export default function ModulePage() {
     return (
       <main className="grid min-h-[60vh] place-items-center px-6 text-center">
         <div>
-          <div className="text-3xl">🔒</div>
-          <p className="mt-2 text-sm text-ink-soft">你没有这个模块的访问权限，请联系店主。</p>
+          <p className="text-sm text-ink-soft">你没有这个模块的访问权限，请联系店主。</p>
           <Link href={`/${slug}`} className="btn-primary mt-4 inline-block">← 返回总览</Link>
         </div>
       </main>
@@ -1120,7 +1119,7 @@ export default function ModulePage() {
       <header className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-ink">
-            {mod.icon} {mod.label.zh}
+            {mod.label.zh}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-ink-soft">{mod.pain.zh}</p>
         </div>
@@ -2008,7 +2007,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       <div className="space-y-1.5">
         {due.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
-            {r.priority === "紧急" && <span className="text-red-600" title="紧急">⚠️</span>}
+            {r.priority === "紧急" && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-700">紧急</span>}
             <span className="font-medium text-ink">{r.equipment || "设备"}</span>
             {r.issue && <span className="text-ink-soft">{r.issue}</span>}
             <span className={`ml-auto text-xs font-medium tabular-nums ${r.overdue ? "text-red-600" : "text-ink-faint"}`}>
@@ -2196,7 +2195,7 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
       <div className="mb-3 text-sm font-semibold text-ink">销量排行</div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-700">⭐ 最受欢迎</div>
+          <div className="mb-1.5 text-xs font-semibold text-emerald-700">最受欢迎</div>
           {top.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
               <span>{d.dish}</span>
@@ -2205,7 +2204,7 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
           ))}
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-700">🐢 销量最低</div>
+          <div className="mb-1.5 text-xs font-semibold text-amber-700">销量最低</div>
           {bottom.length ? bottom.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-amber-900">
               <span>{d.dish}</span>

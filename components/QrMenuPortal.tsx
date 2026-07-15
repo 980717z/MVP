@@ -128,7 +128,7 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
 
       <header className="mt-3 mb-5">
-        <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
+        <h1 className="text-2xl font-bold text-ink">{mod.label.zh}</h1>
         <p className="mt-1 max-w-xl text-sm text-ink-soft">{mod.pain.zh}</p>
       </header>
 
@@ -138,19 +138,19 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
           className={`rounded-md px-4 py-1.5 ${mode === "tables" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
           onClick={() => setMode("tables")}
         >
-          🪑 每桌一码（堂食）
+          每桌一码（堂食）
         </button>
         <button
           className={`rounded-md px-4 py-1.5 ${mode === "togo" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
           onClick={() => setMode("togo")}
         >
-          🛵 外卖 / 自取码
+          外卖 / 自取码
         </button>
         <button
           className={`rounded-md px-4 py-1.5 ${mode === "single" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
           onClick={() => setMode("single")}
         >
-          🏪 整店一码
+          整店一码
         </button>
       </div>
 
@@ -182,7 +182,7 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
             <div className="card p-5">
               <div className="text-sm font-semibold text-ink">这张菜单从哪来？</div>
               <p className="mt-2 text-sm text-ink-soft">
-                实时读取「🍽️ 菜单设置」里的菜品 —— 当前共 <b className="text-ink">{count ?? "…"}</b> 道。
+                实时读取「菜单设置」里的菜品 —— 当前共 <b className="text-ink">{count ?? "…"}</b> 道。
                 改名 / 改价 / 换图，扫码页立即同步，无需重印。
               </p>
               <Link href={`/${slug}/m/menu-generator`} className="mt-3 inline-block text-sm text-brand hover:underline">去编辑菜单 →</Link>
@@ -196,7 +196,6 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
           {/* permanent-code notice — important before ordering custom signs */}
           <div className="mb-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
             <div className="flex items-start gap-2">
-              <span className="text-lg leading-none">📌</span>
               <div className="text-sm text-amber-900">
                 <div className="font-bold">这些二维码是永久固定的，做牌子放心用</div>
                 <p className="mt-1 leading-relaxed">
@@ -210,12 +209,12 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {lockedAt ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
-                      🔒 已锁定 —— 网址与桌号受数据库保护（可新增桌号；解锁需在 Supabase 操作）
+                      已锁定 —— 网址与桌号受数据库保护（可新增桌号；解锁需在 Supabase 操作）
                     </span>
                   ) : (
                     <>
                       <button onClick={lockNow} disabled={locking} className="rounded-full bg-amber-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50">
-                        {locking ? "锁定中…" : "🔒 牌子已印好，锁定保护"}
+                        {locking ? "锁定中…" : "牌子已印好，锁定保护"}
                       </button>
                       <span className="text-xs text-amber-800/80">锁定后上面两条由数据库强制执行，不再只靠自觉</span>
                     </>
@@ -249,9 +248,9 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3 print:hidden">
             <button onClick={downloadAll} disabled={zipping} className="btn-primary disabled:opacity-60">
-              {zipping ? "生成中…" : "⬇️ 一键下载全部二维码（高清 ZIP）"}
+              {zipping ? "生成中…" : "一键下载全部二维码（高清 ZIP）"}
             </button>
-            <button onClick={() => window.print()} className="btn-ghost border border-slate-300">🖨️ 打印整页</button>
+            <button onClick={() => window.print()} className="btn-ghost border border-slate-300">打印整页</button>
             <p className="w-full text-xs text-ink-faint sm:w-auto">
               下载的是高清带桌号的 PNG（每张 1024px）+ 一份网址对照表，打包成 ZIP，直接发给做牌子的商家即可。桌号列表可在数据库 tenants.tables 修改。
             </p>

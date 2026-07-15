@@ -170,7 +170,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     let on = false;
     const flip = setInterval(() => {
       on = !on;
-      document.title = on ? `🔔 ${unread} 新订单` : baseTitle.current;
+      document.title = on ? `${unread} 新订单` : baseTitle.current;
     }, 1000);
     return () => {
       clearInterval(flip);
@@ -281,25 +281,25 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
       <header className="mt-3 mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
+          <h1 className="text-2xl font-bold text-ink">{mod.label.zh}</h1>
           <p className="mt-1 text-sm text-ink-soft">{mod.pain.zh}</p>
         </div>
         <div className="flex items-center gap-3">
-          {unread > 0 && <span className="pill bg-red-100 text-red-700">🔔 {unread} 个新订单</span>}
+          {unread > 0 && <span className="pill bg-red-100 text-red-700">{unread} 个新订单</span>}
           <span className="pill bg-amber-100 text-amber-700">{active.length} 单待处理</span>
           {!soundOn && (
             <button onClick={enableSound} className="btn-ghost border border-slate-300 text-sm" title="新订单提示音">
-              🔔 开启提示音
+              开启提示音
             </button>
           )}
-          <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title="看看小票长什么样">🖨️ 出单样张</button>
+          <button onClick={() => setPreview(SAMPLE_ORDER)} className="btn-ghost border border-slate-300 text-sm" title="看看小票长什么样">出单样张</button>
           <button onClick={refresh} className="btn-ghost border border-slate-300 text-sm">刷新</button>
         </div>
       </header>
 
       {orders.length === 0 ? (
         <div className="card p-10 text-center text-sm text-ink-faint">
-          还没有订单。顾客通过「📱 二维码菜单」下单后，会实时出现在这里。
+          还没有订单。顾客通过「二维码菜单」下单后，会实时出现在这里。
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
@@ -311,10 +311,10 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                   {o.table_no && <span className="text-sm font-medium text-ink">桌号 {displayTable(o.table_no)}</span>}
                   {o.phone && o.phone !== "N/A" ? (
                     <a href={`tel:${o.phone.replace(/[^0-9+]/g, "")}`} className="text-sm text-brand hover:underline">
-                      📞 {fmtPhone(o.phone)}
+                      {fmtPhone(o.phone)}
                     </a>
                   ) : o.phone === "N/A" ? (
-                    <span className="text-sm text-slate-400">📞 N/A</span>
+                    <span className="text-sm text-slate-400">N/A</span>
                   ) : null}
                 </div>
                 <span className="text-xs text-ink-faint">{fmtTime(o.created_at)}</span>
@@ -356,7 +356,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               <div className="mt-3 flex items-center justify-between">
                 <span className="font-semibold text-ink">合计 {fmtPrice(o.total)}</span>
                 <div className="flex gap-2">
-                  <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">🖨️ 出单预览</button>
+                  <button onClick={() => setPreview(o)} className="rounded-full bg-brand-wash px-3 py-1.5 text-xs font-semibold text-brand-ink">出单预览</button>
                   <button
                     onClick={async () => { await reprintOrder(o.id); load(); }}
                     className="text-xs text-ink-faint hover:text-brand-ink"

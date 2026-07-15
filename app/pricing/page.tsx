@@ -28,7 +28,6 @@ const T = {
   },
   points: [
     {
-      icon: "🍱",
       title: { zh: "按需拼装", en: "Built from modules", fr: "Assemblé sur mesure" },
       body: {
         zh: "只为你用得上的模块付费 —— 一家奶茶店和一家海鲜酒楼，不该是同一个价。",
@@ -37,7 +36,6 @@ const T = {
       },
     },
     {
-      icon: "🤝",
       title: { zh: "白手套上线", en: "White-glove setup", fr: "Mise en place accompagnée" },
       body: {
         zh: "我们帮你录菜单、印桌码、接打印机，当天就能用。",
@@ -46,7 +44,6 @@ const T = {
       },
     },
     {
-      icon: "🔒",
       title: { zh: "零抽成承诺", en: "Commission-free promise", fr: "Promesse sans commission" },
       body: {
         zh: "我们永远不按订单抽成 —— 每一单收入 100% 归你。",
@@ -108,7 +105,7 @@ export default function Pricing() {
       {/* nav */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-base font-extrabold text-white">B</span>
           <span className="text-lg font-bold tracking-tight text-slate-900">BentoOS</span>
         </Link>
         <div className="flex items-center gap-3">
@@ -152,8 +149,7 @@ export default function Pricing() {
       <section className="mx-auto mt-14 grid max-w-5xl gap-5 px-6 sm:grid-cols-3">
         {T.points.map((p) => (
           <div key={p.title.en} className="rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm backdrop-blur">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-xl">{p.icon}</span>
-            <div className="mt-3 font-semibold text-slate-900">{t(p.title)}</div>
+            <div className="font-semibold text-slate-900">{t(p.title)}</div>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{t(p.body)}</p>
           </div>
         ))}
@@ -187,7 +183,7 @@ export default function Pricing() {
       {/* footer */}
       <footer className="border-t border-slate-100">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
-          <span>🍱 BentoOS · {t(T.footer)}</span>
+          <span>BentoOS · {t(T.footer)}</span>
           <div className="flex items-center gap-4">
             <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
             <span>© 2026 BentoOS</span>

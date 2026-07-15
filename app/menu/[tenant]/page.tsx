@@ -19,10 +19,10 @@ const ORDER = [
 type Lang = "zh" | "en";
 
 const T = {
-  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…",
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理", another: "再点一单", market: "时价", submitting: "提交中…",
     togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付",
     chooseMode: "怎么取餐？", pickupHint: "到店自取 · 无额外费用", deliveryHint: "满 $30 起送 · 10% 配送小费", addrTitle: "配送地址", postalHint: "先填邮编，马上告诉你能不能送", canDeliver: "可以配送到", noDeliver: "暂不配送到", switchPickup: "改为自取 →", zoneList: "查看全部配送范围", city: "Toronto, ON", deliverTo: "配送到", addrMissing: "请填写完整配送地址" },
-  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…",
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it", another: "Order again", market: "Market", submitting: "Submitting…",
     togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now",
     chooseMode: "How would you like your order?", pickupHint: "Pick up at the restaurant · no fees", deliveryHint: "$30 minimum · 10% delivery tip", addrTitle: "Delivery address", postalHint: "Postal code first — we'll check your area instantly", canDeliver: "We deliver to", noDeliver: "We don't deliver to", switchPickup: "Switch to pickup →", zoneList: "See all delivery areas", city: "Toronto, ON", deliverTo: "Deliver to", addrMissing: "Please complete the delivery address" },
 };
@@ -509,12 +509,12 @@ export default function PublicMenu() {
 
       {lockedTable && !togoMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          🪑 {lang === "zh" ? `您正在为 ${displayTable(lockedTable)} 号桌点餐` : `Ordering for Table ${displayTable(lockedTable)}`}
+          {lang === "zh" ? `您正在为 ${displayTable(lockedTable)} 号桌点餐` : `Ordering for Table ${displayTable(lockedTable)}`}
         </div>
       )}
       {togoMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          🛵 {t("togoBadge")} · {t("payFirst")}
+          {t("togoBadge")} · {t("payFirst")}
         </div>
       )}
 
@@ -534,7 +534,7 @@ export default function PublicMenu() {
                   !isDelivery ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"
                 }`}
               >
-                <div className={`text-[15px] font-semibold ${!isDelivery ? "text-jade" : "text-ink"}`}>🛍️ {t("pickup")}</div>
+                <div className={`text-[15px] font-semibold ${!isDelivery ? "text-jade" : "text-ink"}`}>{t("pickup")}</div>
                 <div className="mt-0.5 text-[11px] leading-snug text-ink-faint">{t("pickupHint")}</div>
               </button>
               <button
@@ -543,7 +543,7 @@ export default function PublicMenu() {
                   isDelivery ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"
                 }`}
               >
-                <div className={`text-[15px] font-semibold ${isDelivery ? "text-jade" : "text-ink"}`}>🛵 {t("delivery")}</div>
+                <div className={`text-[15px] font-semibold ${isDelivery ? "text-jade" : "text-ink"}`}>{t("delivery")}</div>
                 <div className="mt-0.5 text-[11px] leading-snug text-ink-faint">{t("deliveryHint")}</div>
               </button>
             </div>
@@ -576,13 +576,12 @@ export default function PublicMenu() {
         {/* search bar — filters across all categories */}
         {dishes.length > 0 && (
           <div className="relative mb-5">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("search")}
               type="search"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none focus:border-jade focus:ring-2 focus:ring-jade/20"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-9 text-sm outline-none focus:border-jade focus:ring-2 focus:ring-jade/20"
             />
             {query && (
               <button
@@ -792,7 +791,7 @@ export default function PublicMenu() {
                 {hasHotpot && hotpotSides.length > 0 && (
                   <div className="mt-4 rounded-xl bg-amber-50 p-3">
                     <div className="mb-2 text-sm font-medium text-amber-800">
-                      🍲 {lang === "zh" ? "点了火锅，加点配菜？" : "Hot pot — add some sides?"}
+                      {lang === "zh" ? "点了火锅，加点配菜？" : "Hot pot — add some sides?"}
                     </div>
                     <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       {hotpotSides.map((d) => {
@@ -831,13 +830,13 @@ export default function PublicMenu() {
                         onClick={() => setTogoType("togo")}
                         className={`flex-1 rounded-md py-2 font-medium ${togoType === "togo" ? "bg-jade text-white" : "text-ink-soft"}`}
                       >
-                        🛍️ {t("pickup")}
+                        {t("pickup")}
                       </button>
                       <button
                         onClick={() => setTogoType("delivery")}
                         className={`flex-1 rounded-md py-2 font-medium ${togoType === "delivery" ? "bg-jade text-white" : "text-ink-soft"}`}
                       >
-                        🛵 {t("delivery")}
+                        {t("delivery")}
                       </button>
                     </div>
                     {isDelivery && (
@@ -853,7 +852,7 @@ export default function PublicMenu() {
                 <div className={`grid gap-2 ${togoMode ? "mt-2" : "mt-4"}`}>
                   {!togoMode && (lockedTable ? (
                     <div className="rounded-lg border border-jade/30 bg-jade-wash px-3 py-2 text-sm font-medium text-jade">
-                      🪑 {displayTable(lockedTable)} 号桌
+                      {displayTable(lockedTable)} 号桌
                     </div>
                   ) : (
                     <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />
@@ -923,7 +922,7 @@ export default function PublicMenu() {
                     </div>
                   )}
                   {togoMode && !PAYMENTS_LIVE && (
-                    <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">⏳ {t("paySoon")}</p>
+                    <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">{t("paySoon")}</p>
                   )}
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
@@ -966,8 +965,7 @@ export default function PublicMenu() {
       {placed && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 px-6" onClick={() => { setPlaced(false); setOpen(false); }}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="text-4xl">✅</div>
-            <p className="mt-3 font-medium text-ink">{t("placed")}</p>
+            <p className="font-medium text-ink">{t("placed")}</p>
             <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>
@@ -980,7 +978,7 @@ export default function PublicMenu() {
           className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] text-ink-faint transition hover:bg-white hover:text-jade"
           title="BentoOS — 小商家的轻量后台"
         >
-          🍱 Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
+          Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
         </a>
       </footer>
     </main>

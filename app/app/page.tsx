@@ -17,9 +17,9 @@ function slugify(s: string): string {
 // 店型 → 预选模块（templates/*.json 的浅层镜像；完整 provision 走
 // scripts/provision-sql.ts，向导深化见 TODOS「建店向导打磨」）
 const SHOP_TYPES = [
-  { id: "chinese-restaurant", icon: "🍲", label: "中餐馆", hint: "堂食桌码 + 外卖", modules: ["menu-generator", "qr-menu", "online-orders"] },
-  { id: "counter-service", icon: "🥡", label: "自取小店", hint: "无桌码 · 重会员", modules: ["menu-generator", "qr-menu", "online-orders", "members"] },
-  { id: "custom", icon: "⚙️", label: "自定义", hint: "创建后再选模块", modules: [] as string[] },
+  { id: "chinese-restaurant", label: "中餐馆", hint: "堂食桌码 + 外卖", modules: ["menu-generator", "qr-menu", "online-orders"] },
+  { id: "counter-service", label: "自取小店", hint: "无桌码 · 重会员", modules: ["menu-generator", "qr-menu", "online-orders", "members"] },
+  { id: "custom", label: "自定义", hint: "创建后再选模块", modules: [] as string[] },
 ];
 
 export default function AppGate() {
@@ -91,7 +91,7 @@ export default function AppGate() {
     <main className="grid min-h-screen place-items-center px-6">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-center gap-2">
-          <span className="text-2xl">🍱</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-base font-extrabold text-white">B</span>
           <span className="text-lg font-bold tracking-tight">BentoOS</span>
         </div>
 
@@ -125,7 +125,7 @@ export default function AppGate() {
               placeholder="fulai"
             />
           </div>
-          <p className="mt-1 text-xs text-ink-faint">只能用字母、数字（建议用拼音或英文）。⚠️ 做实体牌子后网址不可更改。</p>
+          <p className="mt-1 text-xs text-ink-faint">只能用字母、数字（建议用拼音或英文）。做实体牌子后网址不可更改。</p>
 
           <label className="label mt-4">店铺类型</label>
           <div className="grid grid-cols-3 gap-2">
@@ -138,8 +138,7 @@ export default function AppGate() {
                   shopType === t.id ? "border-brand bg-brand-wash" : "border-slate-200 bg-white hover:border-slate-300"
                 }`}
               >
-                <div className="text-lg">{t.icon}</div>
-                <div className={`mt-0.5 text-xs font-semibold ${shopType === t.id ? "text-brand" : "text-ink"}`}>{t.label}</div>
+                <div className={`text-xs font-semibold ${shopType === t.id ? "text-brand" : "text-ink"}`}>{t.label}</div>
                 <div className="mt-0.5 text-[10px] leading-tight text-ink-faint">{t.hint}</div>
               </button>
             ))}

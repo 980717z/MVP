@@ -113,7 +113,7 @@ export default function DeliveryZoneEditor({ slug }: { slug: string }) {
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <div className="text-sm font-semibold text-ink">🗺️ 配送范围</div>
+          <div className="text-sm font-semibold text-ink">配送范围</div>
           <p className="mt-0.5 text-xs text-ink-soft">
             点击地图上的邮编分区（前三位 FSA）来开启/关闭配送。顾客填地址时会按邮编自动校验。
           </p>

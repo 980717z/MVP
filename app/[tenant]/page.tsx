@@ -44,8 +44,7 @@ export default function Dashboard() {
     return (
       <main className="grid min-h-[70vh] place-items-center px-6">
         <div className="card max-w-md p-8 text-center">
-          <div className="text-4xl">🛠️</div>
-          <h1 className="mt-3 text-xl font-bold text-ink">
+          <h1 className="text-xl font-bold text-ink">
             {tl({ zh: `${tenant.name.zh} 已创建`, en: `${tenant.name.en} is ready` })}
           </h1>
           <p className="mt-2 text-sm text-ink-soft">
@@ -108,8 +107,7 @@ export default function Dashboard() {
       {!hasData ? (
         /* first run: real data hasn't arrived yet — onboard, don't show a wall of zeros */
         <section className="mt-6 rounded-2xl border border-dashed border-[#D9E5DF] bg-brand-wash/40 p-8 text-center">
-          <div className="text-3xl">🌱</div>
-          <div className="mt-2 text-base font-bold text-ink">{tl({ zh: "开张准备就绪", en: "You're all set up" })}</div>
+          <div className="text-base font-bold text-ink">{tl({ zh: "开张准备就绪", en: "You're all set up" })}</div>
           <p className="mx-auto mt-1 max-w-md text-sm text-ink-soft">
             {tl({
               zh: "录入第一笔数据，或让顾客扫码下单 —— 营收、订单、库存会实时出现在这里。",
@@ -178,8 +176,7 @@ export default function Dashboard() {
               </div>
               {activeOrders.length === 0 ? (
                 <div className="px-6 py-9 text-center">
-                  <div className="text-2xl">🧾</div>
-                  <div className="mt-2 text-sm font-semibold text-ink">{tl({ zh: "暂无待处理订单", en: "No orders waiting" })}</div>
+                  <div className="text-sm font-semibold text-ink">{tl({ zh: "暂无待处理订单", en: "No orders waiting" })}</div>
                   <p className="mx-auto mt-1 max-w-xs text-xs text-ink-soft">
                     {tl({ zh: "顾客扫二维码下单后会实时出现在这里。", en: "Orders appear here the moment a customer scans & orders." })}
                   </p>
@@ -223,7 +220,6 @@ export default function Dashboard() {
                     : `${rows.length} ${tl({ zh: "条", en: "" })}`.trim();
                   return (
                     <Link key={id} href={`/${slug}/m/${id}`} className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-[#F3F2EE]">
-                      <span className="grid h-9 w-9 flex-none place-items-center rounded-[9px] bg-brand-wash text-base">{m.icon}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-semibold text-ink">{tl(m.label)}</span>
                         <span className="block truncate text-[11px] text-ink-faint">{tl(m.pain)}</span>

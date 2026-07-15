@@ -16,7 +16,7 @@ export function DemoSidebar() {
   return (
     <aside className="hidden w-52 shrink-0 border-r border-slate-100 bg-slate-50/40 p-3 lg:block">
       <div className="mb-4 flex items-center gap-2 px-1">
-        <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-sm shadow-sm">🍱</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-brand text-sm font-extrabold text-white">B</span>
         <span className="font-bold tracking-tight text-slate-900">BentoOS</span>
       </div>
       <nav className="space-y-0.5">
@@ -28,7 +28,7 @@ export function DemoSidebar() {
               isActive(n.href) ? "bg-emerald-50 font-medium text-emerald-700" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            <span className="text-base">{n.icon}</span>
+            {n.icon && <span className="text-base">{n.icon}</span>}
             {t(n.label)}
           </Link>
         ))}

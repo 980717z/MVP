@@ -5,14 +5,14 @@ import { useLang, type Dict } from "@/app/i18n";
 
 const NAV: { id: string; icon: string; label: Dict }[] = [
   { id: "overview", icon: "▦", label: { zh: "概览", en: "Overview", fr: "Aperçu" } },
-  { id: "orders", icon: "🧾", label: { zh: "订单", en: "Orders", fr: "Commandes" } },
-  { id: "inventory", icon: "📦", label: { zh: "库存", en: "Inventory", fr: "Inventaire" } },
-  { id: "suppliers", icon: "🚚", label: { zh: "供应商", en: "Suppliers", fr: "Fournisseurs" } },
-  { id: "shifts", icon: "🕒", label: { zh: "排班与薪酬", en: "Shift & Pay", fr: "Horaires et paie" } },
-  { id: "reconcile", icon: "💳", label: { zh: "对账", en: "Reconcile", fr: "Rapprochement" } },
-  { id: "members", icon: "👥", label: { zh: "会员", en: "Members", fr: "Membres" } },
-  { id: "reports", icon: "📈", label: { zh: "报表", en: "Reports", fr: "Rapports" } },
-  { id: "settings", icon: "⚙️", label: { zh: "设置", en: "Settings", fr: "Paramètres" } },
+  { id: "orders", icon: "", label: { zh: "订单", en: "Orders", fr: "Commandes" } },
+  { id: "inventory", icon: "", label: { zh: "库存", en: "Inventory", fr: "Inventaire" } },
+  { id: "suppliers", icon: "", label: { zh: "供应商", en: "Suppliers", fr: "Fournisseurs" } },
+  { id: "shifts", icon: "", label: { zh: "排班与薪酬", en: "Shift & Pay", fr: "Horaires et paie" } },
+  { id: "reconcile", icon: "", label: { zh: "对账", en: "Reconcile", fr: "Rapprochement" } },
+  { id: "members", icon: "", label: { zh: "会员", en: "Members", fr: "Membres" } },
+  { id: "reports", icon: "", label: { zh: "报表", en: "Reports", fr: "Rapports" } },
+  { id: "settings", icon: "", label: { zh: "设置", en: "Settings", fr: "Paramètres" } },
 ];
 
 const TAG: Record<string, string> = {
@@ -360,7 +360,7 @@ export default function HeroDemo() {
         {/* sidebar — clickable tabs */}
         <aside className="hidden w-28 shrink-0 border-r border-slate-100 bg-slate-50/40 p-2 sm:block">
           <div className="mb-3 flex items-center gap-1.5 px-1">
-            <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-emerald-500 to-sky-500 text-[10px]">🍱</span>
+            <span className="grid h-5 w-5 place-items-center rounded-md bg-brand text-[10px] font-extrabold text-white">B</span>
             <span className="text-[11px] font-bold text-slate-800">BentoOS</span>
           </div>
           <nav className="space-y-0.5">
@@ -372,7 +372,7 @@ export default function HeroDemo() {
                   n.id === tab ? "bg-emerald-50 font-medium text-emerald-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 }`}
               >
-                <span>{n.icon}</span>
+                {n.icon && <span>{n.icon}</span>}
                 <span>{t(n.label)}</span>
               </button>
             ))}

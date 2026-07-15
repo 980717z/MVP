@@ -90,10 +90,10 @@ const T = {
   trust: {
     title: { zh: "为什么可以放心", en: "Why you can trust it", fr: "Pourquoi s'y fier" },
     items: [
-      { icon: "🇨🇦", t: { zh: "多伦多本地打造", en: "Built in Toronto", fr: "Conçu à Toronto" }, b: { zh: "我们就在这座城市，和你用同样的税率、同样的打印机。", en: "We're in your city — same tax rules, same printers, same streets.", fr: "Nous sommes dans votre ville — mêmes taxes, mêmes imprimantes." } },
-      { icon: "📌", t: { zh: "二维码永久有效", en: "QR codes never break", fr: "Codes QR permanents" }, b: { zh: "桌码做成牌子就不会失效——这是我们写进产品的承诺。", en: "Print your table signs once; the links never change. It's a product guarantee.", fr: "Imprimez vos codes une fois; les liens ne changent jamais." } },
-      { icon: "🔒", t: { zh: "数据只属于你", en: "Your data is yours", fr: "Vos données à vous" }, b: { zh: "行级权限隔离，随时可导出 CSV 带走。", en: "Row-level isolation, CSV export anytime — no lock-in.", fr: "Isolation par ligne, export CSV en tout temps." } },
-      { icon: "🤝", t: { zh: "白手套上门", en: "White-glove setup", fr: "Installation clé en main" }, b: { zh: "菜单录入、打印机、桌码，我们帮你弄好再走。", en: "We enter your menu, set the printer, mount the codes — then hand you the keys.", fr: "Menu, imprimante, codes — nous installons tout." } },
+      { t: { zh: "多伦多本地打造", en: "Built in Toronto", fr: "Conçu à Toronto" }, b: { zh: "我们就在这座城市，和你用同样的税率、同样的打印机。", en: "We're in your city — same tax rules, same printers, same streets.", fr: "Nous sommes dans votre ville — mêmes taxes, mêmes imprimantes." } },
+      { t: { zh: "二维码永久有效", en: "QR codes never break", fr: "Codes QR permanents" }, b: { zh: "桌码做成牌子就不会失效——这是我们写进产品的承诺。", en: "Print your table signs once; the links never change. It's a product guarantee.", fr: "Imprimez vos codes une fois; les liens ne changent jamais." } },
+      { t: { zh: "数据只属于你", en: "Your data is yours", fr: "Vos données à vous" }, b: { zh: "行级权限隔离，随时可导出 CSV 带走。", en: "Row-level isolation, CSV export anytime — no lock-in.", fr: "Isolation par ligne, export CSV en tout temps." } },
+      { t: { zh: "白手套上门", en: "White-glove setup", fr: "Installation clé en main" }, b: { zh: "菜单录入、打印机、桌码，我们帮你弄好再走。", en: "We enter your menu, set the printer, mount the codes — then hand you the keys.", fr: "Menu, imprimante, codes — nous installons tout." } },
     ],
   },
   ctaBand: {
@@ -248,7 +248,7 @@ export default function Landing() {
       {/* nav — /pricing shows the personalized-quote story, no dollar amounts */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 text-base shadow-sm">🍱</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-base font-extrabold text-white">B</span>
           <span className="text-lg font-extrabold tracking-tight">BentoOS</span>
         </div>
         <div className="flex items-center gap-3">
@@ -317,7 +317,7 @@ export default function Landing() {
           <div className="absolute -right-4 -top-9 z-20 hidden w-44 rotate-3 overflow-hidden rounded-xl border-4 border-white shadow-2xl shadow-slate-900/20 sm:block">
             <img src="/toronto.jpg" alt="Toronto · CN Tower" className="aspect-[4/3] w-full object-cover" />
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/60 to-transparent px-2 py-1">
-              <span className="text-[10px] font-medium text-white/90">📍 Toronto</span>
+              <span className="text-[10px] font-medium text-white/90">Toronto</span>
             </div>
           </div>
           <Reveal delay={100} className="relative z-10">
@@ -365,8 +365,7 @@ export default function Landing() {
           <Reveal className="col-span-2 row-span-2">
             <div className="cell flex h-full flex-col justify-between rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-white sm:p-7">
               <div>
-                <div className="text-3xl">📱</div>
-                <div className="mt-3 text-xl font-extrabold sm:text-2xl">{t(T.bento.qr.t)}</div>
+                <div className="text-xl font-extrabold sm:text-2xl">{t(T.bento.qr.t)}</div>
                 <p className="mt-2 max-w-sm text-sm text-emerald-50/90">{t(T.bento.qr.b)}</p>
               </div>
               {/* mini flow */}
@@ -389,8 +388,7 @@ export default function Landing() {
           {/* kitchen ticket */}
           <Reveal delay={60} className="row-span-2">
             <div className="cell flex h-full flex-col rounded-3xl border border-slate-100 bg-white p-5">
-              <div className="text-2xl">🖨️</div>
-              <div className="mt-2 font-extrabold">{t(T.bento.print.t)}</div>
+              <div className="font-extrabold">{t(T.bento.print.t)}</div>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">{t(T.bento.print.b)}</p>
               {/* mini ticket */}
               <div className="mt-4 flex-1 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 font-mono text-[10px] leading-relaxed text-slate-700">
@@ -400,7 +398,7 @@ export default function Landing() {
                 <div className="my-1 border-t border-dashed border-slate-300" />
                 <div className="text-[13px] font-bold">×2 游水青斑火锅</div>
                 <div className="text-[13px] font-bold">×1 走地鸡窝（半）</div>
-                <div className="mt-1 border border-slate-400 px-1 py-0.5 font-bold">⚠ 不要辣</div>
+                <div className="mt-1 border border-slate-400 px-1 py-0.5 font-bold">不要辣</div>
               </div>
             </div>
           </Reveal>
@@ -410,8 +408,7 @@ export default function Landing() {
             <div className="cell h-full rounded-3xl border border-slate-100 bg-white p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-2xl">🧾</div>
-                  <div className="mt-2 font-extrabold">{t(T.bento.tax.t)}</div>
+                  <div className="font-extrabold">{t(T.bento.tax.t)}</div>
                   <p className="mt-1 text-xs text-slate-500">{t(T.bento.tax.b)}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1 text-[10px] font-bold">
@@ -426,7 +423,6 @@ export default function Landing() {
           <Reveal delay={160}>
             <div className="cell h-full rounded-3xl border border-amber-200 bg-amber-50/60 p-5">
               <div className="flex items-center gap-2">
-                <span className="text-2xl">💰</span>
                 <span className="rounded border border-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">时价</span>
               </div>
               <div className="mt-2 font-extrabold">{t(T.bento.market.t)}</div>
@@ -437,8 +433,7 @@ export default function Landing() {
           {/* sizes */}
           <Reveal delay={80}>
             <div className="cell h-full rounded-3xl border border-slate-100 bg-white p-5">
-              <div className="text-2xl">🍲</div>
-              <div className="mt-2 font-extrabold">{t(T.bento.sizes.t)}</div>
+              <div className="font-extrabold">{t(T.bento.sizes.t)}</div>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold">
                 {["全", "半", "位", "中", "特大"].map((s) => (
                   <span key={s} className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">{s}</span>
@@ -451,8 +446,7 @@ export default function Landing() {
           {/* staff */}
           <Reveal delay={120}>
             <div className="cell h-full rounded-3xl border border-slate-100 bg-white p-5">
-              <div className="text-2xl">👥</div>
-              <div className="mt-2 font-extrabold">{t(T.bento.staff.t)}</div>
+              <div className="font-extrabold">{t(T.bento.staff.t)}</div>
               <p className="mt-1 text-xs text-slate-500">{t(T.bento.staff.b)}</p>
             </div>
           </Reveal>
@@ -473,7 +467,6 @@ export default function Landing() {
           {/* data safety */}
           <Reveal delay={200} className="col-span-2 lg:col-span-2">
             <div className="cell flex h-full items-center gap-4 rounded-3xl border border-slate-100 bg-slate-900 p-5 text-white">
-              <div className="text-3xl">🔒</div>
               <div>
                 <div className="font-extrabold">{t(T.bento.safe.t)}</div>
                 <p className="mt-1 text-xs text-slate-300">{t(T.bento.safe.b)}</p>
@@ -492,8 +485,7 @@ export default function Landing() {
           {T.trust.items.map((item, i) => (
             <Reveal key={i} delay={i * 70}>
               <div className="cell h-full rounded-3xl border border-slate-100 bg-white/80 p-6 backdrop-blur">
-                <div className="text-2xl">{item.icon}</div>
-                <div className="mt-3 font-bold">{t(item.t)}</div>
+                <div className="font-bold">{t(item.t)}</div>
                 <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{t(item.b)}</p>
               </div>
             </Reveal>
@@ -522,7 +514,7 @@ export default function Landing() {
       {/* footer */}
       <footer className="border-t border-slate-100">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
-          <span>🍱 BentoOS · {t(T.footer)}</span>
+          <span>BentoOS · {t(T.footer)}</span>
           <div className="flex items-center gap-4">
             <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
             <span>© 2026 BentoOS</span>

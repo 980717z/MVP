@@ -122,7 +122,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "prep-signature",
     category: "kitchen",
-    icon: "🍲",
+    icon: "",
     ready: true,
     label: { zh: "招牌备货（气锅鸡等）", en: "Signature Prep" },
     pain: {
@@ -150,7 +150,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "qr-menu",
     category: "storefront",
-    icon: "📱",
+    icon: "",
     ready: true,
     portal: true,
     label: { zh: "二维码菜单", en: "QR Code Menu" },
@@ -169,7 +169,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "menu-generator",
     category: "kitchen",
-    icon: "🍽️",
+    icon: "",
     ready: true,
     portal: true,
     label: { zh: "菜单设置", en: "Menu Settings" },
@@ -186,7 +186,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "dish-margin",
     category: "kitchen",
-    icon: "📊",
+    icon: "",
     ready: true,
     label: { zh: "菜品销量", en: "Dish Sales" },
     pain: {
@@ -212,7 +212,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "stock-loss",
     category: "inventory",
-    icon: "📦",
+    icon: "",
     ready: true,
     label: { zh: "库存与损耗", en: "Stock & Loss" },
     pain: {
@@ -244,7 +244,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "purchasing",
     category: "inventory",
-    icon: "🚚",
+    icon: "",
     ready: true,
     label: { zh: "采购与供应商比价", en: "Purchasing & Suppliers" },
     pain: {
@@ -276,7 +276,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "online-orders",
     category: "orders",
-    icon: "🧾",
+    icon: "",
     ready: true,
     portal: true,
     label: { zh: "在线点餐订单", en: "Online Orders" },
@@ -293,7 +293,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "delivery-agg",
     category: "orders",
-    icon: "🛵",
+    icon: "",
     ready: true,
     label: { zh: "外卖平台订单汇总", en: "Delivery Platform Roll-up" },
     pain: {
@@ -321,7 +321,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "group-booking",
     category: "orders",
-    icon: "🎉",
+    icon: "",
     ready: true,
     label: { zh: "团餐 / 大桌预订与订金", en: "Group Bookings & Deposits" },
     pain: {
@@ -354,7 +354,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "sales",
     category: "finance",
-    icon: "🧾",
+    icon: "",
     ready: true,
     portal: true,
     label: { zh: "销售流水", en: "Sales" },
@@ -374,7 +374,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "daily-close",
     category: "finance",
-    icon: "💰",
+    icon: "",
     ready: true,
     label: { zh: "每日结账与收入", en: "Daily Close & Revenue" },
     pain: {
@@ -405,7 +405,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "scheduling",
     category: "staff",
-    icon: "👥",
+    icon: "",
     ready: true,
     label: { zh: "员工排班与工时", en: "Scheduling & Hours" },
     pain: {
@@ -441,7 +441,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "members",
     category: "marketing",
-    icon: "⭐",
+    icon: "",
     ready: true,
     label: { zh: "会员", en: "Members" },
     pain: {
@@ -469,7 +469,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "reviews",
     category: "marketing",
-    icon: "💬",
+    icon: "",
     ready: true,
     label: { zh: "改进意见", en: "Improvement Feedback" },
     pain: {
@@ -494,7 +494,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "social",
     category: "marketing",
-    icon: "📣",
+    icon: "",
     ready: true,
     label: { zh: "社交媒体与促销", en: "Social & Promotions" },
     pain: {
@@ -520,7 +520,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "food-safety",
     category: "compliance",
-    icon: "🧊",
+    icon: "",
     ready: true,
     portal: true,
     label: { zh: "食品安全与清洁记录", en: "Food Safety & Cleaning" },
@@ -546,7 +546,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: "equipment",
     category: "compliance",
-    icon: "🔧",
+    icon: "",
     ready: true,
     label: { zh: "设备维护", en: "Equipment Maintenance" },
     pain: {

@@ -12,11 +12,11 @@ import { useLang, type Dict } from "@/app/i18n";
 type Source = "cash" | "clover" | "qr" | "phone";
 type Range = "today" | "7" | "all";
 
-const SOURCES: { k: Source; label: Dict; emoji: string; cls: string }[] = [
-  { k: "cash", label: { zh: "现金", en: "Cash", fr: "Comptant" }, emoji: "💵", cls: "bg-amber-50 text-amber-700" },
-  { k: "clover", label: { zh: "Clover", en: "Clover", fr: "Clover" }, emoji: "💳", cls: "bg-violet-50 text-violet-700" },
-  { k: "qr", label: { zh: "扫码", en: "QR", fr: "QR" }, emoji: "📱", cls: "bg-brand-wash text-brand-ink" },
-  { k: "phone", label: { zh: "电话", en: "Phone", fr: "Tél." }, emoji: "📞", cls: "bg-sky-50 text-sky-700" },
+const SOURCES: { k: Source; label: Dict; cls: string }[] = [
+  { k: "cash", label: { zh: "现金", en: "Cash", fr: "Comptant" }, cls: "bg-amber-50 text-amber-700" },
+  { k: "clover", label: { zh: "Clover", en: "Clover", fr: "Clover" }, cls: "bg-violet-50 text-violet-700" },
+  { k: "qr", label: { zh: "扫码", en: "QR", fr: "QR" }, cls: "bg-brand-wash text-brand-ink" },
+  { k: "phone", label: { zh: "电话", en: "Phone", fr: "Tél." }, cls: "bg-sky-50 text-sky-700" },
 ];
 const SRC = Object.fromEntries(SOURCES.map((s) => [s.k, s]));
 
@@ -110,7 +110,7 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t({ zh: "总览", en: "Overview", fr: "Aperçu" })}</Link>
       <header className="mt-3 mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-extrabold tracking-tight text-ink">{mod.icon} {bi(mod.label)}</h1>
+          <h1 className="text-[22px] font-extrabold tracking-tight text-ink">{bi(mod.label)}</h1>
           <p className="mt-0.5 text-sm text-ink-soft">{bi(mod.pain)}</p>
         </div>
         <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
@@ -158,7 +158,7 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
                     source === s.k ? "border-brand bg-brand-wash text-brand-ink" : "border-[#EBEAE5] text-ink-soft hover:bg-[#F3F2EE]"
                   }`}
                 >
-                  {s.emoji} {t(s.label)}
+                  {t(s.label)}
                 </button>
               ))}
             </div>
@@ -206,7 +206,6 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
           <h2 className="border-b border-[#F3F2EE] px-4 py-3 text-[13px] font-bold text-ink">{t({ zh: "销售流水", en: "Sales ledger", fr: "Registre des ventes" })}</h2>
           {filtered.length === 0 ? (
             <div className="px-6 py-12 text-center">
-              <div className="text-2xl">🧾</div>
               <div className="mt-2 text-sm font-semibold text-ink">{t({ zh: "暂无销售记录", en: "No sales yet", fr: "Aucune vente" })}</div>
               <p className="mx-auto mt-1 max-w-xs text-xs text-ink-soft">
                 {t({ zh: "在左边记一笔，或完成一个扫码订单，就会自动出现在这里。", en: "Record one on the left, or complete a QR order — it lands here automatically.", fr: "Saisissez-en une, ou complétez une commande QR." })}
@@ -235,7 +234,7 @@ export default function SalesPortal({ slug, mod }: { slug: string; mod: ModuleDe
                       <tr key={r.id} className="border-b border-[#F3F2EE] last:border-0 hover:bg-[#FBFAF8]">
                         <td className="px-3 py-2.5 text-ink-faint">{(r.date as string) || (r.createdAt || "").slice(0, 10)}</td>
                         <td className="px-3 py-2.5 text-ink-faint">{(r.ts as string) || (r.createdAt || "").slice(11, 16)}</td>
-                        <td className="px-3 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${s.cls}`}>{s.emoji} {t(s.label)}</span></td>
+                        <td className="px-3 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${s.cls}`}>{t(s.label)}</span></td>
                         <td className="px-3 py-2.5 text-ink">{(r.desc as string) || <span className="text-slate-300">—</span>}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-soft">{money(num(r.subtotal))}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-faint">{money(num(r.gst))}</td>

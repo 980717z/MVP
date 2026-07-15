@@ -213,7 +213,7 @@ export default function Settings() {
                     }
                     className={`pill border ${on ? "border-brand bg-brand-wash text-brand" : "border-slate-300 text-ink-soft"}`}
                   >
-                    {m.icon} {m.label.zh}
+                    {m.label.zh}
                   </button>
                 );
               })}
@@ -249,7 +249,7 @@ export default function Settings() {
             <div key={dom.id} className="rounded-xl border border-slate-200 p-4">
               <div className="mb-3 flex items-baseline gap-2">
                 <span className={`pill ${dom.id === "frontend" ? "bg-amber-100 text-amber-700" : "bg-brand-wash text-brand"}`}>
-                  {dom.id === "frontend" ? "🛎️ 前台" : "🗄️ 后台"}
+                  {dom.id === "frontend" ? "前台" : "后台"}
                 </span>
                 <span className="text-xs text-ink-faint">{dom.blurb.zh}</span>
               </div>
@@ -268,7 +268,7 @@ export default function Settings() {
                       }`}
                     >
                       <input type="checkbox" checked={on} onChange={() => togglePick(m.id)} className="h-4 w-4 accent-brand" />
-                      <span className="text-ink">{m.icon} {m.label.zh}</span>
+                      <span className="text-ink">{m.label.zh}</span>
                     </label>
                   );
                       })}
