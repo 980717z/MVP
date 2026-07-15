@@ -16,7 +16,7 @@ import { BentoMark } from "@/components/BentoMark";
 // ─────────────────────────────────────────────────────────────────────────
 
 const T = {
-  nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, how: { zh: "怎么用", en: "How it works", fr: "Fonctionnement" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" } },
+  nav: { login: { zh: "登录", en: "Log in", fr: "Connexion" }, how: { zh: "怎么用", en: "How it works", fr: "Fonctionnement" }, pricing: { zh: "价格", en: "Pricing", fr: "Tarifs" }, campus: { zh: "校园版", en: "For campus", fr: "Pour le campus" } },
   badge: { zh: "从 Spadina 到 Yonge 拓展中", en: "Growing from Spadina to Yonge", fr: "En croissance, de Spadina à Yonge" },
   promo: { zh: "开业优惠 · 免费配置 + 首月免费", en: "Launch offer · free setup + first month free", fr: "Offre de lancement · installation gratuite + 1er mois offert" },
   slogan: {
@@ -267,6 +267,9 @@ export default function Landing() {
           </Link>
           <Link href="/pricing" className="hidden text-sm font-medium text-slate-600 transition hover:text-slate-900 sm:block">
             {t(T.nav.pricing)}
+          </Link>
+          <Link href="/campus" className="hidden text-sm font-semibold text-brand-ink transition hover:text-brand sm:block">
+            {t(T.nav.campus)}
           </Link>
           <LangToggle />
           <Link href={session ? "/app" : "/login"} className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
