@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { computeTax } from "@/lib/tax";
 import { checkoutTable, evenPartition, reconcileShares, itemizePartitions, type PaymentMethod, type SplitPayload, type ShareLine } from "@/lib/tableSessions";
 import { requestBill, type Order, type OrderItem } from "@/lib/orders";
+import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -72,6 +73,22 @@ export default function CheckoutModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Today's 时价 prices (id → price) from the menu. A market line ordered without a
+  // price is filled from this at checkout (mirrors the server's backfill), so setting
+  // today's price in 「今日时价」 unblocks checkout without re-touching each order.
+  const [menuPrice, setMenuPrice] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    listMenuItems(slug)
+      .then((items) => setMenuPrice(new Map(items.map((m) => [m.id, Number(m.price) || 0]))))
+      .catch(() => {});
+  }, [slug]);
+  // Effective unit price: the line's own price, or today's 时价 for an unpriced market line.
+  const effPrice = (it: OrderItem): number => {
+    const own = Number(it.price) || 0;
+    if (own > 0) return own;
+    return it.market && it.id ? menuPrice.get(it.id) ?? 0 : 0;
+  };
+
   const [mode, setMode] = useState<"single" | "split">("single");
   const [splitMode, setSplitMode] = useState<"even" | "item">("even");
 
@@ -99,12 +116,13 @@ export default function CheckoutModal({
     let sub = 0, unpriced = false;
     for (const o of orders)
       for (const it of activeItems(o)) {
-        if (it.market && !(Number(it.price) > 0)) unpriced = true;
-        sub += (Number(it.price) || 0) * (Number(it.qty) || 0);
+        const p = effPrice(it);
+        if (it.market && !(p > 0)) unpriced = true; // still no price even after 时价 backfill
+        sub += p * (Number(it.qty) || 0);
       }
     const tax = computeTax(money(sub), false);
     return { subtotal: tax.subtotal, hst: money(tax.gst + tax.pst), total: tax.total, hasUnpriced: unpriced };
-  }, [orders]);
+  }, [orders, menuPrice]);
 
   // every active dish expanded to one unit per qty (for itemized assignment)
   const units = useMemo<Unit[]>(() => {
@@ -112,11 +130,11 @@ export default function CheckoutModal({
     orders.forEach((o) =>
       activeItems(o).forEach((it, i) => {
         const q = Number(it.qty) || 1;
-        for (let u = 0; u < q; u++) out.push({ key: `${o.id}:${i}:${u}`, name_zh: it.name_zh, name_en: it.name_en, price: money(Number(it.price) || 0), note: it.note, adjust: it.adjust });
+        for (let u = 0; u < q; u++) out.push({ key: `${o.id}:${i}:${u}`, name_zh: it.name_zh, name_en: it.name_en, price: money(effPrice(it)), note: it.note, adjust: it.adjust });
       }),
     );
     return out;
-  }, [orders]);
+  }, [orders, menuPrice]);
 
   // ── single-bill cash math ──────────────────────────────────────────────────
   const tNum = tendered === "" ? null : money(parseFloat(tendered));
@@ -248,7 +266,7 @@ export default function CheckoutModal({
                 {activeItems(o).map((it, i) => (
                   <div key={i} className="flex justify-between py-0.5">
                     <span className="text-ink">{it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{it.note && <span className="ml-1 text-xs text-gold">· {it.note}</span>}</span>
-                    <span className="text-ink-soft">{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
+                    <span className="text-ink-soft">{fmtPrice(effPrice(it) * it.qty)}</span>
                   </div>
                 ))}
               </div>

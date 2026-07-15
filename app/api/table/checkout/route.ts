@@ -31,7 +31,7 @@ function shopBusinessDate(): string {
   }).format(new Date()); // YYYY-MM-DD
 }
 
-type Item = { name_zh: string; name_en?: string; qty: number; price: number | null; market?: boolean; cancelled?: boolean; note?: string; adjust?: number };
+type Item = { id?: string; name_zh: string; name_en?: string; qty: number; price: number | null; market?: boolean; cancelled?: boolean; note?: string; adjust?: number };
 const activeItems = (o: { items: Item[] }) => (o.items ?? []).filter((it) => !it.cancelled);
 const orderTotal = (o: { items: Item[] }) =>
   money(activeItems(o).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0));
@@ -83,9 +83,33 @@ export async function POST(req: Request) {
   const previewOrders = (preview ?? []) as { id: string; items: Item[]; total: number }[];
   if (previewOrders.length === 0) return NextResponse.json({ ok: true, empty: true });
 
-  // market-price (时价) gate — client must price these before checkout
+  // market-price (时价) gate. Design: setting today's 时价 in the menu panel should
+  // let checkout fill it in. So before rejecting, BACKFILL each unpriced market line
+  // from the menu item's current price (what staff entered in 今日时价) and persist it,
+  // so the atomic claim below reads the corrected prices. Only truly-unpriced lines
+  // (menu price also blank — e.g. weighed live seafood) still block checkout.
+  const needsFill = previewOrders.some((o) => activeItems(o).some((it) => it.market && !(Number(it.price) > 0)));
+  if (needsFill) {
+    const { data: menuRows } = await db.from("menu_items").select("id,price").eq("tenant_slug", slug);
+    const menuPrice = new Map((menuRows ?? []).map((m: { id: string; price: number | null }) => [m.id, Number(m.price) || 0]));
+    for (const o of previewOrders) {
+      let changed = false;
+      const items = (o.items ?? []).map((it) => {
+        if (it.market && !(Number(it.price) > 0) && !it.cancelled) {
+          const p = it.id ? menuPrice.get(it.id) ?? 0 : 0;
+          if (p > 0) { changed = true; return { ...it, price: money(p) }; }
+        }
+        return it;
+      });
+      if (changed) {
+        o.items = items; // reflect in the in-memory preview used for totals below
+        await db.from("orders").update({ items, total: orderTotal({ items }) }).eq("id", o.id);
+      }
+    }
+  }
+  // Anything still unpriced after backfill has no today's price set anywhere → block.
   const unpriced = previewOrders.some((o) => activeItems(o).some((it) => it.market && !(Number(it.price) > 0)));
-  if (unpriced) return NextResponse.json({ ok: false, error: "有时价菜品未录入价格，请先录入", needsPricing: true }, { status: 409 });
+  if (unpriced) return NextResponse.json({ ok: false, error: "有时价菜品未录入价格，请先在菜单「今日时价」录入或在订单里完成录入", needsPricing: true }, { status: 409 });
 
   const previewSubtotal = money(previewOrders.reduce((s, o) => s + orderTotal(o), 0));
   const previewTax = computeTax(previewSubtotal, false);
