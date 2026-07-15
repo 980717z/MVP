@@ -77,6 +77,7 @@ const T = {
   },
   // header merchant-demo link
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
+  forBusiness: { zh: "商户版 ↗", en: "For business ↗", fr: "Pour entreprises ↗" },
   // back-office (vendor) section
   boEyebrow: { zh: "商家专区 · 不止点单", en: "For vendors · more than ordering", fr: "Pour commerçants · plus que la commande" },
   boTitle: { zh: "一套系统,管好整间店", en: "One system runs the whole shop", fr: "Un système pour toute la boutique" },
@@ -168,6 +169,7 @@ export default function UofTLanding() {
               {t(T.joinCta)}
             </button>
             <a href="#backoffice" className="hidden text-sm font-semibold text-brand-ink hover:text-brand sm:inline">{t(T.merchantDemo)}</a>
+            <a href="https://bentoos.io" className="hidden text-sm font-medium text-ink-soft transition hover:text-ink sm:inline">{t(T.forBusiness)}</a>
             <LangToggle />
           </div>
         </div>

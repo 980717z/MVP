@@ -24,9 +24,9 @@ const T = {
     hi: { zh: "整间店", en: "whole shop", fr: "tout le commerce" },
   },
   sub: {
-    zh: "扫码点餐、厨房出票、销售税务、员工权限——为餐厅和咖啡/奶茶店而做。勾选你需要的功能，用你现有的设备就能跑，不绑定 POS。",
-    en: "QR ordering, kitchen tickets, sales & tax, staff roles — for restaurants and cafés. Pick what you need; it runs on the devices you already have, no bundled POS.",
-    fr: "Commande QR, tickets cuisine, ventes et taxes, rôles du personnel — pour restos et cafés. Choisissez vos fonctions; ça tourne sur vos appareils, sans caisse imposée.",
+    zh: "扫码点餐、库存管理、销售税务、员工权限。为小微商户、餐厅和零售店而做。勾选你需要的功能,用你现有的设备就能跑,不绑定 POS。",
+    en: "QR ordering, inventory, sales & tax, staff roles. Built for small businesses, restaurants, and retail. Pick what you need; it runs on the devices you already have, no bundled POS.",
+    fr: "Commande QR, inventaire, ventes et taxes, rôles du personnel. Conçu pour les petites entreprises, les restaurants et le commerce de détail. Choisissez vos fonctions; ça tourne sur vos appareils, sans caisse imposée.",
   },
   diff: {
     title: { zh: "不锁你的设备", en: "We don't lock you to hardware", fr: "Aucun matériel imposé" },
@@ -555,7 +555,6 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
           <span className="inline-flex items-center gap-1.5"><BentoMark className="h-4 w-4" /> BentoOS · {t(T.footer)}</span>
           <div className="flex items-center gap-4">
-            <a href="https://utoronto.bentoos.io" className="font-medium text-brand-ink transition hover:text-brand">{t(T.utLink)}</a>
             <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
             <span>© 2026 BentoOS</span>
           </div>
