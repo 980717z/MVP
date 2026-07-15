@@ -28,9 +28,9 @@ const T = {
   revenuePh: { zh: "请选择…", en: "Select…", fr: "Choisir…" },
   submit: { zh: "提交申请", en: "Request demo", fr: "Envoyer la demande" },
   sending: { zh: "提交中…", en: "Sending…", fr: "Envoi…" },
-  done: { zh: "收到!我们会尽快带着量身演示联系你 🎉", en: "Got it — we'll reach out with a tailored demo shortly 🎉", fr: "Reçu — nous vous contactons bientôt avec une démo sur mesure 🎉" },
+  done: { zh: "收到!我们会尽快带着量身演示联系你 🎉", en: "Got it. We'll reach out with a tailored demo shortly 🎉", fr: "Reçu. Nous vous contactons bientôt avec une démo sur mesure 🎉" },
   errRequired: { zh: "请填写姓名、邮箱、电话和店铺名称", en: "Please add your name, email, phone and business name", fr: "Ajoutez nom, courriel, téléphone et entreprise" },
-  errGeneric: { zh: "出错了,请重试", en: "Something went wrong — please retry", fr: "Une erreur — réessayez" },
+  errGeneric: { zh: "出错了,请重试", en: "Something went wrong, please retry", fr: "Une erreur, réessayez" },
 } satisfies Record<string, Dict>;
 
 export default function RequestDemo({ openSignal = 0 }: { openSignal?: number }) {

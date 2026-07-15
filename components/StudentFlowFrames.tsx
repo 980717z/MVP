@@ -24,8 +24,8 @@ const T = {
   eyebrow: { zh: "学生端 · 真实界面", en: "For students · the real screens", fr: "Côté étudiant · les vraies vues" },
   title: { zh: "挑一家,提前下单,到店即取", en: "Pick a truck. Order ahead. Skip the line.", fr: "Choisissez un camion. Commandez à l'avance. Passez devant la file." },
   sub: {
-    zh: "一处浏览全部餐车,从手机下单,做好推送通知你,凭取餐号拿了就走 —— 无需排队。",
-    en: "Browse every campus truck in one place, order from your phone, get a ping when it's ready, show your pickup code and go — no lineup.",
+    zh: "一处浏览全部餐车,从手机下单,做好推送通知你,凭取餐号拿了就走,无需排队。",
+    en: "Browse every campus truck in one place, order from your phone, get a ping when it's ready, show your pickup code and go. No lineup.",
     fr: "Parcourez tous les camions du campus, commandez depuis votre téléphone, recevez une alerte quand c'est prêt, montrez votre code et repartez.",
   },
   cap1: { zh: "① 一处浏览全部餐车", en: "① Browse every truck in one place", fr: "① Parcourez tous les camions" },
@@ -46,7 +46,7 @@ const T = {
   order: { zh: "下单", en: "Order", fr: "Commander" },
   codeLabel: { zh: "取餐号", en: "Your pickup code", fr: "Votre code de ramassage" },
   preparing: { zh: "制作中 · 约 4 分钟", en: "Preparing · ~4 min", fr: "En préparation · ~4 min" },
-  ready: { zh: "✅ 可以取餐啦!", en: "✅ Ready — come pick up!", fr: "✅ Prêt — venez chercher!" },
+  ready: { zh: "✅ 可以取餐啦!", en: "✅ Ready, come pick up!", fr: "✅ Prêt, venez chercher!" },
   notify: { zh: "🔔 做好通知我", en: "🔔 Notify me when it's ready", fr: "🔔 Prévenez-moi quand c'est prêt" },
   footer: { zh: "🚚 到餐车取餐", en: "🚚 Pick up at the truck", fr: "🚚 Ramassage au camion" },
 } satisfies Record<string, Dict>;

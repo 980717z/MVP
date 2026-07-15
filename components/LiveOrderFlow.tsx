@@ -10,11 +10,11 @@ const DEMO_URL = "https://bentoos.io/menu/demo-truck?m=pickup";
 
 const T = {
   eyebrow: { zh: "看它跑起来", en: "See it work", fr: "Voyez-le fonctionner" },
-  title: { zh: "扫码下单,后台秒收", en: "Scan to order — the truck gets it instantly", fr: "Commandez en scannant — le camion reçoit aussitôt" },
+  title: { zh: "扫码下单,后台秒收", en: "Scan to order, the truck gets it instantly", fr: "Commandez en scannant, le camion reçoit aussitôt" },
   sub: {
-    zh: "学生扫码提前下单,订单实时弹进餐车后台。这个码是真的——用手机扫扫看。",
-    en: "A student scans, orders ahead, and it pops into the truck's dashboard in real time. This QR is live — scan it with your phone.",
-    fr: "Un étudiant scanne, commande à l'avance, et ça apparaît dans le tableau de bord en temps réel. Ce code est réel — scannez-le.",
+    zh: "学生扫码提前下单,订单实时弹进餐车后台。这个码是真的,用手机扫扫看。",
+    en: "A student scans, orders ahead, and it pops into the truck's dashboard in real time. This QR is live. Scan it with your phone.",
+    fr: "Un étudiant scanne, commande à l'avance, et ça apparaît dans le tableau de bord en temps réel. Ce code est réel. Scannez-le.",
   },
   scanCaption: { zh: "扫码点单", en: "Scan to order", fr: "Scannez pour commander" },
   demoTag: { zh: "Campus Eats · 演示菜单", en: "Campus Eats · demo menu", fr: "Campus Eats · menu démo" },

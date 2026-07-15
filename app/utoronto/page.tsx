@@ -33,8 +33,8 @@ const T = {
   },
   sub: {
     zh: "免排队。提前下单，校园餐车与小吃摊，到店即取。",
-    en: "Skip the line. Order ahead from campus food trucks and kiosks — ready when you arrive.",
-    fr: "Sautez la file. Commandez à l'avance des camions et kiosques du campus — prêt à votre arrivée.",
+    en: "Skip the line. Order ahead from campus food trucks and kiosks. Ready when you arrive.",
+    fr: "Sautez la file. Commandez à l'avance des camions et kiosques du campus. Prêt à votre arrivée.",
   },
   // waitlist card
   join: { zh: "加入候补名单", en: "Join the waitlist", fr: "Rejoindre la liste" },
@@ -45,25 +45,17 @@ const T = {
   ctaStudent: { zh: "抢先体验 →", en: "Get early access →", fr: "Accès anticipé →" },
   ctaVendor: { zh: "带上你的菜单 →", en: "Bring your menu →", fr: "Apportez votre menu →" },
   sending: { zh: "提交中…", en: "Sending…", fr: "Envoi…" },
-  okStudent: { zh: "搞定！开放时第一个通知你 🎉", en: "You're on the list — we'll ping you first 🎉", fr: "Vous êtes inscrit·e — on vous écrit en premier 🎉" },
-  okVendor: { zh: "收到！我们会尽快联系你聊聊 🎉", en: "Got it — we'll reach out to talk soon 🎉", fr: "Reçu — on vous contacte bientôt 🎉" },
-  err: { zh: "出错了，请填写邮箱后重试", en: "Something went wrong — check your email and retry", fr: "Une erreur — vérifiez le courriel et réessayez" },
+  okStudent: { zh: "搞定！开放时第一个通知你 🎉", en: "You're on the list. We'll ping you first 🎉", fr: "Vous êtes inscrit·e. On vous écrit en premier 🎉" },
+  okVendor: { zh: "收到！我们会尽快联系你聊聊 🎉", en: "Got it. We'll reach out to talk soon 🎉", fr: "Reçu. On vous contacte bientôt 🎉" },
+  err: { zh: "出错了，请填写邮箱后重试", en: "Something went wrong. Check your email and retry", fr: "Une erreur. Vérifiez le courriel et réessayez" },
   needEmail: { zh: "请填写邮箱", en: "Enter your email", fr: "Entrez votre courriel" },
   needName: { zh: "请填写餐车名字", en: "Enter your truck name", fr: "Entrez le nom du camion" },
-  // vision strip
-  how: { zh: "怎么用", en: "How it works", fr: "Comment ça marche" },
-  s1t: { zh: "一处逛全部", en: "Browse in one place", fr: "Parcourez au même endroit" },
-  s1b: { zh: "校园每个餐车、档口，一个页面全看到。", en: "Every campus truck and kiosk, on one page.", fr: "Chaque camion et kiosque du campus, sur une page." },
-  s2t: { zh: "提前下单", en: "Order ahead", fr: "Commandez à l'avance" },
-  s2b: { zh: "上课前点好，付款用你习惯的方式。", en: "Tap before class; pay however you like.", fr: "Commandez avant le cours; payez comme vous voulez." },
-  s3t: { zh: "到店即取", en: "Walk up, skip the line", fr: "Arrivez, sautez la file" },
-  s3b: { zh: "不排队，到了直接拿。", en: "No lineup — it's ready when you get there.", fr: "Pas de file — c'est prêt à votre arrivée." },
   // vendor band
   vbTitle: { zh: "有餐车或档口?", en: "Run a truck or kiosk?", fr: "Un camion ou kiosque?" },
   vbBody: {
-    zh: "我们把学生带到你面前。没有月费、没有抽成——只在我们带来的订单上收几分钱。免费帮你上线。",
-    en: "We bring you the students. No monthly fee, no commission — just a few cents on the orders we send you. Free to get set up.",
-    fr: "On vous amène les étudiants. Pas d'abonnement, pas de commission — quelques cents sur les commandes qu'on vous envoie. Installation gratuite.",
+    zh: "我们把学生带到你面前。没有月费、没有抽成,只在我们带来的订单上收几分钱。免费帮你上线。",
+    en: "We bring you the students. No monthly fee, no commission. Just a few cents on the orders we send you. Free to get set up.",
+    fr: "On vous amène les étudiants. Pas d'abonnement, pas de commission. Quelques cents sur les commandes qu'on vous envoie. Installation gratuite.",
   },
   vbCta: { zh: "聊一聊 →", en: "Let's talk →", fr: "Parlons-en →" },
   // proof + footer
@@ -84,22 +76,22 @@ const T = {
   boEyebrow: { zh: "商家专区 · 不止点单", en: "For vendors · more than ordering", fr: "Pour commerçants · plus que la commande" },
   boTitle: { zh: "一套系统,管好整间店", en: "One system runs the whole shop", fr: "Un système pour toute la boutique" },
   boSub: {
-    zh: "扫码点餐只是入口。销售分析、库存采购、每日对账记账——后台都替你算好。",
-    en: "QR ordering is just the front door. Sales analytics, inventory, daily cash & books — the back office does the math for you.",
-    fr: "La commande QR n'est que la porte d'entrée. Analyses des ventes, stocks, caisse et comptes quotidiens — l'arrière-boutique fait les calculs.",
+    zh: "扫码点餐只是入口。销售分析、库存采购、每日对账记账,后台都替你算好。",
+    en: "QR ordering is just the front door. Sales analytics, inventory, daily cash & books. The back office does the math for you.",
+    fr: "La commande QR n'est que la porte d'entrée. Analyses des ventes, stocks, caisse et comptes quotidiens. L'arrière-boutique fait les calculs.",
   },
   boLive: { zh: "看看实时后台 →", en: "Try the live dashboard →", fr: "Voir le tableau de bord →" },
   boTour: { zh: "先逛一圈演示 →", en: "Take the guided tour →", fr: "Faire la visite guidée →" },
   boSample: { zh: "演示为示例数据", en: "Demo shows sample data", fr: "Démo avec données d'exemple" },
   // four capability shots
   capOrdersT: { zh: "实时订单 · 取餐", en: "Live orders & pickup", fr: "Commandes en direct" },
-  capOrdersB: { zh: "新单即时提醒:接单 → 备餐 → 可取餐 → 已取,一屏搞定。", en: "Orders land in real time — accept, prep, ready, picked-up, all on one screen.", fr: "Commandes en temps réel — accepter, préparer, prêt, récupéré, sur un écran." },
+  capOrdersB: { zh: "新单即时提醒:接单 → 备餐 → 可取餐 → 已取,一屏搞定。", en: "Orders land in real time. Accept, prep, ready, picked-up, all on one screen.", fr: "Commandes en temps réel. Accepter, préparer, prêt, récupéré, sur un écran." },
   capSalesT: { zh: "销售分析", en: "Sales analytics", fr: "Analyse des ventes" },
-  capSalesB: { zh: "营业额、热销菜、按时段与桌号,趋势一目了然。", en: "Revenue, top dishes, trends by hour and table — see what sells.", fr: "Revenus, plats vedettes, tendances par heure — voyez ce qui se vend." },
+  capSalesB: { zh: "营业额、热销菜、按时段与桌号,趋势一目了然。", en: "Revenue, top dishes, trends by hour and table. See what sells.", fr: "Revenus, plats vedettes, tendances par heure. Voyez ce qui se vend." },
   capInvT: { zh: "库存 · 采购", en: "Inventory & purchasing", fr: "Stock et achats" },
-  capInvB: { zh: "库存水位、补货预警、供应商——别再断货。", en: "Stock levels, low-stock alerts, suppliers — stop running out.", fr: "Niveaux de stock, alertes, fournisseurs — ne manquez plus de rien." },
+  capInvB: { zh: "库存水位、补货预警、供应商,别再断货。", en: "Stock levels, low-stock alerts, suppliers. Stop running out.", fr: "Niveaux de stock, alertes, fournisseurs. Ne manquez plus de rien." },
   capBooksT: { zh: "对账 · 记账", en: "Daily books & reconcile", fr: "Comptes et caisse" },
-  capBooksB: { zh: "每日现金刷卡对账,差异自动标红,月底不头疼。", en: "Daily cash & card reconciliation, variances flagged — month-end made easy.", fr: "Rapprochement caisse/carte quotidien, écarts signalés — fin de mois facile." },
+  capBooksB: { zh: "每日现金刷卡对账,差异自动标红,月底不头疼。", en: "Daily cash & card reconciliation, variances flagged. Month-end made easy.", fr: "Rapprochement caisse/carte quotidien, écarts signalés. Fin de mois facile." },
 } satisfies Record<string, Dict>;
 
 export default function UofTLanding() {
