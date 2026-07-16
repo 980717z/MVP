@@ -27,19 +27,20 @@ const T = {
   atUofT: { zh: "校园", en: "Campus", fr: "Campus" },
   joinCta: { zh: "加入候补 →", en: "Join waitlist →", fr: "Rejoindre →" },
   hero: {
-    zh: "校园取餐社区的操作系统",
-    en: "The operating system for the campus food pickup community",
-    fr: "Le système d'exploitation de la communauté de ramassage alimentaire du campus",
+    zh: "免费的点餐系统,为你带来客人。",
+    en: "A free ordering system that brings you customers.",
+    fr: "Un système de commande gratuit qui vous amène des clients.",
   },
   sub: {
-    zh: "免排队。提前下单，校园餐车与小吃摊，到店即取。",
-    en: "Skip the line. Order ahead from campus food trucks and kiosks. Ready when you arrive.",
-    fr: "Sautez la file. Commandez à l'avance des camions et kiosques du campus. Prêt à votre arrivée.",
+    zh: "学生提前下单、免去排队。无需采购,用你现有的手机就能跑,款项直接进你的账户。",
+    en: "Students order ahead and skip your line. Nothing to buy, runs on the phone you already have, and every payment goes straight to you.",
+    fr: "Les étudiants commandent à l'avance et évitent la file. Rien à acheter, fonctionne sur votre téléphone, et chaque paiement vous revient directement.",
   },
   // waitlist card
   join: { zh: "加入候补名单", en: "Join the waitlist", fr: "Rejoindre la liste" },
   student: { zh: "我是学生", en: "I'm a student", fr: "Je suis étudiant·e" },
   vendor: { zh: "我是商家", en: "I run a food truck/kiosk", fr: "J'ai un camion/kiosque" },
+  joinVendor: { zh: "带上你的菜单,我们帮你上线", en: "Bring your menu, we set you up", fr: "Apportez votre menu, on vous installe" },
   emailPh: { zh: "你的邮箱", en: "Your email", fr: "Votre courriel" },
   namePh: { zh: "餐车 / 档口名字", en: "Food truck / kiosk name", fr: "Nom du camion / kiosque" },
   ctaStudent: { zh: "抢先体验 →", en: "Get early access →", fr: "Accès anticipé →" },
@@ -108,7 +109,9 @@ const T = {
 
 export default function UofTLanding() {
   const { t } = useLang();
-  const [role, setRole] = useState<Role>("student");
+  // Vendor-only page: students never see this landing (they arrive via the truck's
+  // QR). Role is fixed to vendor; the signup collects the truck name + email.
+  const [role] = useState<Role>("vendor");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [status, setStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
@@ -184,7 +187,7 @@ export default function UofTLanding() {
       {/* hero */}
       <section className="mx-auto max-w-3xl px-5 pb-10 pt-8 text-center sm:pt-16">
         <div className="rise mb-5 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/5 px-3 py-1 text-xs font-semibold text-brand-ink">
-          🎓 {t(T.heroBadge)}
+          🚚 {t(T.heroBadge)}
         </div>
         <h1 className="rise text-balance text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl" style={{ animationDelay: "60ms" }}>
           {t(T.hero)}
@@ -200,18 +203,7 @@ export default function UofTLanding() {
             </div>
           ) : (
             <>
-              {/* role toggle */}
-              <div className="mb-3 flex rounded-xl bg-[#F3F2EE] p-1 text-sm font-semibold">
-                {(["student", "vendor"] as Role[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => { setRole(r); if (status === "error") setStatus("idle"); }}
-                    className={`flex-1 rounded-lg py-2 transition ${role === r ? "bg-white text-brand-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
-                  >
-                    {t(r === "student" ? T.student : T.vendor)}
-                  </button>
-                ))}
-              </div>
+              <div className="mb-3 text-sm font-bold text-ink">{t(T.joinVendor)}</div>
               <div className="space-y-2">
                 {(role === "vendor") && (
                   <input
@@ -346,7 +338,7 @@ export default function UofTLanding() {
               <div>
                 <div className="text-xs font-bold uppercase tracking-[0.12em] text-ink-faint">{t(T.ftExplore)}</div>
                 <ul className="mt-3 space-y-2.5 text-sm text-ink-soft">
-                  <li><button onClick={() => { setRole("student"); scrollToJoin(); }} className="transition hover:text-brand-ink">{t(T.ftStudents)}</button></li>
+                  <li><button onClick={scrollToJoin} className="transition hover:text-brand-ink">{t(T.join)}</button></li>
                   <li><a href="#backoffice" className="transition hover:text-brand-ink">{t(T.ftVendors)}</a></li>
                   <li><a href="/demo" className="transition hover:text-brand-ink">{t(T.boTour)}</a></li>
                 </ul>

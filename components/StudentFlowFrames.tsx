@@ -21,7 +21,7 @@ type Tri = { zh: string; en: string; fr?: string };
 const pick = (b: Tri, lang: Lang) => (lang === "zh" ? b.zh : lang === "fr" ? b.fr ?? b.en : b.en);
 
 const T = {
-  eyebrow: { zh: "学生端 · 真实界面", en: "For students · the real screens", fr: "Côté étudiant · les vraies vues" },
+  eyebrow: { zh: "顾客扫码后看到的界面", en: "What your customers see", fr: "Ce que vos clients voient" },
   title: { zh: "挑一家,提前下单,到店即取", en: "Pick a truck. Order ahead. Skip the line.", fr: "Choisissez un camion. Commandez à l'avance. Passez devant la file." },
   sub: {
     zh: "一处浏览全部餐车,从手机下单,做好推送通知你,凭取餐号拿了就走,无需排队。",
