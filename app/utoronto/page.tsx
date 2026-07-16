@@ -54,9 +54,9 @@ const T = {
   // vendor band
   vbTitle: { zh: "有餐车或档口?", en: "Run a truck or kiosk?", fr: "Un camion ou kiosque?" },
   vbBody: {
-    zh: "免费扫码点餐、免费后台,还有提前下单的学生。没有月费、没有抽成、每单也不收费,款项直接进你的账户,不经过我们。我们帮你上线。",
-    en: "Free QR ordering, a free back office, and students who order ahead. No monthly fee, no commission, no per-order fee, and every payment goes straight to you, never through us. We help you get set up.",
-    fr: "Commande QR gratuite, un arrière-boutique gratuit, et des étudiants qui commandent à l'avance. Sans abonnement, sans commission, sans frais par commande, et chaque paiement vous revient directement, jamais par nous. On vous aide à démarrer.",
+    zh: "我们为你带来学生客源,款项直接进你的账户,免费上线。",
+    en: "We bring you the students, every payment goes straight to you, and it's free to get set up.",
+    fr: "On vous amène les étudiants, chaque paiement vous revient directement, et l'installation est gratuite.",
   },
   vbCta: { zh: "聊一聊 →", en: "Let's talk →", fr: "Parlons-en →" },
   // proof + footer
@@ -80,12 +80,12 @@ const T = {
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
   forBusiness: { zh: "商户版 ↗", en: "For business ↗", fr: "Pour entreprises ↗" },
   // back-office (vendor) section
-  boEyebrow: { zh: "餐车 · 小吃摊", en: "For food trucks & kiosks", fr: "Camions et kiosques" },
-  boTitle: { zh: "免费的提前下单系统。无需采购。", en: "A free order-ahead system. Nothing to buy.", fr: "Un système de commande à l'avance, gratuit. Rien à acheter." },
+  boEyebrow: { zh: "不止点餐", en: "More than ordering", fr: "Plus que la commande" },
+  boTitle: { zh: "不只是点餐,它管好你整间店。", en: "Not just ordering. It runs your whole shop.", fr: "Pas seulement la commande. Ça gère tout votre commerce." },
   boSub: {
-    zh: "接单、管店,你需要的都在这。全部免费,用你现有的设备就能跑。",
-    en: "Everything you need to take orders and run the shop. Free, and on a device you already own.",
-    fr: "Tout ce qu'il faut pour prendre les commandes et gérer le commerce. Gratuit, sur un appareil que vous avez déjà.",
+    zh: "实时订单、销售分析、库存采购、每日对账,后台都替你算好。同一部手机,同样免费。",
+    en: "Live orders, sales, inventory, and daily books. The back office does the math for you. Same phone, same free system.",
+    fr: "Commandes en direct, ventes, stocks et comptes quotidiens. L'arrière-boutique fait les calculs. Même téléphone, même système gratuit.",
   },
   pill1t: { zh: "全部免费", en: "Free to run", fr: "Gratuit" },
   pill1b: { zh: "扫码菜单、提前下单、经营后台。没有月费、没有抽成、每单也不收费。", en: "The QR menu, order-ahead, and back office. No monthly fee, no commission, no per-order fee.", fr: "Le menu QR, la commande à l'avance et l'arrière-boutique. Sans abonnement, sans commission, sans frais par commande." },
@@ -255,21 +255,7 @@ export default function UofTLanding() {
             <div className="rise text-xs font-bold uppercase tracking-[0.15em] text-brand-ink">{t(T.boEyebrow)}</div>
             <h2 className="rise mt-2 text-balance text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" style={{ animationDelay: "60ms" }}>{t(T.boTitle)}</h2>
             <p className="rise mx-auto mt-3 max-w-xl text-balance text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.boSub)}</p>
-            {/* three pillars a truck owner needs to hear: free, nothing to buy, own device.
-                Typographic strip (bold value + line, hairline-divided) — not an icon grid. */}
-            <div className="rise mx-auto mt-8 grid max-w-3xl gap-6 text-left sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-[#EBEAE5]" style={{ animationDelay: "150ms" }}>
-              {[
-                { t: T.pill1t, b: T.pill1b },
-                { t: T.pill2t, b: T.pill2b },
-                { t: T.pill3t, b: T.pill3b },
-              ].map((p, i) => (
-                <div key={i} className="sm:px-5">
-                  <div className="text-[17px] font-extrabold text-brand-ink">{t(p.t)}</div>
-                  <p className="mt-1 text-sm leading-relaxed text-ink-soft">{t(p.b)}</p>
-                </div>
-              ))}
-            </div>
-            <div className="rise mt-8" style={{ animationDelay: "180ms" }}>
+            <div className="rise mt-6" style={{ animationDelay: "180ms" }}>
               <RequestDemo openSignal={demoOpenSignal} />
             </div>
           </div>
