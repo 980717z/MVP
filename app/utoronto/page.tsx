@@ -294,7 +294,7 @@ export default function UofTLanding() {
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/90">
               <span className="font-semibold">Allen Zhang</span>
               <a href="tel:+15143574178" className="underline-offset-2 hover:text-white hover:underline">📞 +1 (514) 357-4178</a>
-              <a href="mailto:support@bentoos.io" className="underline-offset-2 hover:text-white hover:underline">✉️ support@bentoos.io</a>
+              <a href="mailto:allen.zhang@bentoos.io" className="underline-offset-2 hover:text-white hover:underline">✉️ allen.zhang@bentoos.io</a>
             </div>
           </div>
           <button
@@ -336,7 +336,7 @@ export default function UofTLanding() {
                 <ul className="mt-3 space-y-2.5 text-sm text-ink-soft">
                   <li className="font-semibold text-ink">Allen Zhang</li>
                   <li><a href="tel:+15143574178" className="transition hover:text-brand-ink">+1 (514) 357-4178</a></li>
-                  <li><a href="mailto:support@bentoos.io" className="transition hover:text-brand-ink">support@bentoos.io</a></li>
+                  <li><a href="mailto:allen.zhang@bentoos.io" className="transition hover:text-brand-ink">allen.zhang@bentoos.io</a></li>
                 </ul>
               </div>
             </div>
