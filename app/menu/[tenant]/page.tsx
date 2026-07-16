@@ -12,6 +12,21 @@ import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
 import CheckoutSheet from "@/components/CheckoutSheet";
 import { resolveMenuView, MENU_VIEW_KEY, type MenuView } from "@/lib/menuView";
 import { BentoMark } from "@/components/BentoMark";
+import { track } from "@/lib/track";
+
+/** Traction attribution: how this menu session arrived. Derived from the URL,
+ *  which is stable for the whole visit — recomputed at fire time so no state.
+ *  "embed" (landing iframe) and "staff" (staff order entry) exist so /admin can
+ *  exclude non-customer traffic from the funnel. */
+function entrySrc(): string {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get("embed") === "1") return "embed";
+  if (p.get("staff") === "1") return "staff";
+  if (p.get("m") === "pickup") return "pickup";
+  if (p.get("m") === "togo") return "togo";
+  if (p.get("t")) return "qr";
+  return "direct";
+}
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -172,6 +187,8 @@ export default function PublicMenu() {
     if (lp === "zh") setLang("zh");
     else if (lp) setLang("en");
     if (params.get("staff") === "1") setStaff(true);
+    // Traction funnel (/admin): how did this menu view arrive? Fire-and-forget.
+    track("menu_view", { tenant: slug, src: entrySrc() });
     // Separate query so a pre-migration storefront view (no delivery_fsas
     // column) errors quietly here instead of taking the whole menu down.
     supabase.from("storefront").select("delivery_fsas").eq("slug", slug).maybeSingle()
@@ -419,6 +436,7 @@ export default function PublicMenu() {
         alert(tri("提交失败：", "Couldn't place the order: ", "Échec de la commande : ") + pu.error);
         return;
       }
+      track("order_placed", { tenant: slug, src: entrySrc(), meta: { type: "pickup" } }); // beacon survives the redirect
       window.location.href = `/order/${pu.id}?t=${encodeURIComponent(pu.tracking_token)}`;
       return;
     }
@@ -438,6 +456,7 @@ export default function PublicMenu() {
       alert("提交失败：" + res.error);
       return;
     }
+    track("order_placed", { tenant: slug, src: entrySrc(), meta: { type: togoMode ? togoType : "dine_in" } });
 
     if (togoMode && PAYMENTS_LIVE && res.id) {
       // Pay-first: show the Clover card sheet. On success the server (re-prices +)

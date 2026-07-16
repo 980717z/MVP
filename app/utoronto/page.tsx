@@ -19,6 +19,7 @@ import LiveOrderFlow from "@/components/LiveOrderFlow";
 import StudentFlowFrames from "@/components/StudentFlowFrames";
 import RequestDemo from "@/components/RequestDemo";
 import { BentoMark } from "@/components/BentoMark";
+import { track } from "@/lib/track";
 
 type Role = "student" | "vendor";
 
@@ -155,6 +156,7 @@ export default function UofTLanding() {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  useEffect(() => { track("campus_page_view"); }, []); // /admin funnel top
 
   return (
     <main id="top" className="min-h-screen bg-[#FBFAF8] text-ink" style={{ fontFamily: '"Plus Jakarta Sans", "Noto Sans SC", system-ui, sans-serif' }}>
