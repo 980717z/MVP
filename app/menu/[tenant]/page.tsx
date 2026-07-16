@@ -166,6 +166,11 @@ export default function PublicMenu() {
     // layout (togoMode) but is pickup-only + routes to the tracking screen.
     if (params.get("m") === "pickup") { setTogoMode(true); setPickupMode(true); }
     if (params.get("embed") === "1") setEmbed(true);
+    // ?lang= lets an embedder (e.g. the landing showcase iframe) pick the menu
+    // language. Menu is zh/en only (FR omitted); anything non-zh falls to en.
+    const lp = params.get("lang");
+    if (lp === "zh") setLang("zh");
+    else if (lp) setLang("en");
     if (params.get("staff") === "1") setStaff(true);
     // Separate query so a pre-migration storefront view (no delivery_fsas
     // column) errors quietly here instead of taking the whole menu down.

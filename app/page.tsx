@@ -181,7 +181,7 @@ function Counter({ to, suffix }: { to: number; suffix: string }) {
 }
 
 /** The real, live customer menu inside a phone frame. Loads lazily. */
-function LivePhone({ liveTag }: { liveTag: string }) {
+function LivePhone({ liveTag, menuLang }: { liveTag: string; menuLang: "zh" | "en" }) {
   const [load, setLoad] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -212,7 +212,7 @@ function LivePhone({ liveTag }: { liveTag: string }) {
         <div className="h-[560px] overflow-hidden rounded-[29px] bg-[#FAF7F2]">
           {load ? (
             <iframe
-              src="/menu/fulai?embed=1"
+              src={`/menu/fulai?embed=1&lang=${menuLang}`}
               title="live restaurant menu"
               className="h-full w-full border-0"
               loading="lazy"
@@ -228,7 +228,7 @@ function LivePhone({ liveTag }: { liveTag: string }) {
 }
 
 export default function Landing() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { session } = useAuth();
 
   return (
@@ -349,7 +349,7 @@ export default function Landing() {
         <div className="rounded-[32px] border border-emerald-100 bg-gradient-to-br from-emerald-50/70 via-white to-sky-50/60 p-6 sm:p-10">
           <div className="flex flex-col items-center gap-10 lg:flex-row lg:gap-14">
             <Reveal className="order-2 lg:order-1">
-              <LivePhone liveTag={t(T.liveTag)} />
+              <LivePhone liveTag={t(T.liveTag)} menuLang={lang === "zh" ? "zh" : "en"} />
             </Reveal>
             <div className="order-1 max-w-xl lg:order-2">
               <Reveal>
