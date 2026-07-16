@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { supabase } from "@/lib/supabase";
-import { getTrackPayments, getDayStartHour } from "@/lib/store";
+import { getTrackPayments, getDayStartHour, getDailyClose, saveDailyClose } from "@/lib/store";
 import { listSessionsInRange, listSessionOrders, listSessionOrderIds, type SessionItem } from "@/lib/tableSessions";
 import { requestBill } from "@/lib/orders";
 import { aggregateSales, torontoToday, shiftDate, METHODS, type SessionRow, type Method } from "@/lib/salesStats";
@@ -76,6 +76,23 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   useEffect(() => { load(); }, [load]);
 
   const agg = useMemo(() => aggregateSales(rows), [rows]);
+
+  // daily close folded in: editable expenses + net for a single selected day.
+  const singleDay = f === to2;
+  const [closeExp, setCloseExp] = useState("");
+  const [closeNote, setCloseNote] = useState("");
+  const [closeSaved, setCloseSaved] = useState(false);
+  useEffect(() => {
+    if (!singleDay) return;
+    setCloseSaved(false);
+    getDailyClose(slug, f).then((c) => { setCloseExp(c && c.expenses ? String(c.expenses) : ""); setCloseNote(c?.note ?? ""); }).catch(() => {});
+  }, [slug, f, singleDay]);
+  const closeNet = Math.round((agg.collected - (Number(closeExp) || 0)) * 100) / 100;
+  const saveClose = async () => {
+    await saveDailyClose(slug, f, { expenses: Number(closeExp) || 0, note: closeNote, collected: agg.collected });
+    setCloseSaved(true);
+    setTimeout(() => setCloseSaved(false), 1600);
+  };
 
   // per-row display: sales(pre-tax), tax, tip, collected, method label(s)
   const txnRows = useMemo(() => {
@@ -196,6 +213,34 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
         <Kpi label={t({ zh: "PST 8%", en: "PST 8%", fr: "TVP 8%" })} value={moneyExact(agg.pst)} muted />
         <Kpi label={t({ zh: "自取 / 外送单", en: "Togo / delivery", fr: "À emporter / livraison" })} value={togoCount == null ? "—" : String(togoCount)} sub={t({ zh: "线下结算", en: "settled offline", fr: "réglé hors ligne" })} muted />
       </div>
+
+      {/* daily close (folded in from the old 每日结账与收入 module) — single day only */}
+      {singleDay && (
+        <div className="card mt-4 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-ink">{t({ zh: "每日结账", en: "Daily close", fr: "Clôture du jour" })}</h3>
+            {closeSaved && <span className="rounded-full bg-brand-wash px-2 py-0.5 text-xs font-semibold text-brand-ink">{t({ zh: "已保存", en: "Saved", fr: "Enregistré" })}</span>}
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <div className="text-xs text-ink-faint">{t({ zh: "实收", en: "Collected", fr: "Encaissé" })}</div>
+              <div className="mt-0.5 text-lg font-bold tabular-nums text-ink">{moneyExact(agg.collected)}</div>
+            </div>
+            <div>
+              <label className="text-xs text-ink-faint">{t({ zh: "当日支出", en: "Expenses", fr: "Dépenses" })}</label>
+              <input value={closeExp} onChange={(e) => setCloseExp(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0.00" className="input mt-0.5 !py-1.5" />
+            </div>
+            <div>
+              <div className="text-xs text-ink-faint">{t({ zh: "净收入", en: "Net", fr: "Net" })}</div>
+              <div className="mt-0.5 text-lg font-bold tabular-nums text-brand-ink">{moneyExact(closeNet)}</div>
+            </div>
+            <div className="flex items-end">
+              <button onClick={saveClose} className="btn-primary w-full !py-2 text-sm">{t({ zh: "保存结账", en: "Save close", fr: "Enregistrer" })}</button>
+            </div>
+          </div>
+          <input value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder={t({ zh: "备注(可选)", en: "Note (optional)", fr: "Note (facultatif)" })} className="input mt-3 !py-1.5 text-sm" />
+        </div>
+      )}
 
       {/* payment method breakdown — hidden when method tracking is off */}
       {trackPay && (

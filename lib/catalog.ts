@@ -399,36 +399,8 @@ export const MODULES: ModuleDef[] = [
       { zh: "按现金 / EMT / 刷卡拆分,小费单列", en: "Split by cash / EMT / card, tips tracked separately", fr: "Ventilé par comptant / virement / carte, pourboires à part" },
     ],
   },
-  {
-    id: "daily-close",
-    category: "finance",
-    icon: "💰",
-    ready: true,
-    label: { zh: "每日结账与收入", en: "Daily Close & Revenue", fr: "Clôture et revenus quotidiens" },
-    pain: {
-      zh: "堂食/外卖对不上；平台扣了多少看不清",
-      en: "Dine-in/delivery don't reconcile.",
-      fr: "Salle et livraison ne concordent pas.",
-    },
-    fields: [
-      { key: "date", label: { zh: "日期", en: "Date", fr: "Date" }, type: "date", half: true, required: true },
-      { key: "dineIn", label: { zh: "堂食", en: "Dine-in", fr: "Sur place" }, type: "money", half: true },
-      { key: "delivery", label: { zh: "外卖", en: "Delivery", fr: "Livraison" }, type: "money", half: true },
-      { key: "tips", label: { zh: "小费", en: "Tips", fr: "Pourboires" }, type: "money", half: true },
-      { key: "expenses", label: { zh: "当日支出", en: "Expenses", fr: "Dépenses" }, type: "money", half: true },
-      { key: "net", label: { zh: "净收入", en: "Net", fr: "Net" }, type: "money", half: true },
-    ],
-    outputs: [
-      { zh: "每日收入汇总", en: "Daily revenue summary", fr: "Résumé des revenus quotidiens" },
-      { zh: "净收入 = 堂食 + 外卖 − 小费 − 当日支出", en: "Net = dine-in + delivery − tips − expenses", fr: "Net = sur place + livraison − pourboires − dépenses" },
-    ],
-    amountKey: "net",
-    amountLabel: { zh: "净收入", en: "Net", fr: "Net" },
-    amountKind: "money",
-    computed: [
-      { target: "net", formula: "subtract", fields: ["dineIn", "delivery", "-tips", "-expenses"] },
-    ],
-  },
+  // 每日结账与收入 (daily-close) retired — folded into 销售统计 (Sales Stats) as an
+  // editable expenses/net row per day. Revenue comes from real checkout sessions.
 
   // ── Staff ─────────────────────────────────────────────────────────────
   {
