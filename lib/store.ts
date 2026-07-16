@@ -47,6 +47,7 @@ export interface Tenant {
   tables: string[]; // printed QR table labels (permanent contract)
   tableLayout: TableSpot[]; // floor-plan positions (additive; keyed by label)
   trackPayments: boolean; // record cash/EMT/card at checkout + show method stats; off → everything is plain sales
+  dayStartHour: number; // business-day start hour (Toronto), 0 = midnight; after-midnight sales before this hour count to the previous day
   users: User[];
   records: Record<string, RecordRow[]>;
 }
@@ -67,6 +68,7 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     tables: Array.isArray(row.tables) ? row.tables : [],
     tableLayout: Array.isArray(row.table_layout) ? row.table_layout : [],
     trackPayments: row.track_payments ?? true, // default ON (method tracking)
+    dayStartHour: typeof row.day_start_hour === "number" ? row.day_start_hour : 0,
     users,
     records,
   };
@@ -170,6 +172,20 @@ export async function setTrackPayments(slug: string, on: boolean): Promise<void>
 export async function getTrackPayments(slug: string): Promise<boolean> {
   const { data } = await supabase.from("tenants").select("track_payments").eq("slug", slug).maybeSingle();
   return (data as { track_payments?: boolean } | null)?.track_payments ?? true;
+}
+
+/** Set the business-day start hour (0–23, Toronto) for a tenant. */
+export async function setDayStartHour(slug: string, hour: number): Promise<void> {
+  const h = Math.max(0, Math.min(23, Math.round(hour) || 0));
+  const { error } = await supabase.from("tenants").update({ day_start_hour: h }).eq("slug", slug);
+  if (error) console.error("setDayStartHour", error);
+}
+
+/** Light read of the business-day start hour (default 0 = midnight). */
+export async function getDayStartHour(slug: string): Promise<number> {
+  const { data } = await supabase.from("tenants").select("day_start_hour").eq("slug", slug).maybeSingle();
+  const h = (data as { day_start_hour?: number } | null)?.day_start_hour;
+  return typeof h === "number" ? h : 0;
 }
 
 export async function addMember(

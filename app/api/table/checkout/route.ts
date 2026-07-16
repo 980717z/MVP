@@ -22,13 +22,16 @@ const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const cents = (n: number) => Math.round((Number(n) || 0) * 100);
 
 // Shop-tz (Toronto) business date, so the day's books are stable for remote owners.
-function shopBusinessDate(): string {
+// dayStartHour shifts the instant back so after-midnight sales (before that hour)
+// close on the previous business day. 0 = midnight (default).
+function shopBusinessDate(dayStartHour = 0): string {
+  const now = dayStartHour ? new Date(Date.now() - dayStartHour * 3600_000) : new Date();
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Toronto",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date()); // YYYY-MM-DD
+  }).format(now); // YYYY-MM-DD
 }
 
 type Item = { id?: string; name_zh: string; name_en?: string; qty: number; price: number | null; market?: boolean; cancelled?: boolean; note?: string; adjust?: number };
@@ -63,7 +66,7 @@ export async function POST(req: Request) {
   if (!["cash", "card", "emt", "other"].includes(method)) return NextResponse.json({ ok: false, error: "付款方式无效" }, { status: 400 });
 
   // 2) caller must own or be a member of the tenant
-  const { data: tenant } = await db.from("tenants").select("owner_id").eq("slug", slug).maybeSingle();
+  const { data: tenant } = await db.from("tenants").select("owner_id, day_start_hour").eq("slug", slug).maybeSingle();
   if (!tenant) return NextResponse.json({ ok: false, error: "商家不存在" }, { status: 404 });
   let allowed = tenant.owner_id === uid;
   if (!allowed) {
@@ -188,7 +191,7 @@ export async function POST(req: Request) {
       pst: tax.pst,
       total: tax.total,
       tip: tipTotal,
-      business_date: shopBusinessDate(),
+      business_date: shopBusinessDate((tenant as { day_start_hour?: number } | null)?.day_start_hour ?? 0),
       splits,
       split_mode: splitMode,
     })
@@ -232,7 +235,8 @@ async function postClaimedSales(
     const { data: existingSales } = await db.from("records").select("data").eq("tenant_slug", slug).eq("module_id", "sales");
     const seen = new Set((existingSales ?? []).map((r) => r.data?.orderId).filter(Boolean));
     const now = new Date();
-    const date = shopBusinessDate();
+    const { data: tRow } = await db.from("tenants").select("day_start_hour").eq("slug", slug).maybeSingle();
+    const date = shopBusinessDate((tRow as { day_start_hour?: number } | null)?.day_start_hour ?? 0);
     const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const saleRows = claimed
       .filter((o) => !seen.has(o.id))

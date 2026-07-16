@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { supabase } from "@/lib/supabase";
-import { getTrackPayments } from "@/lib/store";
+import { getTrackPayments, getDayStartHour } from "@/lib/store";
 import { listSessionsInRange, listSessionOrders, listSessionOrderIds, type SessionItem } from "@/lib/tableSessions";
 import { requestBill } from "@/lib/orders";
 import { aggregateSales, torontoToday, shiftDate, METHODS, type SessionRow, type Method } from "@/lib/salesStats";
@@ -32,7 +32,8 @@ const methodLabelKey = (m: string): Method => (m === "cash" || m === "card" || m
 
 export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDef }) {
   const { t, lang } = useLang();
-  const today = torontoToday(new Date());
+  const [dayStart, setDayStart] = useState(0);
+  const today = useMemo(() => torontoToday(new Date(), dayStart), [dayStart]);
 
   const [rangeKey, setRangeKey] = useState<RangeKey>("today");
   const [from, setFrom] = useState(today);
@@ -47,7 +48,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   const [detailItems, setDetailItems] = useState<SessionItem[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [reprint, setReprint] = useState<"idle" | "busy" | "done" | "error">("idle");
-  useEffect(() => { getTrackPayments(slug).then(setTrackPay).catch(() => {}); }, [slug]);
+  useEffect(() => { getTrackPayments(slug).then(setTrackPay).catch(() => {}); getDayStartHour(slug).then(setDayStart).catch(() => {}); }, [slug]);
 
   // range preset → concrete [from, to] business dates
   const [f, to2] = useMemo<[string, string]>(() => {

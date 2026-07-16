@@ -96,9 +96,12 @@ export function aggregateSales(rows: SessionRow[]): SalesAgg {
   };
 }
 
-/** Toronto business date (YYYY-MM-DD) — matches the checkout route's stamping. */
-export function torontoToday(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+/** Toronto business date (YYYY-MM-DD) — matches the checkout route's stamping.
+ *  dayStartHour shifts the instant back so after-midnight sales (before that
+ *  hour) resolve to the previous calendar day. 0 = midnight (unchanged). */
+export function torontoToday(now: Date, dayStartHour = 0): string {
+  const at = dayStartHour ? new Date(now.getTime() - dayStartHour * 3600_000) : now;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 }
 
 /** Shift a YYYY-MM-DD date string by n days (UTC-noon anchored to dodge DST). */

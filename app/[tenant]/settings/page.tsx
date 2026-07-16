@@ -8,6 +8,8 @@ import {
   getTenant,
   removeMember,
   setEnabled,
+  setDayStartHour,
+  setTrackPayments,
   type Role,
   type Tenant,
 } from "@/lib/store";
@@ -88,6 +90,16 @@ const T: Record<string, Dict> = {
   unsavedChanges: { en: "· Unsaved changes", zh: "· 有未保存的更改", fr: "· Modifications non enregistrées" },
   generating: { en: "Generating…", zh: "生成中…", fr: "Génération…" },
   generate: { en: "Generate back office →", zh: "生成后台 →", fr: "Générer l'arrière-guichet →" },
+
+  // Operations
+  opsTitle: { en: "Operations", zh: "运营设置", fr: "Exploitation" },
+  opsBlurb: { en: "How the day is counted and whether payment methods are recorded.", zh: "如何划分营业日,以及是否记录付款方式。", fr: "Comment compter la journée et si les modes de paiement sont enregistrés." },
+  dayStartLabel: { en: "New business day starts at", zh: "新营业日开始于", fr: "La nouvelle journée commence à" },
+  dayStartHint: { en: "Sales after midnight but before this hour count toward the previous day. Use this for late-night shops.", zh: "凌晨此时间点之前的销售计入前一天。适合营业到深夜的店。", fr: "Les ventes après minuit mais avant cette heure comptent pour la veille." },
+  midnight: { en: "12am (midnight)", zh: "0 点(午夜)", fr: "0 h (minuit)" },
+  trackPayLabel: { en: "Record payment method", zh: "记录付款方式", fr: "Enregistrer le mode de paiement" },
+  trackPayHint: { en: "On: choose cash / card / EMT at checkout and see the split in sales stats. Off: everything is plain sales.", zh: "开:结账时选择现金/刷卡/EMT,销售统计显示占比。关:一律记为普通销售。", fr: "Activé : choisir espèces / carte / EMT à la caisse. Désactivé : tout en ventes simples." },
+  saved: { en: "Saved", zh: "已保存", fr: "Enregistré" },
 
   // Account & login
   accountLogin: { en: "Account & login", zh: "账户与登录", fr: "Compte et connexion" },
@@ -228,6 +240,9 @@ export default function Settings() {
 
       {/* ── Account & login ─────────────────────────────────── */}
       <AccountLogin />
+
+      {/* ── Operations (business-day cutoff + payment tracking) ── */}
+      <OpsSettings slug={slug} tenant={tenant} />
 
       {/* ── Users ─────────────────────────────────────────── */}
       <section className="card mb-8 p-5">
@@ -393,6 +408,56 @@ export default function Settings() {
 }
 
 /** Account & login: shows the current login and lets the user change the password anytime. */
+function OpsSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
+  const { t } = useLang();
+  const [hour, setHour] = useState(0);
+  const [track, setTrack] = useState(true);
+  const [savedTag, setSavedTag] = useState(false);
+  useEffect(() => {
+    if (!tenant) return;
+    setHour(tenant.dayStartHour ?? 0);
+    setTrack(tenant.trackPayments ?? true);
+  }, [tenant]);
+  const flash = () => { setSavedTag(true); setTimeout(() => setSavedTag(false), 1600); };
+  const onHour = (h: number) => { setHour(h); setDayStartHour(slug, h); flash(); };
+  const onTrack = (on: boolean) => { setTrack(on); setTrackPayments(slug, on); flash(); };
+  const HOURS = [0, 4, 5, 6, 7, 8, 9, 10, 11];
+  const hourLabel = (h: number) => (h === 0 ? t(T.midnight) : `${h}am`);
+
+  return (
+    <section className="card mb-8 p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-ink">{t(T.opsTitle)}</h2>
+        {savedTag && <span className="rounded-full bg-brand-wash px-2 py-0.5 text-xs font-semibold text-brand-ink">{t(T.saved)}</span>}
+      </div>
+      <p className="mb-5 text-sm text-ink-soft">{t(T.opsBlurb)}</p>
+
+      <div className="mb-5">
+        <label className="text-sm font-semibold text-ink">{t(T.dayStartLabel)}</label>
+        <select value={hour} onChange={(e) => onHour(Number(e.target.value))} className="input mt-2 !w-auto min-w-[9rem]">
+          {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
+        </select>
+        <p className="mt-1.5 text-xs text-ink-faint">{t(T.dayStartHint)}</p>
+      </div>
+
+      <div className="flex items-start justify-between gap-4 border-t border-[#F3F2EE] pt-4">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-ink">{t(T.trackPayLabel)}</div>
+          <p className="mt-1 text-xs text-ink-faint">{t(T.trackPayHint)}</p>
+        </div>
+        <button
+          onClick={() => onTrack(!track)}
+          role="switch"
+          aria-checked={track}
+          className={`relative h-6 w-11 flex-none rounded-full transition ${track ? "bg-brand" : "bg-slate-300"}`}
+        >
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${track ? "left-[22px]" : "left-0.5"}`} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function AccountLogin() {
   const { t } = useLang();
   const { email } = useAuth();
