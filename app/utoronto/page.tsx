@@ -79,13 +79,19 @@ const T = {
   merchantDemo: { zh: "商家后台 ↗", en: "Merchant demo ↗", fr: "Démo marchand ↗" },
   forBusiness: { zh: "商户版 ↗", en: "For business ↗", fr: "Pour entreprises ↗" },
   // back-office (vendor) section
-  boEyebrow: { zh: "商家专区 · 不止点单", en: "For vendors · more than ordering", fr: "Pour commerçants · plus que la commande" },
-  boTitle: { zh: "一套系统,管好整间店", en: "One system runs the whole shop", fr: "Un système pour toute la boutique" },
+  boEyebrow: { zh: "餐车 · 小吃摊", en: "For food trucks & kiosks", fr: "Camions et kiosques" },
+  boTitle: { zh: "免费的提前下单系统。无需采购。", en: "A free order-ahead system. Nothing to buy.", fr: "Un système de commande à l'avance, gratuit. Rien à acheter." },
   boSub: {
-    zh: "扫码点餐只是入口。销售分析、库存采购、每日对账记账,后台都替你算好。",
-    en: "QR ordering is just the front door. Sales analytics, inventory, daily cash & books. The back office does the math for you.",
-    fr: "La commande QR n'est que la porte d'entrée. Analyses des ventes, stocks, caisse et comptes quotidiens. L'arrière-boutique fait les calculs.",
+    zh: "接单、管店,你需要的都在这。全部免费,用你现有的设备就能跑。",
+    en: "Everything you need to take orders and run the shop. Free, and on a device you already own.",
+    fr: "Tout ce qu'il faut pour prendre les commandes et gérer le commerce. Gratuit, sur un appareil que vous avez déjà.",
   },
+  pill1t: { zh: "全部免费", en: "Free to run", fr: "Gratuit" },
+  pill1b: { zh: "扫码菜单、提前下单、经营后台。没有月费、没有抽成、每单也不收费。", en: "The QR menu, order-ahead, and back office. No monthly fee, no commission, no per-order fee.", fr: "Le menu QR, la commande à l'avance et l'arrière-boutique. Sans abonnement, sans commission, sans frais par commande." },
+  pill2t: { zh: "无需采购", en: "Nothing to buy", fr: "Rien à acheter" },
+  pill2b: { zh: "不用 POS 机、不用硬件、无合约、不锁定。", en: "No POS terminal, no hardware, no contracts, no lock-in.", fr: "Pas de terminal, pas de matériel, pas de contrat, aucun verrouillage." },
+  pill3t: { zh: "手机就是收银台", en: "Your phone is the POS", fr: "Votre téléphone suffit" },
+  pill3b: { zh: "用你现有的手机或平板就能跑,几分钟上线。", en: "Runs on the phone or tablet you already have. Live in minutes.", fr: "Fonctionne sur le téléphone ou la tablette que vous avez déjà. En ligne en quelques minutes." },
   boLive: { zh: "看看实时后台 →", en: "Try the live dashboard →", fr: "Voir le tableau de bord →" },
   boTour: { zh: "先逛一圈演示 →", en: "Take the guided tour →", fr: "Faire la visite guidée →" },
   boSample: { zh: "演示为示例数据", en: "Demo shows sample data", fr: "Démo avec données d'exemple" },
@@ -257,7 +263,21 @@ export default function UofTLanding() {
             <div className="rise text-xs font-bold uppercase tracking-[0.15em] text-brand-ink">{t(T.boEyebrow)}</div>
             <h2 className="rise mt-2 text-balance text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" style={{ animationDelay: "60ms" }}>{t(T.boTitle)}</h2>
             <p className="rise mx-auto mt-3 max-w-xl text-balance text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.boSub)}</p>
-            <div className="rise mt-6" style={{ animationDelay: "180ms" }}>
+            {/* three pillars a truck owner needs to hear: free, nothing to buy, own device.
+                Typographic strip (bold value + line, hairline-divided) — not an icon grid. */}
+            <div className="rise mx-auto mt-8 grid max-w-3xl gap-6 text-left sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-[#EBEAE5]" style={{ animationDelay: "150ms" }}>
+              {[
+                { t: T.pill1t, b: T.pill1b },
+                { t: T.pill2t, b: T.pill2b },
+                { t: T.pill3t, b: T.pill3b },
+              ].map((p, i) => (
+                <div key={i} className="sm:px-5">
+                  <div className="text-[17px] font-extrabold text-brand-ink">{t(p.t)}</div>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-soft">{t(p.b)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rise mt-8" style={{ animationDelay: "180ms" }}>
               <RequestDemo openSignal={demoOpenSignal} />
             </div>
           </div>
