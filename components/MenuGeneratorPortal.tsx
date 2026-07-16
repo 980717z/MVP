@@ -222,6 +222,12 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     ? dishes.filter((d) => d.name_zh.toLowerCase().includes(sq) || (d.name_en || "").toLowerCase().includes(sq))
     : dishes;
 
+  // editable list grouped by category in the saved order; search filters within.
+  const visibleGrouped = [
+    ...presentCats.map((c) => ({ category: c, items: visibleDishes.filter((d) => d.category === c) })),
+    { category: "", items: visibleDishes.filter((d) => !d.category || !presentCats.includes(d.category)) },
+  ].filter((g) => g.items.length > 0);
+
   const toggleSoldOut = (d: MenuItem, next: boolean) => {
     patchLocal(d.id, { sold_out: next });
     updateMenuItem(d.id, { sold_out: next });
@@ -424,8 +430,14 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
               {sq && visibleDishes.length === 0 && (
                 <p className="mt-4 text-center text-sm text-ink-faint">{t(T.noMatchA)}{search}{t(T.noMatchB)}</p>
               )}
-              <div className="mt-2 space-y-2">
-                {visibleDishes.map((d) => (
+              <div className="mt-2 space-y-6">
+                {visibleGrouped.map((g) => (
+                  <div key={g.category || "_uncat"} className="space-y-2">
+                    <div className="sticky top-0 z-10 -mx-1 flex items-baseline gap-2 bg-[#FBFAF8]/90 px-1 py-1.5 backdrop-blur">
+                      <span className="text-sm font-bold text-ink">{g.category || "未分类"}</span>
+                      <span className="text-xs text-ink-faint">{g.items.length}</span>
+                    </div>
+                    {g.items.map((d) => (
                   <div key={d.id} className={`card flex gap-4 p-3 transition ${d.sold_out ? "bg-red-50/40 ring-1 ring-red-200" : ""}`}>
                     {/* left column: category (top) · image (fills) */}
                     <div className="flex w-32 flex-none flex-col gap-2">
@@ -576,6 +588,8 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                     </div>
 
                     <button onClick={() => remove(d.id)} className="flex-none self-start px-1 text-xs text-ink-faint hover:text-red-600">{t(T.del)}</button>
+                  </div>
+                    ))}
                   </div>
                 ))}
                 {dishes.length === 0 && (
