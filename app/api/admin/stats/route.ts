@@ -114,6 +114,9 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     generatedAt: new Date(now).toISOString(),
+    // Setup-progress flag for the cold-start hero: a query error on `events`
+    // means the table hasn't been created yet (supabase/events.sql not run).
+    eventsTableExists: !eventsQ.error,
     kpis: {
       orders7: live.filter((o) => in7(o.created_at)).length,
       orders30: live.length,

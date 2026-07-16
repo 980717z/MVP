@@ -148,6 +148,7 @@ diner sees jade/paper; owner sees emerald/app-grey.
 | 2026-06-19 | Latin face = Plus Jakarta Sans; CJK = Noto Sans SC | Friendly humanist; deliberately distinct from the menu's General Sans + Noto Serif so the two brands don't blur |
 | 2026-06-19 | Dashboard leads with one "today at a glance" number, not a $0 card grid | Owner glances 3s mid-shift; one real number + next action beats a wall of zeros and sidebar-duplicating cards |
 | 2026-06-19 | Mobile nav is required (drawer or bottom tabs) | Current `hidden md:flex` sidebar leaves phones with zero navigation; owners are on phones |
+| 2026-07-16 | Platform-internal admin surfaces (`/admin`) are EN-only | /plan-design-review 5-1A: trilingual rule scoped to merchant/customer-facing UI; internal allowlist-gated tools skip the 3× string tax. Merchant + diner surfaces remain EN/FR/中 |
 
 ## Reference
 Approved visual board: `~/.gstack/projects/980717z-MVP/designs/platform-system-20260619/design-board.html`

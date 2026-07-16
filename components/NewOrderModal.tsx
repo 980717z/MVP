@@ -310,12 +310,13 @@ export default function NewOrderModal({
                             + {t(T.add)}
                           </button>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => setQty(r.key, qty - 1)} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-300 text-lg leading-none text-ink-soft hover:bg-slate-50">
+                          // 44px tap floor — staff hit these one-handed mid-call (design review 6-2A)
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => setQty(r.key, qty - 1)} className="grid h-11 w-11 place-items-center rounded-lg border border-slate-300 text-xl leading-none text-ink-soft hover:bg-slate-50">
                               −
                             </button>
-                            <span className="w-5 text-center text-sm font-semibold text-ink">{qty}</span>
-                            <button onClick={() => setQty(r.key, qty + 1)} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-300 text-lg leading-none text-ink-soft hover:bg-slate-50">
+                            <span className="w-6 text-center text-sm font-semibold tabular-nums text-ink">{qty}</span>
+                            <button onClick={() => setQty(r.key, qty + 1)} className="grid h-11 w-11 place-items-center rounded-lg border border-slate-300 text-xl leading-none text-ink-soft hover:bg-slate-50">
                               +
                             </button>
                           </div>
