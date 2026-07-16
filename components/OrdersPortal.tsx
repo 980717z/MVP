@@ -7,6 +7,7 @@ import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupRea
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
+import NewOrderModal from "@/components/NewOrderModal";
 import { supabase } from "@/lib/supabase";
 import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
@@ -64,6 +65,7 @@ const T: Record<string, Dict> = {
   trackPayOff: { en: "Off", zh: "关", fr: "Désactivé" },
   trackPayHint: { en: "Off → no cash/EMT/card choice; everything is plain sales.", zh: "关闭后 → 结账不选现金/EMT/刷卡,一律计为销售额。", fr: "Désactivé → aucun choix comptant/virement/carte; tout est en ventes." },
   more: { en: "More", zh: "更多", fr: "Plus" },
+  newOrder: { en: "New order", zh: "新建单", fr: "Nouvelle commande" },
   viewDine: { en: "Tables", zh: "桌面", fr: "Salle" },
   viewTogo: { en: "Pickup", zh: "自取", fr: "À emporter" },
   viewDelivery: { en: "Delivery", zh: "外送", fr: "Livraison" },
@@ -213,6 +215,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [tenant, setTenant] = useState<Tenant | undefined>();
   const [view, setView] = useState<"dine" | "togo" | "delivery" | "pickup" | "market">("dine");
   const [headerMenu, setHeaderMenu] = useState(false); // ⋯ overflow for the header's utility actions
+  const [newOrder, setNewOrder] = useState(false); // manual takeout/delivery order composer
   const [trackPay, setTrackPay] = useState(true); // record cash/EMT/card at checkout + method stats (tenant setting)
   const toggleTrackPay = () => { const next = !trackPay; setTrackPay(next); saveTrackPayments(slug, next).catch(() => {}); };
 
@@ -771,18 +774,24 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         </div>
       </header>
 
-      {/* view switch: dine-in floor plan · togo list · delivery list */}
-      <div className="mb-4 inline-flex flex-wrap rounded-xl border border-slate-200 bg-white p-1">
-        {VIEWS.map((v) => (
-          <button
-            key={v.key}
-            onClick={() => setView(v.key)}
-            className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium transition ${view === v.key ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}
-          >
-            <span aria-hidden>{v.icon}</span>{v.label}
-            {v.count > 0 && <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-bold text-amber-700">{v.count}</span>}
-          </button>
-        ))}
+      {/* view switch: dine-in floor plan · togo list · delivery list — with a
+          manual-order composer for phone/walk-in takeout & delivery orders */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-white p-1">
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              onClick={() => setView(v.key)}
+              className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium transition ${view === v.key ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}
+            >
+              <span aria-hidden>{v.icon}</span>{v.label}
+              {v.count > 0 && <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-bold text-amber-700">{v.count}</span>}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setNewOrder(true)} className="btn-primary inline-flex min-h-11 items-center gap-1.5 px-4 text-sm">
+          ＋ {t(T.newOrder)}
+        </button>
       </div>
 
       {view === "dine" && (
@@ -816,6 +825,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       {view === "market" && <MarketPricePanel slug={slug} />}
 
       {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
+
+      {newOrder && (
+        <NewOrderModal
+          slug={slug}
+          onClose={() => setNewOrder(false)}
+          onCreated={(type) => { setNewOrder(false); setView(type); load(); }}
+        />
+      )}
     </main>
   );
 }
