@@ -200,13 +200,18 @@ export async function claimOrderDone(id: string): Promise<{ claimed: boolean; er
 //  picked_up_at); the status enum is untouched. Consumer step is derived in
 //  lib/pickup.ts: new→1, preparing→2, ready_at→3, picked_up_at→4.
 
-/** Accept a pickup order and set the prep ETA: new → preparing + eta_minutes.
- *  Moving to "preparing" advances the consumer tracker to step 2 ("制作中"). */
-export async function acceptPickup(id: string, etaMinutes: number): Promise<{ error?: string }> {
-  const { error } = await supabase
-    .from("orders")
-    .update({ status: "preparing", eta_minutes: etaMinutes })
-    .eq("id", id);
+/** Accept a pickup order: new → preparing.
+ *  ONE TIME CONTRACT (design review 7A): every order carries a single target
+ *  clock in requested_pickup_at. For ASAP orders staff pick a prep ETA and we
+ *  stamp the target = now + eta (the tracker shows "Ready ~11:56", anchored,
+ *  never a decaying "~15 min"). For student-scheduled orders staff CONFIRM
+ *  (etaMinutes null) — the student's chosen time stays the only clock. */
+export async function acceptPickup(id: string, etaMinutes: number | null): Promise<{ error?: string }> {
+  const patch: Record<string, unknown> =
+    etaMinutes != null
+      ? { status: "preparing", eta_minutes: etaMinutes, requested_pickup_at: new Date(Date.now() + etaMinutes * 60_000).toISOString() }
+      : { status: "preparing" };
+  const { error } = await supabase.from("orders").update(patch).eq("id", id);
   if (error) {
     console.error("acceptPickup", error);
     return { error: error.message };

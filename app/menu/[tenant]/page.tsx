@@ -113,6 +113,9 @@ export default function PublicMenu() {
   // Students order from class and note when they'll swing by the truck.
   const [pickupWhen, setPickupWhen] = useState<"asap" | 15 | 30 | 45 | string>("asap");
   const [pickupErr, setPickupErr] = useState("");
+  // Truck hours (design review 4A): closed banner + disabled checkout + picker
+  // max. null until fetched; unconfigured hours never gate.
+  const [truckHours, setTruckHours] = useState<{ open: boolean; unconfigured: boolean; opensAt: string | null; closesAt: string | null } | null>(null);
   // ?embed=1 (landing showcase): hide the shop's name until we have written
   // authorization to feature it. Purely additive — printed QR params untouched.
   const [embed, setEmbed] = useState(false);
@@ -198,7 +201,18 @@ export default function PublicMenu() {
     if (params.get("m") === "togo") setTogoMode(true);
     // pickup QR: /menu/<slug>?m=pickup → campus order-ahead. Reuses the togo
     // layout (togoMode) but is pickup-only + routes to the tracking screen.
-    if (params.get("m") === "pickup") { setTogoMode(true); setPickupMode(true); }
+    // Campus audience is English-first: pickup entry defaults the menu to EN
+    // (zh stays one toggle-tap away; explicit ?lang= below still wins).
+    if (params.get("m") === "pickup") {
+      setTogoMode(true); setPickupMode(true);
+      if (!params.get("lang")) setLang("en");
+      // Hours gate is a courtesy (server enforces the real one) — fetch failure
+      // must never block the menu, so errors just leave truckHours null.
+      fetch(`/api/pickup/hours?slug=${encodeURIComponent(slug)}`)
+        .then((r) => r.json())
+        .then((d) => { if (d?.ok) setTruckHours({ open: !!d.open, unconfigured: !!d.unconfigured, opensAt: d.opensAt ?? null, closesAt: d.closesAt ?? null }); })
+        .catch(() => {});
+    }
     if (params.get("embed") === "1") setEmbed(true);
     // ?lang= lets an embedder (e.g. the landing showcase iframe) pick the menu
     // language. Menu is zh/en only (FR omitted); anything non-zh falls to en.
@@ -460,7 +474,9 @@ export default function PublicMenu() {
       const pu = await createPickupOrder({ slug, items, phone: phoneToSave, note, pickup_at: when.iso });
       setSubmitting(false);
       if ("error" in pu) {
-        alert(tri("提交失败：", "Couldn't place the order: ", "Échec de la commande : ") + pu.error);
+        // Server messages (hours gate, time window) are written for customers —
+        // show them inline where the choice was made, not as a raw alert (10A).
+        setPickupErr(pu.error);
         return;
       }
       track("order_placed", { tenant: slug, src: entrySrc(), meta: { type: "pickup" } }); // beacon survives the redirect
@@ -797,9 +813,18 @@ export default function PublicMenu() {
         </div>
       )}
       {pickupMode && (
-        <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          🚚 {tri("到餐车取餐 · 做好后通知你来取", "Pickup at the truck · we'll ping you when it's ready", "Ramassage au camion · on vous avertit quand c'est prêt")}
-        </div>
+        truckHours && !truckHours.open && !truckHours.unconfigured ? (
+          <div className="bg-[#FBF1DE] py-2 text-center text-sm font-medium text-[#8a5a10]">
+            ⏸ {truckHours.opensAt
+              ? tri(`现在打烊 · ${truckHours.opensAt} 开门`, `Closed right now · opens at ${truckHours.opensAt}`, `Fermé · ouvre à ${truckHours.opensAt}`)
+              : tri("今天已打烊，明天见", "Closed for today — see you tomorrow", "Fermé pour aujourd'hui")}
+          </div>
+        ) : (
+          <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
+            🚚 {tri("到餐车取餐 · 做好后通知你来取", "Pickup at the truck · we'll ping you when it's ready", "Ramassage au camion · on vous avertit quand c'est prêt")}
+            {truckHours?.closesAt ? ` · ${tri(`营业到 ${truckHours.closesAt}`, `open until ${truckHours.closesAt}`, `ouvert jusqu'à ${truckHours.closesAt}`)}` : ""}
+          </div>
+        )
       )}
 
       <div className="mv-shell mx-auto w-full max-w-[440px] px-5 py-6 md:max-w-[1440px]">
@@ -1266,18 +1291,24 @@ export default function PublicMenu() {
                               key={String(v)}
                               type="button"
                               onClick={() => { setPickupWhen(v); setPickupErr(""); }}
-                              className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${pickupWhen === v ? "bg-jade text-white" : "border border-slate-200 bg-white text-ink-soft"}`}
+                              className={`min-h-11 rounded-full px-3.5 text-sm font-medium transition ${pickupWhen === v ? "bg-jade text-white" : "border border-slate-200 bg-white text-ink-soft"}`}
                             >
                               {label}
                             </button>
                           ))}
-                          <input
-                            type="time"
-                            aria-label={tri("自选取餐时间", "Choose a pickup time", "Choisir une heure")}
-                            value={typeof pickupWhen === "string" && pickupWhen !== "asap" ? pickupWhen : ""}
-                            onChange={(e) => { if (e.target.value) { setPickupWhen(e.target.value); setPickupErr(""); } }}
-                            className={`rounded-full border px-3 py-1.5 text-sm ${typeof pickupWhen === "string" && pickupWhen !== "asap" ? "border-jade bg-jade-wash font-semibold text-jade" : "border-slate-200 bg-white text-ink-soft"}`}
-                          />
+                          {/* Visibly labeled custom time (10A) — never a bare blank pill.
+                              min/max bound it to now→closing so errors surface on pick. */}
+                          <label className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-sm ${typeof pickupWhen === "string" && pickupWhen !== "asap" ? "border-jade bg-jade-wash font-semibold text-jade" : "border-slate-200 bg-white text-ink-soft"}`}>
+                            {tri("指定时间", "Specific time", "Heure précise")}
+                            <input
+                              type="time"
+                              min={new Date().toTimeString().slice(0, 5)}
+                              max={truckHours?.closesAt ?? undefined}
+                              value={typeof pickupWhen === "string" && pickupWhen !== "asap" ? pickupWhen : ""}
+                              onChange={(e) => { if (e.target.value) { setPickupWhen(e.target.value); setPickupErr(""); } }}
+                              className="bg-transparent outline-none"
+                            />
+                          </label>
                         </div>
                         {typeof pickupWhen === "number" && (
                           <p className="mt-1 text-xs text-ink-faint">
@@ -1384,7 +1415,7 @@ export default function PublicMenu() {
                   )}
                   {pickupMode && (
                     <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">
-                      🚚 {tri("到餐车取餐，出示取餐号即可", "Pick up at the truck — just show your pickup code", "Retrait au camion — montrez simplement votre code")}
+                      💵 {tri("到餐车出示取餐号，取餐时付款", "Show your code at the truck · pay when you pick up", "Montrez votre code au camion · payez au retrait")}
                     </p>
                   )}
                   {togoMode && !isDelivery && addrErr && (
@@ -1392,7 +1423,7 @@ export default function PublicMenu() {
                   )}
                   <button
                     onClick={submit}
-                    disabled={submitting || (togoMode && isDelivery && shortfall > 0)}
+                    disabled={submitting || (togoMode && isDelivery && shortfall > 0) || (pickupMode && !!truckHours && !truckHours.open && !truckHours.unconfigured)}
                     className="w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                   >
                     {submitting

@@ -79,6 +79,24 @@ export const CATEGORY_EN: Record<string, string> = {
   汤粉面: "Noodle Soup",
   粥类: "Congee",
   酒水饮品: "Drinks",
+  // Campus food-truck categories (templates/pita-express.json + demo-truck).
+  // NOTE: every NEW tenant's categories need entries here or the EN category
+  // rail silently falls back to Chinese (design review 2026-07-17, issue 1).
+  每日特惠: "Daily Deals",
+  卷饼: "Wraps",
+  拼盘: "Plates",
+  墨西哥卷: "Burritos",
+  套餐: "Combos",
+  炸鸡: "Fried Chicken",
+  鸡翅鸡柳: "Wings & Tenders",
+  鱼虾: "Fish & Shrimp",
+  汉堡: "Burgers",
+  小食配菜: "Sides",
+  招牌饭: "Signature Bowls",
+  "面 & 小食": "Noodles & Snacks",
+  饮品: "Drinks",
+  招牌: "Signatures",
+  小食: "Snacks",
 };
 
 /** Category label in the requested language. */

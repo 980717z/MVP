@@ -89,6 +89,9 @@ const T: Record<string, Dict> = {
     zh: "顾客选择的取餐时间——按这个时间备好",
     fr: "Heure de retrait choisie par le client — à préparer pour cette heure",
   },
+  puPickupWord: { en: "pickup", zh: "取餐", fr: "retrait" },
+  puConfirmFor: { en: "✓ Confirm for {t}", zh: "✓ 按 {t} 接单", fr: "✓ Confirmer pour {t}" },
+  puMin: { en: "{n} min", zh: "{n} 分钟", fr: "{n} min" },
   // Empty state
   emptyOrders: {
     en: "No orders yet. Once customers order via the “📱 QR menu”, they show up here in real time.",
@@ -474,6 +477,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       } else {
         const { error } = await setOrderStatus(o.id, to);
         if (error) alert(t(T.statusFailed) + error);
+        // Tell the student their pickup order died — otherwise the tracker
+        // shows "Order received" forever (design review 5A).
+        if (!error && to === "cancelled" && o.order_type === "pickup") await notifyPickup(o.id, "cancelled");
       }
       load();
     } finally {
@@ -481,9 +487,10 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
   };
 
-  // Pickup: accept + set prep ETA (new → preparing). Advances the customer's
-  // tracker to step 2 ("制作中 · 约 N 分钟").
-  const acceptPickupOrder = async (o: Order, eta: number) => {
+  // Pickup: accept (new → preparing). ASAP orders take a prep ETA (which stamps
+  // the single target clock = now + eta); student-scheduled orders CONFIRM with
+  // eta null — their chosen time stays the only clock (design review 7A).
+  const acceptPickupOrder = async (o: Order, eta: number | null) => {
     if (advancing.current.has(o.id)) return;
     advancing.current.add(o.id);
     try {
@@ -495,6 +502,20 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
   };
 
+  // Best-effort diner push (READY or CANCELLED); tracker still updates on poll.
+  const notifyPickup = async (orderId: string, kind: "ready" | "cancelled") => {
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      await fetch("/api/pickup/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
+        body: JSON.stringify({ order_id: orderId, kind }),
+      });
+    } catch (e) {
+      console.error("pickup notify", e);
+    }
+  };
+
   // Pickup: mark READY (CAS on ready_at). The winner fires the consumer push
   // (Slice 5) — for now the tracker flips to "可取餐" on its next ~8s poll.
   const readyPickupOrder = async (o: Order) => {
@@ -503,19 +524,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     try {
       const { readied, error } = await markPickupReady(o.id);
       if (error) alert(t(T.statusFailed) + error);
-      if (readied) {
-        // Only the CAS winner pushes, so the diner gets the "ready" alert once.
-        try {
-          const { data: sess } = await supabase.auth.getSession();
-          await fetch("/api/pickup/notify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
-            body: JSON.stringify({ order_id: o.id }),
-          });
-        } catch (e) {
-          console.error("pickup notify", e); // push is best-effort; the tracker still flips on poll
-        }
-      }
+      // Only the CAS winner pushes, so the diner gets the "ready" alert once.
+      if (readied) await notifyPickup(o.id, "ready");
       load();
     } finally {
       advancing.current.delete(o.id);
@@ -601,26 +611,40 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     </button>
   );
 
-  // Pickup card primary action: new → accept+ETA chips → Ready → Picked up.
+  // Pickup card primary action: new → accept → Ready → Picked up.
+  // ONE TIME CONTRACT (7A): student-scheduled orders get a single
+  // "Confirm for 12:15" (their time IS the clock); ASAP orders get prep-ETA
+  // chips which stamp the target clock. 44px targets, worded labels (10A).
   const ETA_CHIPS = [5, 10, 15, 20];
   const pickupPrimary = (o: Order) => {
     if (o.status === "cancelled") return null;
     if (o.picked_up_at) return <span className="pill bg-green-100 text-green-700">✓ {t(T.puDone)}</span>;
     if (o.ready_at) return <button onClick={() => advance(o, "done")} className="btn-primary px-4 text-sm">{t(T.puPickedUp)}</button>;
     if (o.status === "preparing") return <button onClick={() => readyPickupOrder(o)} className="btn-primary px-4 text-sm">{t(T.puReady)}</button>;
-    // status "new": accept + set a prep ETA in one tap
+    // status "new", student-scheduled → single confirm toward their time
+    if (o.requested_pickup_at) {
+      const hhmm = new Date(o.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return (
+        <button onClick={() => acceptPickupOrder(o, null)} className="btn-primary min-h-11 px-4 text-sm">
+          {t(T.puConfirmFor).replace("{t}", hhmm)}
+        </button>
+      );
+    }
+    // status "new", ASAP → accept + prep ETA in one tap
     return (
-      <div className="flex items-center gap-1">
-        <span className="mr-0.5 hidden text-xs text-ink-faint sm:inline">{t(T.puAcceptHint)}</span>
-        {ETA_CHIPS.map((m) => (
-          <button
-            key={m}
-            onClick={() => acceptPickupOrder(o, m)}
-            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-          >
-            {m}′
-          </button>
-        ))}
+      <div className="flex flex-col items-end gap-1">
+        <span className="text-xs text-ink-faint">{t(T.puAcceptHint)}</span>
+        <div className="flex items-center gap-1.5">
+          {ETA_CHIPS.map((m) => (
+            <button
+              key={m}
+              onClick={() => acceptPickupOrder(o, m)}
+              className="min-h-11 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              {t(T.puMin).replace("{n}", String(m))}
+            </button>
+          ))}
+        </div>
       </div>
     );
   };
@@ -637,10 +661,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             {o.order_type === "pickup" && o.pickup_code && (
               <span className="pill bg-emerald-50 font-bold tracking-wider text-emerald-700">🎫 {o.pickup_code}</span>
             )}
-            {/* student-chosen pickup time — cook so it's READY at this moment */}
+            {/* target pickup time — cook so it's READY at this moment. Meaning is
+                visible text, not a hover tooltip (design review 10A). */}
             {o.order_type === "pickup" && o.requested_pickup_at && !o.picked_up_at && (
               <span className="pill bg-amber-100 font-bold text-amber-700" title={t(T.puWhenTitle)}>
-                🕐 {new Date(o.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                🕐 {new Date(o.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} {t(T.puPickupWord)}
               </span>
             )}
             {o.order_type === "pickup" && o.ready_at && !o.picked_up_at && (

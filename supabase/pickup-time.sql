@@ -37,7 +37,8 @@ create policy orders_anon_insert_pickup_guard on public.orders
     and requested_pickup_at is null
   );
 
--- Tracking RPC: same contract + requested_pickup_at (public, non-PII).
+-- Tracking RPC: same contract + requested_pickup_at + total (both public,
+-- non-PII; total powers the "Pay at the truck · $X" line on the tracker).
 drop function if exists public.get_order_tracking(uuid, text);
 create function public.get_order_tracking(p_order_id uuid, p_token text)
 returns table (
@@ -48,6 +49,7 @@ returns table (
   pickup_code         text,
   created_at          timestamptz,
   requested_pickup_at timestamptz,
+  total               numeric,
   items               jsonb
 )
 language sql
@@ -56,7 +58,7 @@ set search_path = public
 stable
 as $$
   select o.status, o.ready_at, o.picked_up_at, o.eta_minutes, o.pickup_code, o.created_at,
-    o.requested_pickup_at,
+    o.requested_pickup_at, o.total,
     (
       select coalesce(jsonb_agg(jsonb_build_object(
         'name_zh', it->>'name_zh', 'name_en', it->>'name_en', 'qty', it->'qty'

@@ -16,8 +16,11 @@ export interface Tracking {
   eta_minutes: number | null;
   pickup_code: string | null;
   created_at: string;
-  /** Student-chosen pickup time (null = ASAP). Absent until pickup-time.sql runs. */
+  /** Target pickup clock: student-chosen, or staff-stamped at ASAP accept
+   *  (one time contract). Absent until pickup-time.sql runs. */
   requested_pickup_at?: string | null;
+  /** Order total — powers "Pay at the truck · $X". Absent pre-migration. */
+  total?: number | null;
   items: { name_zh?: string; name_en?: string; qty?: number }[];
 }
 

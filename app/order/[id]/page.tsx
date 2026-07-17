@@ -47,8 +47,8 @@ export default function PickupTracking() {
       if (!t) { setState("notfound"); return; }
       setTrack(t);
       setState("ok");
-      // Stop once picked up; pause while the tab is hidden (save the poll).
-      if (t.picked_up_at) return;
+      // Stop once picked up or cancelled; pause while the tab is hidden.
+      if (t.picked_up_at || t.status === "cancelled") return;
       const delay = document.visibilityState === "hidden" ? 30_000 : 8_000;
       timer.current = setTimeout(poll, delay);
     };
@@ -62,7 +62,15 @@ export default function PickupTracking() {
   const step = track ? pickupStep(track) : 1;
   const ready = step >= 3;
   const done = step === 4;
+  const cancelled = track?.status === "cancelled";
   const total = (track?.items ?? []).reduce((n, it) => n + (Number(it.qty) || 1), 0);
+  // ONE TIME CONTRACT: the single target clock (student-chosen, or staff-set at
+  // ASAP accept). Pre-ready the TIME is the hero — a walking student's question
+  // is "when"; the code takes over at READY when it's what claims the food.
+  const targetHHMM = track?.requested_pickup_at
+    ? new Date(track.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : null;
+  const money = track?.total != null ? `$${Number(track.total).toFixed(2)}` : null;
 
   return (
     <main className="min-h-screen bg-paper px-4 py-8" style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}>
@@ -80,19 +88,46 @@ export default function PickupTracking() {
           </div>
         )}
 
-        {state === "ok" && track && (
+        {state === "ok" && track && cancelled && (
+          /* Cancelled: say it plainly, stop the journey (design review 5A). */
+          <div className="px-6 py-16 text-center">
+            <div className="text-4xl">❌</div>
+            <p className="mt-3 text-lg font-bold text-[#C0392B]">订单已取消 · This order was cancelled</p>
+            <p className="mx-auto mt-2 max-w-[300px] text-sm leading-relaxed text-ink-soft">
+              商家取消了这张订单，你没有付款。有疑问请到餐车询问。
+              <br />The truck cancelled this order — you haven’t paid. Ask at the window if you have questions.
+            </p>
+            {track.pickup_code && <p className="mt-4 text-xs text-ink-faint">订单号 · Order {track.pickup_code}</p>}
+          </div>
+        )}
+
+        {state === "ok" && track && !cancelled && (
           <>
             <div className="border-b border-[#ECE7DF] px-6 pt-6 pb-5 text-center">
-              <div className="text-xs font-semibold uppercase tracking-[0.15em] text-jade">取餐号 · Your pickup code</div>
-              <div className="mt-1 text-6xl font-bold leading-none text-jade" style={{ fontVariantNumeric: "tabular-nums" }}>
-                {track.pickup_code || "—"}
-              </div>
-              {/* student-chosen pickup time (scheduled order-ahead) */}
-              {track.requested_pickup_at && !done && (
-                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#FBF1DE] px-3.5 py-1.5 text-sm font-semibold text-[#8a5a10]">
-                  🕐 {new Date(track.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  <span className="font-medium">取餐 · pickup time</span>
-                </div>
+              {/* Hierarchy swaps with the moment (design review 3A):
+                  pre-ready the target TIME leads; at READY the CODE leads. */}
+              {!ready && targetHHMM ? (
+                <>
+                  <div className="text-xs font-semibold uppercase tracking-[0.15em] text-jade">预计取餐 · Pickup at</div>
+                  <div className="mt-1 text-6xl font-bold leading-none text-jade" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {targetHHMM}
+                  </div>
+                  <div className="mt-3 text-sm text-ink-soft">
+                    取餐号 · Code <span className="font-bold tracking-wider text-jade">{track.pickup_code || "—"}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs font-semibold uppercase tracking-[0.15em] text-jade">取餐号 · Your pickup code</div>
+                  <div className="mt-1 text-6xl font-bold leading-none text-jade" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {track.pickup_code || "—"}
+                  </div>
+                  {targetHHMM && !done && (
+                    <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#FBF1DE] px-3.5 py-1.5 text-sm font-semibold text-[#8a5a10]">
+                      🕐 {targetHHMM}<span className="font-medium">取餐 · pickup time</span>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* 4-step numbered stepper */}
@@ -123,7 +158,14 @@ export default function PickupTracking() {
                 ) : ready ? (
                   <p className="text-lg font-bold text-jade">✅ 可以取餐啦 · Ready — come pick up!</p>
                 ) : step === 2 ? (
-                  <p className="text-sm font-medium text-ink-soft">制作中{track.eta_minutes ? ` · 约 ${track.eta_minutes} 分钟` : ""} · Preparing{track.eta_minutes ? ` · ~${track.eta_minutes} min` : ""}</p>
+                  /* ONE clock (7A): with a target time, that IS the promise —
+                     never a second "~N min" beside it. Legacy eta only when no
+                     target exists (pre-migration orders). */
+                  <p className="text-sm font-medium text-ink-soft">
+                    {targetHHMM
+                      ? `为 ${targetHHMM} 准备中 · Preparing for ${targetHHMM} pickup`
+                      : `制作中${track.eta_minutes ? ` · 约 ${track.eta_minutes} 分钟` : ""} · Preparing${track.eta_minutes ? ` · ~${track.eta_minutes} min` : ""}`}
+                  </p>
                 ) : (
                   <p className="text-sm font-medium text-ink-soft">已收到订单 · Order received</p>
                 )}
@@ -163,6 +205,14 @@ export default function PickupTracking() {
               </div>
             </div>
 
+            {/* Pay-at-truck expectation + total (design review 8A) — no surprise
+                payment step at the window. */}
+            {money && !done && (
+              <div className="flex items-center justify-between border-t border-[#ECE7DF] px-6 py-3 text-sm">
+                <span className="font-medium text-ink">💵 到餐车付款 · Pay at the truck</span>
+                <span className="font-bold tabular-nums text-ink">{money}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2 border-t border-[#ECE7DF] bg-[#FAF7F2] px-6 py-3 text-xs text-ink-soft">
               🚚 到餐车取餐 · 有问题我们会电话联系你 · Pick up at the truck — we'll call if there's an issue
             </div>

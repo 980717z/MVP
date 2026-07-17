@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   const uid = auth?.user?.id;
   if (authErr || !uid) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  let body: { order_id?: string };
+  let body: { order_id?: string; kind?: string };
   try {
     body = await req.json();
   } catch {
@@ -46,6 +46,9 @@ export async function POST(req: Request) {
   }
   const orderId = (body.order_id ?? "").trim();
   if (!orderId) return NextResponse.json({ ok: false, error: "missing order_id" }, { status: 400 });
+  // "ready" (default, pre-existing) or "cancelled" (design review 5A — the
+  // student must hear about a killed order, not discover it at the truck).
+  const kind = body.kind === "cancelled" ? "cancelled" : "ready";
 
   // 2) load the order (need tenant + pickup_code for the notification body)
   const { data: order } = await db
@@ -82,12 +85,21 @@ export async function POST(req: Request) {
   if (!subs || subs.length === 0) return NextResponse.json({ ok: true, sent: 0 });
 
   const code = order.pickup_code ? ` · ${order.pickup_code}` : "";
-  const notification = JSON.stringify({
-    title: "✅ 可以取餐啦 · Ready for pickup",
-    body: `到餐车取餐${code} · Come pick up at the truck${code}`,
-    url: `/order/${orderId}`,
-    tag: `bento-pickup-${orderId}`,
-  });
+  const notification = JSON.stringify(
+    kind === "cancelled"
+      ? {
+          title: "❌ 订单已取消 · Order cancelled",
+          body: `这单被商家取消了，无需付款${code} · The truck cancelled this order — you haven't paid${code}`,
+          url: `/order/${orderId}`,
+          tag: `bento-pickup-${orderId}`,
+        }
+      : {
+          title: "✅ 可以取餐啦 · Ready for pickup",
+          body: `到餐车取餐${code} · Come pick up at the truck${code}`,
+          url: `/order/${orderId}`,
+          tag: `bento-pickup-${orderId}`,
+        },
+  );
 
   // 5) send to each; prune subscriptions the push service reports as gone
   const stale: string[] = [];

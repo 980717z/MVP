@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { hoursStatus, type Hours } from "@/lib/hours";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,28 @@ export async function POST(req: Request) {
 
   const db = supabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "server not configured" }, { status: 500 });
+
+  // Truck hours gate (design review 4A). Unconfigured hours never block; when
+  // configured: ASAP requires open-now, a scheduled time must land inside an
+  // open window. Server-side because the client gate is just a courtesy.
+  const { data: cv } = await db.from("campus_vendors").select("hours").eq("tenant_slug", slug).maybeSingle();
+  const nowStatus = hoursStatus((cv?.hours ?? null) as Hours | null, new Date());
+  if (!nowStatus.unconfigured) {
+    if (requested_pickup_at) {
+      const atStatus = hoursStatus((cv?.hours ?? null) as Hours | null, new Date(requested_pickup_at));
+      if (!atStatus.open) {
+        return NextResponse.json(
+          { ok: false, error: nowStatus.open && nowStatus.closesAt ? `当天营业到 ${nowStatus.closesAt}，请选早一点的时间 / The truck closes at ${nowStatus.closesAt} — pick an earlier time` : "该时间不在营业时间内 / That time is outside today's hours" },
+          { status: 400 },
+        );
+      }
+    } else if (!nowStatus.open) {
+      return NextResponse.json(
+        { ok: false, error: nowStatus.opensAt ? `现在打烊了，${nowStatus.opensAt} 开门 / Closed right now — opens at ${nowStatus.opensAt}` : "今天已打烊 / Closed for today" },
+        { status: 400 },
+      );
+    }
+  }
 
   const total = Math.round(items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 1), 0) * 100) / 100;
   const id = crypto.randomUUID();

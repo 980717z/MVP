@@ -102,7 +102,14 @@ async function handle(req: Request): Promise<Response> {
     // Drain pending kitchen tickets oldest-first. A round of ONLY no-kitchen items
     // (drinks / plain rice) gets claimed but NOT printed — the kitchen doesn't cook
     // it (it still shows on the bill). Print the first round that has cookable food.
+    // Scheduled-pickup hold (design review 7A): a ticket printed at order time
+    // makes a ticket-driven cook fire a 12:15 order at 11:40. Hold scheduled
+    // pickup tickets until target − prep window; the poll re-offers them later
+    // (printed_at stays null, so nothing is lost — just deferred).
+    const PICKUP_PREP_MS = 15 * 60_000;
     for (const order of (data as Order[] | null) ?? []) {
+      const target = (order as { requested_pickup_at?: string | null }).requested_pickup_at;
+      if (order.order_type === "pickup" && target && Date.parse(target) - Date.now() > PICKUP_PREP_MS) continue;
       const active = (order.items ?? []).filter((it) => !(it as { cancelled?: boolean }).cancelled);
       const needsKitchen = active.some((it) => !(it as { noKitchen?: boolean }).noKitchen);
       // CAS-claim so a rare double-poll can't double-print.
