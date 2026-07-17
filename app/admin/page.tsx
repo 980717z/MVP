@@ -21,6 +21,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { BentoMark } from "@/components/BentoMark";
 import AddVendorModal from "@/components/AddVendorModal";
+import CampusListingModal from "@/components/CampusListingModal";
 
 type Funnel = { campus: number; directory: number; vendorTaps: number; menuViews: number; menuSessions: number; ordersPlaced: number };
 type Stats = {
@@ -44,6 +45,7 @@ export default function AdminPage() {
   const [selDay, setSelDay] = useState<number | null>(null); // selected daily bar (6-1A)
   const [copied, setCopied] = useState(false);
   const [addVendor, setAddVendor] = useState(false);
+  const [listing, setListing] = useState<{ slug: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     const { data: sess } = await supabase.auth.getSession();
@@ -314,6 +316,7 @@ export default function AdminPage() {
               <th className="px-4 py-3 font-medium">Dine-in 30d</th>
               <th className="px-4 py-3 font-medium">Menu views 7d</th>
               <th className="px-4 py-3 font-medium">Last order</th>
+              <th className="px-4 py-3 font-medium">Preview</th>
               <th className="px-4 py-3 font-medium">Campus</th>
             </tr>
           </thead>
@@ -329,7 +332,20 @@ export default function AdminPage() {
                 <td className="px-4 py-3 tabular-nums text-ink-soft">{v.dine30}</td>
                 <td className="px-4 py-3 tabular-nums text-ink-soft">{v.menuViews7}</td>
                 <td className="px-4 py-3 text-xs tabular-nums text-ink-faint">{v.lastOrderAt ? v.lastOrderAt.slice(0, 16).replace("T", " ") : "—"}</td>
-                <td className="px-4 py-3">{v.listed ? <span className="pill bg-brand-wash text-brand-ink">listed</span> : <span className="text-xs text-ink-faint">—</span>}</td>
+                {/* one-click previews: what the student orders on + the back-office */}
+                <td className="px-4 py-3 text-xs">
+                  <div className="flex gap-2">
+                    <a href={`/menu/${v.slug}?m=pickup`} target="_blank" rel="noreferrer" className={`font-semibold text-brand-ink hover:underline ${focusRing}`}>menu ↗</a>
+                    <a href={`/${v.slug}`} target="_blank" rel="noreferrer" className={`text-ink-faint hover:text-ink ${focusRing}`}>back-office ↗</a>
+                  </div>
+                </td>
+                {/* click to open the campus-listing editor (toggle, hours, tags) */}
+                <td className="px-4 py-3">
+                  <button onClick={() => setListing({ slug: v.slug, name: v.name })} className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-slate-50 ${focusRing}`}>
+                    {v.listed ? <span className="pill bg-brand-wash text-brand-ink">listed</span> : <span className="text-xs text-ink-faint">not listed</span>}
+                    <span className="text-xs text-ink-faint">· edit</span>
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -339,6 +355,7 @@ export default function AdminPage() {
       <p className="mt-6 text-center text-xs text-ink-faint">Generated {stats.generatedAt.slice(0, 19).replace("T", " ")} UTC · internal — do not share</p>
 
       {addVendor && <AddVendorModal onClose={() => setAddVendor(false)} onProvisioned={load} />}
+      {listing && <CampusListingModal slug={listing.slug} name={listing.name} onClose={() => setListing(null)} onSaved={load} />}
     </Shell>
   );
 }
