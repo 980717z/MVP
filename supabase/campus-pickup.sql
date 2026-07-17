@@ -11,6 +11,10 @@
 -- ===========================================================================
 
 -- 1) New fulfillment type + per-tenant payment mode ------------------------
+--    NOTE: the pre-existing check from orders-payment.sql is named
+--    orders_type_chk — it must be dropped too, or it keeps rejecting 'pickup'
+--    (this exact miss shipped once; fixed 2026-07-17 via pickup-time.sql).
+alter table public.orders drop constraint if exists orders_type_chk;
 alter table public.orders drop constraint if exists orders_order_type_chk;
 alter table public.orders
   add constraint orders_order_type_chk

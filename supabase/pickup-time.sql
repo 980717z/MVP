@@ -14,6 +14,17 @@
 --  Run AFTER campus-pickup.sql. Idempotent. Supabase → SQL Editor → Run.
 -- ===========================================================================
 
+-- ── FIX (prod bug, caught 2026-07-17): orders-payment.sql created a check
+--    named orders_type_chk (dine_in/togo/delivery only); campus-pickup.sql
+--    replaced a DIFFERENTLY-named orders_order_type_chk — so BOTH exist and
+--    the old one still rejects 'pickup'. Every order-ahead pickup insert on
+--    prod fails until this drop runs. The correct 4-type check follows.
+alter table public.orders drop constraint if exists orders_type_chk;
+alter table public.orders drop constraint if exists orders_order_type_chk;
+alter table public.orders
+  add constraint orders_order_type_chk
+  check (order_type in ('dine_in','togo','delivery','pickup'));
+
 alter table public.orders add column if not exists requested_pickup_at timestamptz;
 
 -- Anon direct inserts must not set it (server route uses the service role).
