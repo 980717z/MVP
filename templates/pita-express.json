@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "type": "food-truck",
+  "label": {
+    "zh": "校园餐车（订餐-取餐 · 无桌码）",
+    "en": "Campus food truck (order-ahead pickup, no tables)"
+  },
+  "modules": ["menu-generator", "qr-menu", "online-orders", "members"],
+  "tables": [],
+  "categories": [
+    "每日特惠",
+    "卷饼",
+    "拼盘",
+    "墨西哥卷",
+    "套餐",
+    "炸鸡",
+    "鸡翅鸡柳",
+    "鱼虾",
+    "汉堡",
+    "小食配菜"
+  ],
+  "delivery_fsas": [],
+  "hours": "11:00-20:00",
+  "menu": [
+    { "key": "sp-2wraps", "name_zh": "任选两卷（法拉费/鸡/牛）", "name_en": "Any 2 Wraps (Falafel, Chicken & Beef)", "price": 9.99, "category": "每日特惠" },
+    { "key": "sp-shawarma-fries", "name_zh": "沙威玛薯条", "name_en": "Shawarma on Fries", "price": 7.99, "category": "每日特惠" },
+
+    { "key": "wrap-beef", "name_zh": "牛肉沙威玛卷", "name_en": "Beef Shawarma Wrap", "price": 5.99, "category": "卷饼" },
+    { "key": "wrap-chicken", "name_zh": "鸡肉沙威玛卷", "name_en": "Chicken Shawarma Wrap", "price": 5.99, "category": "卷饼" },
+    { "key": "wrap-tawook", "name_zh": "鸡肉串烧卷", "name_en": "Shish Tawook Wrap", "price": 7.99, "category": "卷饼" },
+    { "key": "wrap-fish", "name_zh": "炸鱼卷", "name_en": "Fish Wrap", "price": 6.99, "category": "卷饼" },
+    { "key": "wrap-falafel", "name_zh": "法拉费卷", "name_en": "Falafel Wrap", "price": 5.99, "category": "卷饼" },
+
+    { "key": "plate-chicken", "name_zh": "鸡肉沙威玛拼盘", "name_en": "Chicken Shawarma Plate", "price": 9.99, "category": "拼盘" },
+    { "key": "plate-beef", "name_zh": "牛肉沙威玛拼盘", "name_en": "Beef Shawarma Plate", "price": 9.99, "category": "拼盘" },
+    { "key": "plate-mix", "name_zh": "双拼沙威玛拼盘", "name_en": "Mix Shawarma Plate", "price": 10.99, "category": "拼盘" },
+    { "key": "plate-kebab", "name_zh": "牛/鸡肉烤串拼盘", "name_en": "Beef/Chicken Kebab Plate", "price": 11.99, "category": "拼盘" },
+    { "key": "plate-tawook", "name_zh": "鸡肉串烧拼盘", "name_en": "Chicken Shish Tawook Plate", "price": 12.99, "category": "拼盘" },
+    { "key": "plate-falafel", "name_zh": "法拉费拼盘", "name_en": "Falafel Plate", "price": 9.99, "category": "拼盘" },
+    { "key": "plate-salad", "name_zh": "鸡/牛肉沙拉", "name_en": "Chicken/Beef Salad", "price": 9.99, "category": "拼盘" },
+    { "key": "plate-fish", "name_zh": "鱼排拼盘", "name_en": "Fish Fillet Plate", "price": 10.99, "category": "拼盘" },
+
+    { "key": "burrito-veggie", "name_zh": "蔬菜墨西哥卷", "name_en": "Veggie Burrito", "price": 6.99, "category": "墨西哥卷" },
+    { "key": "burrito-steak", "name_zh": "牛排墨西哥卷", "name_en": "Steak Burrito", "price": 10.99, "category": "墨西哥卷" },
+    { "key": "burrito-cb", "name_zh": "鸡/牛肉墨西哥卷", "name_en": "Chicken/Beef Burrito", "price": 9.99, "category": "墨西哥卷" },
+
+    { "key": "combo-wrap", "name_zh": "沙威玛卷套餐（鸡/牛）", "name_en": "Chicken/Beef Wrap Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-nuggets", "name_zh": "鸡块套餐", "name_en": "Chicken Nuggets Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-fish-wrap", "name_zh": "炸鱼卷套餐", "name_en": "Fish Wrap Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-burger", "name_zh": "汉堡套餐（鸡/牛）", "name_en": "Chicken/Beef Burger Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-falafel", "name_zh": "法拉费卷套餐", "name_en": "Falafel Wrap Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-hotdog", "name_zh": "热狗套餐", "name_en": "Hotdog Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-kebab", "name_zh": "烤串卷套餐", "name_en": "Kebab Wrap Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-popcorn", "name_zh": "鸡米花套餐", "name_en": "Popcorn Chicken Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-mix-wrap", "name_zh": "双拼沙威玛卷套餐", "name_en": "Mix Shawarma Wrap Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-tenders", "name_zh": "鸡柳套餐", "name_en": "Chicken Tender Combo", "price": 9.99, "category": "套餐" },
+    { "key": "combo-fish-nuggets", "name_zh": "鱼块套餐", "name_en": "Fish Nuggets Combo", "price": 10.99, "category": "套餐" },
+
+    { "key": "fc-2", "name_zh": "炸鸡 2 块（含1餐包）", "name_en": "Fried Chicken 2 pcs (1 Dinner Roll)", "category": "炸鸡", "variants": [
+      { "label_zh": "单点", "label_en": "Chicken only", "price": 7.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 9.99 }
+    ] },
+    { "key": "fc-3", "name_zh": "炸鸡 3 块（含1餐包）", "name_en": "Fried Chicken 3 pcs (1 Dinner Roll)", "category": "炸鸡", "variants": [
+      { "label_zh": "单点", "label_en": "Chicken only", "price": 9.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 11.99 }
+    ] },
+    { "key": "fc-5", "name_zh": "炸鸡 5 块（含2餐包）", "name_en": "Fried Chicken 5 pcs (2 Dinner Rolls)", "category": "炸鸡", "variants": [
+      { "label_zh": "单点", "label_en": "Chicken only", "price": 14.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 16.99 }
+    ] },
+    { "key": "fc-8", "name_zh": "炸鸡 8 块（含3餐包）", "name_en": "Fried Chicken 8 pcs (3 Dinner Rolls)", "category": "炸鸡", "variants": [
+      { "label_zh": "单点", "label_en": "Chicken only", "price": 16.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 19.99 }
+    ] },
+    { "key": "popcorn", "name_zh": "鸡米花", "name_en": "Popcorn Chicken", "category": "炸鸡", "variants": [
+      { "label_zh": "小份", "label_en": "Small", "price": 7.99 },
+      { "label_zh": "大份", "label_en": "Large", "price": 11.99 }
+    ] },
+
+    { "key": "nuggets-8", "name_zh": "鸡块 8 只", "name_en": "Chicken Nuggets 8 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Nuggets only", "price": 5.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 8.99 }
+    ] },
+    { "key": "nuggets-12", "name_zh": "鸡块 12 只", "name_en": "Chicken Nuggets 12 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Nuggets only", "price": 9.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 11.99 }
+    ] },
+    { "key": "nuggets-24", "name_zh": "鸡块 24 只", "name_en": "Chicken Nuggets 24 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Nuggets only", "price": 14.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 18.99 }
+    ] },
+    { "key": "wings-6", "name_zh": "BBQ 鸡翅 6 只", "name_en": "BBQ Chicken Wings 6 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Wings only", "price": 7.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 10.99 }
+    ] },
+    { "key": "wings-10", "name_zh": "BBQ 鸡翅 10 只", "name_en": "BBQ Chicken Wings 10 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Wings only", "price": 12.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 14.99 }
+    ] },
+    { "key": "wings-15", "name_zh": "BBQ 鸡翅 15 只", "name_en": "BBQ Chicken Wings 15 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Wings only", "price": 17.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 19.99 }
+    ] },
+    { "key": "wings-20", "name_zh": "BBQ 鸡翅 20 只", "name_en": "BBQ Chicken Wings 20 pcs", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Wings only", "price": 22.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 24.99 }
+    ] },
+    { "key": "tenders-3", "name_zh": "鸡柳 3 条（含1餐包）", "name_en": "Chicken Tenders 3 pcs (1 Dinner Roll)", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Tenders only", "price": 5.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 8.99 }
+    ] },
+    { "key": "tenders-5", "name_zh": "鸡柳 5 条（含1餐包）", "name_en": "Chicken Tenders 5 pcs (1 Dinner Roll)", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Tenders only", "price": 7.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 10.99 }
+    ] },
+    { "key": "tenders-8", "name_zh": "鸡柳 8 条（含2餐包）", "name_en": "Chicken Tenders 8 pcs (2 Dinner Rolls)", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Tenders only", "price": 10.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 13.99 }
+    ] },
+    { "key": "tenders-12", "name_zh": "鸡柳 12 条（含3餐包）", "name_en": "Chicken Tenders 12 pcs (3 Dinner Rolls)", "category": "鸡翅鸡柳", "variants": [
+      { "label_zh": "单点", "label_en": "Tenders only", "price": 15.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 20.99 }
+    ] },
+
+    { "key": "fish-2", "name_zh": "炸鱼 2 块（含1餐包）", "name_en": "Fish N Chips 2 pcs (1 Dinner Roll)", "category": "鱼虾", "variants": [
+      { "label_zh": "单点", "label_en": "Fish only", "price": 7.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 9.99 }
+    ] },
+    { "key": "fish-4", "name_zh": "炸鱼 4 块（含2餐包）", "name_en": "Fish N Chips 4 pcs (2 Dinner Rolls)", "category": "鱼虾", "variants": [
+      { "label_zh": "单点", "label_en": "Fish only", "price": 10.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 12.99 }
+    ] },
+    { "key": "fish-8", "name_zh": "炸鱼 8 块（含3餐包）", "name_en": "Fish N Chips 8 pcs (3 Dinner Rolls)", "category": "鱼虾", "variants": [
+      { "label_zh": "单点", "label_en": "Fish only", "price": 17.99 },
+      { "label_zh": "配薯条", "label_en": "With fries", "price": 19.99 }
+    ] },
+    { "key": "shrimp-6", "name_zh": "珍宝炸虾 6 只（含餐包薯条）", "name_en": "6 Jumbo Fried Shrimp (Dinner Roll & Fries)", "price": 10.99, "category": "鱼虾" },
+    { "key": "shrimp-9", "name_zh": "珍宝炸虾 9 只（含餐包薯条）", "name_en": "9 Jumbo Fried Shrimp (Dinner Roll & Fries)", "price": 12.99, "category": "鱼虾" },
+    { "key": "shrimp-15", "name_zh": "珍宝炸虾 15 只（含餐包薯条）", "name_en": "15 Jumbo Fried Shrimp (Dinner Roll & Fries)", "price": 15.99, "category": "鱼虾" },
+
+    { "key": "burger-cb", "name_zh": "牛/鸡肉汉堡", "name_en": "Beef or Chicken Burger", "price": 6.99, "category": "汉堡" },
+    { "key": "burger-double", "name_zh": "双层芝士汉堡", "name_en": "Double Cheese Burger", "price": 10.99, "category": "汉堡" },
+    { "key": "burger-fish", "name_zh": "鱼排汉堡", "name_en": "Fish Burger", "price": 6.99, "category": "汉堡" },
+    { "key": "burger-tender", "name_zh": "炸鸡柳汉堡", "name_en": "Chicken Tender Burger", "price": 7.99, "category": "汉堡" },
+    { "key": "philly", "name_zh": "费城牛肉芝士", "name_en": "Philly Cheese Steak", "price": 7.99, "category": "汉堡" },
+
+    { "key": "side-fries", "name_zh": "薯条", "name_en": "Fries", "price": 4.99, "category": "小食配菜" },
+    { "key": "side-wedges", "name_zh": "薯角", "name_en": "Potato Wedges", "price": 5.99, "category": "小食配菜" },
+    { "key": "side-rings", "name_zh": "洋葱圈", "name_en": "Onion Rings", "price": 5.99, "category": "小食配菜" },
+    { "key": "side-poutine", "name_zh": "经典肉汁奶酪薯条", "name_en": "Original Poutine", "price": 6.99, "category": "小食配菜" },
+    { "key": "side-shawarma-poutine", "name_zh": "沙威玛肉汁奶酪薯条", "name_en": "Shawarma Poutine", "price": 8.99, "category": "小食配菜" },
+    { "key": "side-falafel", "name_zh": "法拉费（份）", "name_en": "Falafel", "price": 5.99, "category": "小食配菜" },
+    { "key": "side-greek", "name_zh": "希腊沙拉", "name_en": "Greek Salad", "price": 6.99, "category": "小食配菜" },
+    { "key": "side-hotdog", "name_zh": "热狗肠", "name_en": "Hotdog Sausage", "price": 4.99, "category": "小食配菜" }
+  ]
+}
