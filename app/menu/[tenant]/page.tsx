@@ -14,6 +14,21 @@ import { resolveMenuView, MENU_VIEW_KEY, type MenuView } from "@/lib/menuView";
 import { BentoMark } from "@/components/BentoMark";
 import { track } from "@/lib/track";
 
+/** Resolve the student's pickup-time choice → ISO timestamp (null = ASAP).
+ *  Number = minutes from now; "HH:MM" = today at that clock time (error if
+ *  it's already more than a couple of minutes past). */
+function resolvePickupAt(when: "asap" | number | string): { iso: string | null } | { invalid: true } {
+  if (when === "asap") return { iso: null };
+  if (typeof when === "number") return { iso: new Date(Date.now() + when * 60_000).toISOString() };
+  const m = when.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return { invalid: true };
+  const d = new Date();
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (d.getTime() < Date.now() - 2 * 60_000) return { invalid: true };
+  return { iso: d.toISOString() };
+}
+const fmtClock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
 /** Traction attribution: how this menu session arrived. Derived from the URL,
  *  which is stable for the whole visit — recomputed at fire time so no state.
  *  "embed" (landing iframe) and "staff" (staff order entry) exist so /admin can
@@ -94,6 +109,10 @@ export default function PublicMenu() {
   // always pickup (no delivery chooser), order-only, and on submit routes through
   // the server pickup-create route → redirects to the /order/[id]?t=<token> tracker.
   const [pickupMode, setPickupMode] = useState(false);
+  // Scheduled pickup: "asap" | minutes-from-now (15/30/45) | "HH:MM" custom.
+  // Students order from class and note when they'll swing by the truck.
+  const [pickupWhen, setPickupWhen] = useState<"asap" | 15 | 30 | 45 | string>("asap");
+  const [pickupErr, setPickupErr] = useState("");
   // ?embed=1 (landing showcase): hide the shop's name until we have written
   // authorization to feature it. Purely additive — printed QR params untouched.
   const [embed, setEmbed] = useState(false);
@@ -430,7 +449,15 @@ export default function PublicMenu() {
     // pickup_code), then hand off to the anonymous /order/[id] tracking screen.
     // Order-only — no online charge; staff settle at the truck.
     if (pickupMode) {
-      const pu = await createPickupOrder({ slug, items, phone: phoneToSave, note });
+      // Scheduled pickup: resolve the chip/time choice; a past custom time
+      // (e.g. a tab left open across noon) must re-pick, not cook stale.
+      const when = resolvePickupAt(pickupWhen);
+      if ("invalid" in when) {
+        setSubmitting(false);
+        setPickupErr(tri("这个时间已经过了，请重新选择", "That time has already passed — pick a new one", "Cette heure est déjà passée, choisissez-en une autre"));
+        return;
+      }
+      const pu = await createPickupOrder({ slug, items, phone: phoneToSave, note, pickup_at: when.iso });
       setSubmitting(false);
       if ("error" in pu) {
         alert(tri("提交失败：", "Couldn't place the order: ", "Échec de la commande : ") + pu.error);
@@ -1226,6 +1253,40 @@ export default function PublicMenu() {
                         {addrErr && <p className="text-xs text-red-600">{addrErr}</p>}
                       </>
                     )}
+                    {/* Scheduled pickup: order from class now, pick up after it ends.
+                        ASAP keeps the original flow (staff set the ETA on accept). */}
+                    {pickupMode && (
+                      <div>
+                        <div className="mb-1.5 text-sm font-medium text-ink">
+                          🕐 {tri("什么时候来取？", "When will you pick it up?", "Quand viendrez-vous ?")}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {([["asap", tri("尽快", "ASAP", "Au plus vite")], [15, "+15 min"], [30, "+30 min"], [45, "+45 min"]] as const).map(([v, label]) => (
+                            <button
+                              key={String(v)}
+                              type="button"
+                              onClick={() => { setPickupWhen(v); setPickupErr(""); }}
+                              className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${pickupWhen === v ? "bg-jade text-white" : "border border-slate-200 bg-white text-ink-soft"}`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                          <input
+                            type="time"
+                            aria-label={tri("自选取餐时间", "Choose a pickup time", "Choisir une heure")}
+                            value={typeof pickupWhen === "string" && pickupWhen !== "asap" ? pickupWhen : ""}
+                            onChange={(e) => { if (e.target.value) { setPickupWhen(e.target.value); setPickupErr(""); } }}
+                            className={`rounded-full border px-3 py-1.5 text-sm ${typeof pickupWhen === "string" && pickupWhen !== "asap" ? "border-jade bg-jade-wash font-semibold text-jade" : "border-slate-200 bg-white text-ink-soft"}`}
+                          />
+                        </div>
+                        {typeof pickupWhen === "number" && (
+                          <p className="mt-1 text-xs text-ink-faint">
+                            ≈ {fmtClock(new Date(Date.now() + pickupWhen * 60_000).toISOString())}
+                          </p>
+                        )}
+                        {pickupErr && <p className="mt-1 text-xs text-red-600">{pickupErr}</p>}
+                      </div>
+                    )}
                     <input className="input" type="email" inputMode="email" placeholder={t("email")} value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                 )}
@@ -1316,8 +1377,15 @@ export default function PublicMenu() {
                       )}
                     </div>
                   )}
-                  {togoMode && !PAYMENTS_LIVE && (
+                  {/* callbackHint copy is fulai-specific (togo/delivery callback flow);
+                      pickup gets its own truck-appropriate line instead */}
+                  {togoMode && !pickupMode && !PAYMENTS_LIVE && (
                     <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">📞 {t("callbackHint")}</p>
+                  )}
+                  {pickupMode && (
+                    <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">
+                      🚚 {tri("到餐车取餐，出示取餐号即可", "Pick up at the truck — just show your pickup code", "Retrait au camion — montrez simplement votre code")}
+                    </p>
                   )}
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>

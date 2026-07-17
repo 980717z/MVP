@@ -16,6 +16,8 @@ export interface Tracking {
   eta_minutes: number | null;
   pickup_code: string | null;
   created_at: string;
+  /** Student-chosen pickup time (null = ASAP). Absent until pickup-time.sql runs. */
+  requested_pickup_at?: string | null;
   items: { name_zh?: string; name_en?: string; qty?: number }[];
 }
 
@@ -33,6 +35,8 @@ export async function createPickupOrder(input: {
   items: OrderItem[];
   phone?: string;
   note?: string;
+  /** ISO timestamp of the student's chosen pickup time; omit for ASAP. */
+  pickup_at?: string | null;
 }): Promise<{ id: string; tracking_token: string; pickup_code: string } | { error: string }> {
   try {
     const res = await fetch("/api/pickup/create", {

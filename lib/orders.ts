@@ -65,6 +65,8 @@ export interface Order {
   picked_up_at: string | null;
   pickup_code: string | null;
   tracking_token: string | null;
+  /** Student-chosen pickup time (supabase/pickup-time.sql). null/undefined = ASAP. */
+  requested_pickup_at?: string | null;
   printed_at: string | null; // Epson: kitchen ticket, null = needs printing
   bill_at: string | null; // customer bill requested (queued for the printer)
   bill_printed_at: string | null; // customer bill printed; null while pending

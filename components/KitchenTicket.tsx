@@ -32,6 +32,14 @@ function orderTypeLine(o: Order): { badge: string; sub?: string } {
   const t = (o as any).order_type ?? "dine_in";
   if (t === "delivery") return { badge: "🛵 配送 DELIVERY", sub: addr(o) };
   if (t === "togo") return { badge: "🛍️ 自取 TAKEOUT" };
+  if (t === "pickup") {
+    const at = (o as any).requested_pickup_at as string | null | undefined;
+    return {
+      badge: `🚚 取餐 PICKUP${o.pickup_code ? ` · ${o.pickup_code}` : ""}`,
+      // the line the cook plans around: when the customer said they'll arrive
+      sub: at ? `🕐 ${new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} 来取 PICKUP TIME` : undefined,
+    };
+  }
   return { badge: o.table_no ? `堂食 · 桌 ${displayTable(o.table_no)}` : "堂食 DINE-IN" };
 }
 

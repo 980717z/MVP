@@ -23,7 +23,7 @@ function genCode(): string {
 }
 
 export async function POST(req: Request) {
-  let body: { slug?: string; items?: InItem[]; phone?: string; note?: string };
+  let body: { slug?: string; items?: InItem[]; phone?: string; note?: string; pickup_at?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -34,6 +34,19 @@ export async function POST(req: Request) {
   const items = (body.items || []).filter((it) => it && (it.name_zh || it.name_en));
   if (!slug || items.length === 0) {
     return NextResponse.json({ ok: false, error: "missing slug or items" }, { status: 400 });
+  }
+
+  // Scheduled pickup (optional; null/absent = ASAP). Server-validated window so
+  // a stale tab or crafted request can't schedule food for yesterday or next
+  // week: [now − 5 min, now + 12 h]. 400 (not silent-ASAP) — cooking at the
+  // wrong time is worse than asking the student to re-pick.
+  let requested_pickup_at: string | null = null;
+  if (body.pickup_at) {
+    const t = Date.parse(body.pickup_at);
+    if (Number.isNaN(t) || t < Date.now() - 5 * 60_000 || t > Date.now() + 12 * 3_600_000) {
+      return NextResponse.json({ ok: false, error: "取餐时间无效，请重新选择 / Pickup time is invalid — please pick again" }, { status: 400 });
+    }
+    requested_pickup_at = new Date(t).toISOString();
   }
 
   const db = supabaseAdmin();
@@ -56,6 +69,9 @@ export async function POST(req: Request) {
     order_type: "pickup",
     pickup_code,
     tracking_token,
+    // Spread-when-set: ASAP orders never reference the column, so the pickup
+    // flow keeps working even if pickup-time.sql hasn't been run yet.
+    ...(requested_pickup_at ? { requested_pickup_at } : {}),
   });
   if (error) {
     console.error("[pickup/create]", error.message);

@@ -95,7 +95,22 @@ function typeBadge(o: Order): { badge: string; sub?: string; tel?: string } {
     return { badge: "外卖", sub: a ? [a.street, a.unit, a.city, a.postal].filter(Boolean).join(" ") : undefined, tel: phone };
   }
   if (t === "togo") return { badge: "自取", tel: phone };
+  if (t === "pickup") {
+    // Order-ahead pickup: code is how the customer claims it; the requested
+    // time is what the cook plans around. Renders SERVER-side → fix the TZ.
+    const at = (o as any).requested_pickup_at as string | null | undefined;
+    return {
+      badge: `取餐${o.pickup_code ? `  ${o.pickup_code}` : ""}`,
+      sub: at ? `${fmtTorontoClock(at)} 来取 PICKUP TIME` : undefined,
+      tel: phone,
+    };
+  }
   return { badge: o.table_no ? `堂食  台号 ${displayTable(o.table_no)}` : "堂食" };
+}
+
+/** HH:MM in the shop's timezone — this module runs on the server (UTC). */
+function fmtTorontoClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Toronto" });
 }
 
 // ── Bilingual (中文 + English) for PRICE bills only — the kitchen ticket stays
@@ -105,6 +120,7 @@ function billBadgeBi(o: Order): string {
   const t = (o as any).order_type ?? "dine_in";
   if (t === "delivery") return "外卖 Delivery";
   if (t === "togo") return "自取 Takeout";
+  if (t === "pickup") return `取餐 Pickup${o.pickup_code ? ` · ${o.pickup_code}` : ""}`;
   return o.table_no ? `堂食 Dine-in · 台号 Table ${displayTable(o.table_no)}` : "堂食 Dine-in";
 }
 function methodBi(m?: string): string {

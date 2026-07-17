@@ -84,6 +84,11 @@ const T: Record<string, Dict> = {
   puReadyBadge: { en: "READY", zh: "可取餐", fr: "PRÊT" },
   puEta: { en: "~{n} min", zh: "约 {n} 分钟", fr: "~{n} min" },
   puReadyPush: { en: "Customer notified 🔔", zh: "已通知顾客 🔔", fr: "Client averti 🔔" },
+  puWhenTitle: {
+    en: "Customer's chosen pickup time — have it ready by then",
+    zh: "顾客选择的取餐时间——按这个时间备好",
+    fr: "Heure de retrait choisie par le client — à préparer pour cette heure",
+  },
   // Empty state
   emptyOrders: {
     en: "No orders yet. Once customers order via the “📱 QR menu”, they show up here in real time.",
@@ -527,7 +532,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   // Buckets by order type — dine-in goes to the floor plan; togo/delivery/pickup to lists.
   const togoOrders = orders.filter((o) => o.order_type === "togo");
   const deliveryOrders = orders.filter((o) => o.order_type === "delivery");
-  const pickupOrders = orders.filter((o) => o.order_type === "pickup");
+  // Pickup tab works in TARGET-TIME order: what has to be ready soonest, first.
+  // ASAP orders target their creation time; scheduled ones their requested time.
+  const pickupOrders = orders
+    .filter((o) => o.order_type === "pickup")
+    .sort((a, b) =>
+      new Date(a.requested_pickup_at ?? a.created_at).getTime() -
+      new Date(b.requested_pickup_at ?? b.created_at).getTime());
   const pickupActive = pickupOrders.filter((o) => !o.picked_up_at && o.status !== "cancelled").length;
   const dineUnpaid = orders.filter((o) => o.order_type === "dine_in" && o.payment_status === "unpaid").length;
   const togoActive = togoOrders.filter((o) => o.status === "new" || o.status === "preparing").length;
@@ -625,6 +636,12 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             <span className={`pill ${STATUS[o.status].cls}`}>{t(T[STATUS[o.status].key])}</span>
             {o.order_type === "pickup" && o.pickup_code && (
               <span className="pill bg-emerald-50 font-bold tracking-wider text-emerald-700">🎫 {o.pickup_code}</span>
+            )}
+            {/* student-chosen pickup time — cook so it's READY at this moment */}
+            {o.order_type === "pickup" && o.requested_pickup_at && !o.picked_up_at && (
+              <span className="pill bg-amber-100 font-bold text-amber-700" title={t(T.puWhenTitle)}>
+                🕐 {new Date(o.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
             )}
             {o.order_type === "pickup" && o.ready_at && !o.picked_up_at && (
               <span className="pill bg-green-100 font-bold text-green-700">{t(T.puReadyBadge)}</span>

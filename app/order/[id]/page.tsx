@@ -87,6 +87,13 @@ export default function PickupTracking() {
               <div className="mt-1 text-6xl font-bold leading-none text-jade" style={{ fontVariantNumeric: "tabular-nums" }}>
                 {track.pickup_code || "—"}
               </div>
+              {/* student-chosen pickup time (scheduled order-ahead) */}
+              {track.requested_pickup_at && !done && (
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#FBF1DE] px-3.5 py-1.5 text-sm font-semibold text-[#8a5a10]">
+                  🕐 {new Date(track.requested_pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  <span className="font-medium">取餐 · pickup time</span>
+                </div>
+              )}
 
               {/* 4-step numbered stepper */}
               <div className="mt-6 flex items-start justify-between px-1">
