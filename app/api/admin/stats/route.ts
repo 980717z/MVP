@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireAdmin } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 
@@ -27,21 +27,9 @@ const dayOf = (iso: string) =>
 const FUNNEL_EXCLUDE = new Set(["embed", "staff"]);
 
 export async function GET(req: Request) {
-  const admins = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  if (admins.length === 0) return NextResponse.json({ ok: false, error: "not configured" }, { status: 503 });
-
-  const db = supabaseAdmin();
-  if (!db) return NextResponse.json({ ok: false, error: "server not configured" }, { status: 500 });
-
-  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!jwt) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  const { data: auth, error: authErr } = await db.auth.getUser(jwt);
-  const email = auth?.user?.email?.toLowerCase();
-  if (authErr || !email) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  if (!admins.includes(email)) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  const gate = await requireAdmin(req);
+  if (!gate.ok) return gate.res;
+  const { db } = gate;
 
   const now = Date.now();
   const sinceIso = new Date(now - DAYS * 86_400_000).toISOString();

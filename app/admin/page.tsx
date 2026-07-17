@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { BentoMark } from "@/components/BentoMark";
+import AddVendorModal from "@/components/AddVendorModal";
 
 type Funnel = { campus: number; directory: number; vendorTaps: number; menuViews: number; menuSessions: number; ordersPlaced: number };
 type Stats = {
@@ -42,6 +43,7 @@ export default function AdminPage() {
   const [win, setWin] = useState<"7" | "30">("7");
   const [selDay, setSelDay] = useState<number | null>(null); // selected daily bar (6-1A)
   const [copied, setCopied] = useState(false);
+  const [addVendor, setAddVendor] = useState(false);
 
   const load = useCallback(async () => {
     const { data: sess } = await supabase.auth.getSession();
@@ -298,7 +300,10 @@ export default function AdminPage() {
       </div>
 
       {/* per-vendor table */}
-      <h2 className="mt-6 mb-3 text-sm font-bold text-ink">Vendors</h2>
+      <div className="mt-6 mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-ink">Vendors</h2>
+        <button onClick={() => setAddVendor(true)} className={`btn-primary min-h-9 px-3.5 text-xs ${focusRing}`}>＋ Add vendor</button>
+      </div>
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
@@ -332,6 +337,8 @@ export default function AdminPage() {
       </div>
 
       <p className="mt-6 text-center text-xs text-ink-faint">Generated {stats.generatedAt.slice(0, 19).replace("T", " ")} UTC · internal — do not share</p>
+
+      {addVendor && <AddVendorModal onClose={() => setAddVendor(false)} onProvisioned={load} />}
     </Shell>
   );
 }
