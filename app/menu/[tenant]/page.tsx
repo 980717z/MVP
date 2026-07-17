@@ -306,9 +306,23 @@ export default function PublicMenu() {
   // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
   // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
   const isDelivery = togoMode && togoType === "delivery";
-  // Phone required for togo/delivery and per-table (每桌一码) customer scans.
-  // Optional only for the whole-store QR (整店一码) and staff-placed orders.
-  const phoneRequired = togoMode || (!!lockedTable && !staff);
+  // A tenant with no table labels is a food truck / counter-service vendor:
+  // no dine-in table field, and every order needs a phone (there's no table to
+  // call out, so the number is how staff reach the customer).
+  const noTables = tables.length === 0;
+  // Phone required for togo/delivery, per-table (每桌一码) scans, and any
+  // no-table (food-truck) vendor. Optional only for the whole-store QR of a
+  // sit-down shop, and staff-placed orders.
+  const phoneRequired = togoMode || noTables || (!!lockedTable && !staff);
+
+  // Secondary (other-language) dish name — shown only when it's actually
+  // different. An English-only vendor sets name_zh = name_en, so this returns
+  // "" and no Chinese subtitle renders.
+  const secondaryName = (d: MenuItem): string => {
+    const primary = (lang === "zh" ? d.name_zh : d.name_en || d.name_zh) || "";
+    const secondary = (lang === "zh" ? d.name_en || "" : d.name_zh) || "";
+    return secondary.trim() && secondary.trim() !== primary.trim() ? secondary : "";
+  };
 
   // Delivery address fields — postal FIRST with an instant in-zone check.
   // Rendered in the up-front chooser panel AND in the checkout sheet (same
@@ -626,9 +640,7 @@ export default function PublicMenu() {
               </span>
             )}
           </div>
-          {lang === "zh"
-            ? d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>
-            : <div className="text-xs text-ink-faint">{d.name_zh}</div>}
+          {secondaryName(d) && <div className="text-xs text-ink-faint">{secondaryName(d)}</div>}
           <div className={`mt-1 text-sm font-bold ${isMarket ? "text-gold" : "text-jade"}`}>
             {isMarket ? (
               marketPriced ? fmtPrice(d.price) /* today's market price, in gold */ : t("market")
@@ -1026,7 +1038,7 @@ export default function PublicMenu() {
                   <div key={d.id} className={`flex flex-col justify-between rounded-xl border p-3 ${q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"}`}>
                     <div>
                       <div className="text-[15px] font-semibold leading-snug text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
-                      {(lang === "zh" ? d.name_en : d.name_zh) && <div className="truncate text-xs text-ink-faint">{lang === "zh" ? d.name_en : d.name_zh}</div>}
+                      {secondaryName(d) && <div className="truncate text-xs text-ink-faint">{secondaryName(d)}</div>}
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-1">
                       <span className={`text-sm font-bold ${market ? "text-gold" : "text-jade"}`}>{hasV ? fmtPrice(displayPrice(d)) : market ? t("market") : fmtPrice(d.price)}</span>
@@ -1323,7 +1335,7 @@ export default function PublicMenu() {
                 )}
 
                 <div className={`grid gap-2 ${togoMode ? "mt-2" : "mt-4"}`}>
-                  {!togoMode && (lockedTable ? (
+                  {!togoMode && !noTables && (lockedTable ? (
                     <div className="rounded-lg border border-jade/30 bg-jade-wash px-3 py-2 text-sm font-medium text-jade">
                       🪑 {tri(`${displayTable(lockedTable)} 号桌`, `Table ${displayTable(lockedTable)}`, `Table ${displayTable(lockedTable)}`)}
                     </div>
