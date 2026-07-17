@@ -111,6 +111,7 @@ const T = {
     body: { zh: "每家店的需求不一样，我们按你的店量身配置，并给出专属报价。开业优惠：免费配置 + 首月免费。联系我们聊聊。", en: "Every shop is different — we tailor your OS to how you run, with pricing to match. Launch offer: free setup + first month free. Talk to us.", fr: "Chaque commerce est différent — nous configurons votre OS sur mesure, avec un tarif adapté. Offre de lancement : installation gratuite + 1er mois offert. Parlons-en." },
   },
   footer: { zh: "为中小商家打造的轻量管理系统", en: "A lightweight back-office for small businesses", fr: "Un back-office léger pour les petits commerces" },
+  privacy: { zh: "隐私", en: "Privacy", fr: "Confidentialité" },
   utLink: { zh: "BentoOS · 多大校园 ↗", en: "BentoOS at UofT ↗", fr: "BentoOS à UofT ↗" },
 };
 
@@ -555,6 +556,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-slate-400 sm:flex-row">
           <span className="inline-flex items-center gap-1.5"><BentoMark className="h-4 w-4" /> BentoOS · {t(T.footer)}</span>
           <div className="flex items-center gap-4">
+            <a href="/privacy" className="transition hover:text-slate-600">{t(T.privacy)}</a>
             <a href="mailto:support@bentoos.io" className="transition hover:text-slate-600">support@bentoos.io</a>
             <span>© 2026 BentoOS</span>
           </div>

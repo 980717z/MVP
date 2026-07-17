@@ -25,7 +25,8 @@ alter table public.tenants add constraint tenants_slug_format
   check (
     slug ~ '^[a-z0-9-]{3,30}$'
     and slug not in ('app','api','menu','demo','login','pricing','onboarding',
-                     'get-started','how-it-works','admin','www','static','assets')
+                     'get-started','how-it-works','admin','www','static','assets',
+                     'icons','utoronto','order','eat','campus','privacy')
   ) not valid;
 
 -- ── 3. 模版菜幂等键（eng E2: 全量唯一索引，非部分索引 ——

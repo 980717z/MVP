@@ -41,7 +41,7 @@ export const SLUG_PATTERN = /^[a-z0-9-]{3,30}$/;
 export const RESERVED_SLUGS = [
   "app", "api", "menu", "demo", "login", "pricing", "onboarding",
   "get-started", "how-it-works", "admin", "www", "static", "assets",
-  "icons", "utoronto", "order", "eat", "campus",
+  "icons", "utoronto", "order", "eat", "campus", "privacy",
 ] as const;
 
 /** 新租户 slug 是否合法（格式 + 不撞路由保留字） */

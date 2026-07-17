@@ -72,6 +72,7 @@ const T = {
   ftVendors: { zh: "商家申请演示", en: "For vendors", fr: "Pour commerçants" },
   ftBuilt: { zh: "多伦多制造 🇨🇦", en: "Built in Toronto 🇨🇦", fr: "Conçu à Toronto 🇨🇦" },
   ftMainSite: { zh: "BentoOS.io 主站 ↗", en: "BentoOS.io main site ↗", fr: "Site principal BentoOS.io ↗" },
+  ftPrivacy: { zh: "隐私", en: "Privacy", fr: "Confidentialité" },
   ftDisclaimer: {
     zh: "BentoOS 为独立服务,与多伦多大学无隶属、代言或赞助关系。",
     en: "BentoOS is an independent service. It is not affiliated with, endorsed by, or sponsored by the University of Toronto.",
@@ -345,7 +346,10 @@ export default function UofTLanding() {
           {/* bottom bar */}
           <div className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-[#EBEAE5] pt-6 text-xs text-ink-faint sm:flex-row">
             <span>© 2026 BentoOS · {t(T.ftBuilt)}</span>
-            <a href="https://bentoos.io" className="font-medium text-brand-ink transition hover:text-brand">{t(T.ftMainSite)}</a>
+            <div className="flex items-center gap-4">
+              <a href="/privacy" className="transition hover:text-brand-ink">{t(T.ftPrivacy)}</a>
+              <a href="https://bentoos.io" className="font-medium text-brand-ink transition hover:text-brand">{t(T.ftMainSite)}</a>
+            </div>
           </div>
           {/* Independence disclaimer — campus-neutral: reduces implied-affiliation
               trademark risk while using the utoronto surface. Not legal advice. */}

@@ -1373,14 +1373,17 @@ export default function PublicMenu() {
         </div>
       )}
 
-      {/* discreet but findable: links to the BentoOS landing page */}
-      <footer className="pb-8 text-center">
+      {/* discreet but findable: links to the BentoOS landing page + privacy */}
+      <footer className="flex flex-col items-center gap-1.5 pb-8 text-center">
         <a
           href="/"
           className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] text-ink-faint transition hover:bg-white hover:text-jade"
           title={tri("BentoOS — 小商家的轻量后台", "BentoOS — lightweight back-office for small merchants", "BentoOS — arrière-guichet léger pour petits commerçants")}
         >
           <BentoMark className="h-3.5 w-3.5" /> Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
+        </a>
+        <a href="/privacy" className="text-[11px] text-ink-faint underline decoration-dotted underline-offset-2 transition hover:text-jade">
+          {tri("隐私", "Privacy", "Confidentialité")}
         </a>
       </footer>
     </main>
