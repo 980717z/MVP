@@ -24,15 +24,163 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
-import { addDays, mondayOf, shopToday, shopYmd } from "@/lib/shopTime";
-import { computeStockLossFifo } from "@/lib/inventory";
-import { uploadEquipmentPhoto, deleteEquipmentPhoto } from "@/lib/equipmentPhoto";
+import { useLang, type Dict } from "@/app/i18n";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
 import OrdersPortal from "@/components/OrdersPortal";
 import SalesPortal from "@/components/SalesPortal";
+import SalesStatsPortal from "@/components/SalesStatsPortal";
 import FoodSafetyPortal from "@/components/FoodSafetyPortal";
 import SuggestInput from "@/components/SuggestInput";
+
+/** Trilingual UI chrome (EN default, + 中 / FR). Data (dish/staff/supplier names,
+ *  merchant-entered content) is never translated — only labels, buttons, headings,
+ *  hints, dialogs and fixed table chrome. */
+const T: Record<string, Dict> = {
+  // generic actions
+  save: { en: "Save", zh: "保存", fr: "Enregistrer" },
+  cancel: { en: "Cancel", zh: "取消", fr: "Annuler" },
+  edit: { en: "Edit", zh: "修改", fr: "Modifier" },
+  del: { en: "Delete", zh: "删除", fr: "Supprimer" },
+  confirmDelete: { en: "Delete this record?", zh: "删除这条记录？", fr: "Supprimer cet enregistrement ?" },
+  // not-found / access
+  unknownModule: { en: "Unknown module.", zh: "未知模块。", fr: "Module inconnu." },
+  backOverview: { en: "← Back to overview", zh: "← 返回总览", fr: "← Retour à l'aperçu" },
+  overview: { en: "← Overview", zh: "← 总览", fr: "← Aperçu" },
+  noAccess: { en: "You don't have access to this module. Please contact the owner.", zh: "你没有这个模块的访问权限，请联系店主。", fr: "Vous n'avez pas accès à ce module. Veuillez contacter le propriétaire." },
+  // header / toolbar
+  collapse: { en: "Collapse", zh: "收起", fr: "Réduire" },
+  addRecord: { en: "+ Add record", zh: "+ 新增记录", fr: "+ Ajouter" },
+  exportCsv: { en: "Export CSV", zh: "导出 CSV", fr: "Exporter CSV" },
+  importing: { en: "Importing…", zh: "导入中…", fr: "Importation…" },
+  importCsv: { en: "Import CSV", zh: "导入 CSV", fr: "Importer CSV" },
+  importFailed: { en: "Import failed: ", zh: "导入失败：", fr: "Échec de l'importation : " },
+  importOk: { en: "Imported {n} records", zh: "成功导入 {n} 条记录", fr: "{n} enregistrements importés" },
+  // enable notice
+  notEnabledPre: { en: "This module is not enabled. Open ", zh: "该模块未启用。到 ", fr: "Ce module n'est pas activé. Allez dans " },
+  settings: { en: "Settings", zh: "设置", fr: "Paramètres" },
+  notEnabledPost: { en: " to turn it on before entering data.", zh: " 中开启后即可录入。", fr: " pour l'activer avant de saisir des données." },
+  // stats
+  statsLabel: { en: "Statistics", zh: "数据统计", fr: "Statistiques" },
+  all: { en: "All", zh: "全部", fr: "Tout" },
+  lastNDays: { en: "Last {n} days", zh: "近{n}天", fr: "{n} derniers jours" },
+  custom: { en: "Custom", zh: "自定义", fr: "Personnalisé" },
+  recordCount: { en: "Records", zh: "记录数", fr: "Enregistrements" },
+  thisPeriod: { en: "This period", zh: "该时段", fr: "Cette période" },
+  cumulative: { en: "Total", zh: "累计", fr: "Total" },
+  lastNDaysShort: { en: "Last {n} days", zh: "近{n}天", fr: "{n} derniers jours" },
+  totalLabel: { en: "Total", zh: "合计", fr: "Total" },
+  cumulativeScrapValue: { en: "Cumulative scrap value", zh: "累计报废价值", fr: "Valeur de rebut cumulée" },
+  avgSuffix: { en: "{label} (avg)", zh: "{label}（均值）", fr: "{label} (moy.)" },
+  sumAvgSuffix: { en: "{label} (total / avg)", zh: "{label}（合计 / 均值）", fr: "{label} (total / moy.)" },
+  avgPrefix: { en: "Avg: ", zh: "均值: ", fr: "Moy. : " },
+  // trend
+  value: { en: "Value", zh: "数值", fr: "Valeur" },
+  trendTitle: { en: "{label} trend (last 14 days)", zh: "{label} 趋势（近14天）", fr: "Tendance {label} (14 derniers jours)" },
+  // entry form
+  newRecord: { en: "New record", zh: "新增记录", fr: "Nouvel enregistrement" },
+  computing: { en: "Computing…", zh: "汇算中…", fr: "Calcul…" },
+  shift: { en: "Shift", zh: "班次", fr: "Quart" },
+  done: { en: "Done", zh: "完成", fr: "Terminé" },
+  editDefaultShifts: { en: "Edit default shifts", zh: "修改默认班次", fr: "Modifier les quarts par défaut" },
+  saveDefaultShifts: { en: "Save default shifts", zh: "保存默认班次", fr: "Enregistrer les quarts par défaut" },
+  autoComputed: { en: " (auto-computed)", zh: " (自动计算)", fr: " (calcul auto)" },
+  fillRequired: { en: "Please fill in: ", zh: "请填写：", fr: "Veuillez remplir : " },
+  // date range / filter bar
+  prevWeek: { en: "‹ Prev week", zh: "‹ 上一周", fr: "‹ Sem. préc." },
+  nextWeek: { en: "Next week ›", zh: "下一周 ›", fr: "Sem. suiv. ›" },
+  thisWeek: { en: "This week", zh: "本周", fr: "Cette semaine" },
+  selectedCount: { en: "{a} / {b} selected", zh: "已选 {a} / {b} 条", fr: "{a} / {b} sélectionnés" },
+  copying: { en: "Copying…", zh: "复制中…", fr: "Copie…" },
+  copyNToNextWeek: { en: "Copy {n} to next week →", zh: "复制 {n} 条到下一周 →", fr: "Copier {n} vers la semaine suivante →" },
+  copyToNextWeek: { en: "Copy to next week →", zh: "复制到下一周 →", fr: "Copier vers la semaine suivante →" },
+  date: { en: "Date", zh: "日期", fr: "Date" },
+  filteredCount: { en: "Filtered: {a} / {b}", zh: "筛选中：{a} / {b} 条", fr: "Filtré : {a} / {b}" },
+  clearFilter: { en: "Clear filter", zh: "清除筛选", fr: "Effacer le filtre" },
+  clearAllFilters: { en: "Clear all filters", zh: "清除全部筛选", fr: "Tout effacer" },
+  // table
+  swipeHint: { en: "← Swipe to see more columns →", zh: "← 左右滑动查看更多列 →", fr: "← Glissez pour voir plus de colonnes →" },
+  selectAll: { en: "Select all", zh: "全选", fr: "Tout sélectionner" },
+  searchPlaceholder: { en: "Search...", zh: "搜索...", fr: "Rechercher..." },
+  confirm: { en: "OK", zh: "确定", fr: "OK" },
+  emptyEnabled: { en: "No records yet. Click \"+ Add record\" to start.", zh: "还没有记录，点「+ 新增记录」开始录入。", fr: "Aucun enregistrement. Cliquez sur « + Ajouter » pour commencer." },
+  emptyDisabled: { en: "No records yet.", zh: "还没有记录。", fr: "Aucun enregistrement." },
+  emptyFiltered: { en: "No matching records. Try adjusting the filters.", zh: "没有匹配的记录，试试调整筛选条件。", fr: "Aucun enregistrement correspondant. Ajustez les filtres." },
+  expand: { en: "Expand", zh: "展开", fr: "Développer" },
+  collapseRow: { en: "Collapse", zh: "收起", fr: "Réduire" },
+  // pagination
+  pageRange: { en: "{from}–{to} of {total}", zh: "第 {from}–{to} 条，共 {total} 条", fr: "{from}–{to} sur {total}" },
+  prevPage: { en: "‹ Prev", zh: "‹ 上一页", fr: "‹ Préc." },
+  nextPage: { en: "Next ›", zh: "下一页 ›", fr: "Suiv. ›" },
+  // attendance anomalies
+  anomalyTitle: { en: "Attendance exceptions this week", zh: "本周异常出勤", fr: "Exceptions de présence cette semaine" },
+  timesSuffix: { en: "{k} {v} times", zh: "{k} {v} 次", fr: "{k} {v} fois" },
+  anomalyEmpty: { en: "Attendance is normal this week, no exceptions.", zh: "本周出勤正常，暂无异常记录。", fr: "Présence normale cette semaine, aucune exception." },
+  // equipment monthly checklist
+  monthlyChecklist: { en: "Monthly maintenance checklist", zh: "本月保养清单", fr: "Liste d'entretien du mois" },
+  itemsPending: { en: "{n} pending", zh: "{n} 项待处理", fr: "{n} en attente" },
+  checklistHint: { en: "Equipment whose next service date falls this month (including overdue), regardless of pass/complete status", zh: "下次保养日期落在本月（含已逾期）的设备，与「是否合格/已完成」无关", fr: "Équipement dont la prochaine date d'entretien tombe ce mois-ci (y compris en retard), indépendamment du statut" },
+  equipmentFallback: { en: "Equipment", zh: "设备", fr: "Équipement" },
+  overduePrefix: { en: "Overdue · {d}", zh: "已逾期 · {d}", fr: "En retard · {d}" },
+  markServiced: { en: "Serviced this cycle", zh: "本次已保养", fr: "Entretenu ce cycle" },
+  operationFailed: { en: "Operation failed, please retry: ", zh: "操作失败，请重试：", fr: "Échec de l'opération, réessayez : " },
+  // tier settings
+  tierRules: { en: "Member tier rules", zh: "会员等级规则", fr: "Règles de niveaux de membre" },
+  tierHint: { en: "Set the cumulative spend that auto-upgrades a member; takes effect immediately on save", zh: "设定累计消费满多少自动升级，保存后立即生效", fr: "Définissez la dépense cumulée qui met à niveau automatiquement un membre ; effet immédiat à l'enregistrement" },
+  tierNamePlaceholder: { en: "Tier name", zh: "等级名称", fr: "Nom du niveau" },
+  tierAtLeast: { en: "at", zh: "满", fr: "à partir de" },
+  tierUnit: { en: "", zh: "元", fr: "$" },
+  addTier: { en: "+ Add tier", zh: "+ 新增等级", fr: "+ Ajouter un niveau" },
+  saving: { en: "Saving…", zh: "保存中…", fr: "Enregistrement…" },
+  saveAndApply: { en: "Save & apply", zh: "保存并应用", fr: "Enregistrer et appliquer" },
+  savedTiersUpdated: { en: "Saved, {n} members' tiers updated", zh: "已保存，{n} 位会员等级已更新", fr: "Enregistré, niveaux de {n} membres mis à jour" },
+  saved: { en: "Saved", zh: "已保存", fr: "Enregistré" },
+  // member LTV / repeat-purchase report
+  memberReport: { en: "Member report", zh: "会员报表", fr: "Rapport des membres" },
+  repeatRate: { en: "Repeat rate", zh: "复购率", fr: "Taux de rachat" },
+  repeatRateHint: { en: "{n} of {total} members ordered again", zh: "{n} / {total} 位会员回购过", fr: "{n} des {total} membres ont recommandé" },
+  avgLtv: { en: "Avg. lifetime spend", zh: "人均消费(LTV)", fr: "Dépense moyenne (LTV)" },
+  memberCount: { en: "Total members", zh: "会员总数", fr: "Total des membres" },
+  topSpenders: { en: "🏆 Top spenders", zh: "🏆 消费排行榜", fr: "🏆 Meilleurs clients" },
+  visitsCountShort: { en: "{n} orders", zh: "{n}单", fr: "{n} cmd." },
+  // dish sales ranking
+  salesRanking: { en: "Sales ranking", zh: "销量排行", fr: "Classement des ventes" },
+  mostPopular: { en: "⭐ Most popular", zh: "⭐ 最受欢迎", fr: "⭐ Les plus populaires" },
+  lowestSales: { en: "🐢 Lowest sales", zh: "🐢 销量最低", fr: "🐢 Ventes les plus faibles" },
+  portionsRevenue: { en: "{n} sold · {rev}", zh: "{n} 份 · {rev}", fr: "{n} vendus · {rev}" },
+  tooFewDishes: { en: "Too few dishes, none yet", zh: "菜品太少，暂无", fr: "Trop peu de plats, aucun" },
+  dishName: { en: "Dish", zh: "菜名", fr: "Plat" },
+  price: { en: "Price", zh: "售价", fr: "Prix" },
+  monthlySales: { en: "Monthly", zh: "月销", fr: "Mensuel" },
+  revenue: { en: "Revenue", zh: "销售额", fr: "Chiffre d'affaires" },
+  // supplier compare
+  supplierCompare: { en: "Supplier price comparison", zh: "供应商比价", fr: "Comparaison des fournisseurs" },
+  supplierCompareHint: { en: "Average unit price per supplier for the same item; green is the lowest", zh: "同一品项各供应商的平均单价，绿色为最低价", fr: "Prix unitaire moyen par fournisseur pour le même article ; le vert est le plus bas" },
+  savesPerUnit: { en: "Lowest saves {amt}/unit vs highest", zh: "最低比最高省 {amt}/单位", fr: "Le plus bas économise {amt}/unité vs le plus élevé" },
+  // review topics
+  topicStats: { en: "Issue category breakdown", zh: "问题类别统计", fr: "Répartition par catégorie" },
+  countSuffix: { en: "{n}", zh: "{n} 条", fr: "{n}" },
+  // alerts (dashboard banners)
+  alertZeroStock: { en: "⚠️ Out of stock: {items}", zh: "⚠️ 零库存：{items}", fr: "⚠️ Rupture de stock : {items}" },
+  alertLowStock: { en: "📉 Low stock (≤5): {items}", zh: "📉 低库存（≤5）：{items}", fr: "📉 Stock faible (≤5) : {items}" },
+  alertHighScrap: { en: "🗑️ High scrap rate (≥10%): {items}", zh: "🗑️ 报废率偏高（≥10%）：{items}", fr: "🗑️ Taux de rebut élevé (≥10 %) : {items}" },
+  alertUpcomingBookings: { en: "📅 {n} bookings in the next 3 days: {list}", zh: "📅 近3天有 {n} 个预订：{list}", fr: "📅 {n} réservations dans les 3 prochains jours : {list}" },
+  alertGuestsSuffix: { en: "{name}({n} guests)", zh: "{name}({n}人)", fr: "{name}({n} pers.)" },
+  alertOpenIssues: { en: "🔧 {n} equipment issues pending: {list}", zh: "🔧 {n} 个设备问题待处理：{list}", fr: "🔧 {n} problèmes d'équipement en attente : {list}" },
+  alertServiceDue: { en: "🛠️ {n} equipment due for service{overdue}: {list}", zh: "🛠️ {n} 台设备保养到期{overdue}：{list}", fr: "🛠️ {n} équipements à entretenir{overdue} : {list}" },
+  alertServiceOverdue: { en: " ({n} overdue)", zh: "（{n} 台已过期）", fr: " ({n} en retard)" },
+  alertUnrepliedReviews: { en: "💬 {n} low-rating reviews unanswered", zh: "💬 {n} 条低分评价未回复", fr: "💬 {n} avis à faible note sans réponse" },
+  alertPendingPosts: { en: "📣 {n} posts pending publication", zh: "📣 {n} 条内容待发布", fr: "📣 {n} publications en attente" },
+  alertBirthdays: { en: "🎂 {n} member birthdays in the next 7 days: {list}", zh: "🎂 近7天 {n} 位会员生日：{list}", fr: "🎂 {n} anniversaires de membres dans les 7 prochains jours : {list}" },
+  alertSoldOut: { en: "🔥 Sold out {n} times: {items} (possibly under-prepped)", zh: "🔥 卖断 {n} 次：{items}（可能少备了）", fr: "🔥 Rupture {n} fois : {items} (peut-être pas assez préparé)" },
+  alertWaste: { en: "♻️ {n} leftover/scrapped in total", zh: "♻️ 累计剩余/报废 {n} 份", fr: "♻️ {n} restes/rebuts au total" },
+  alertPrepSuggest: { en: "📋 Tomorrow's prep suggestion (last 7d avg ×1.1): {list}", zh: "📋 明日备货建议（近7天均销×1.1）：{list}", fr: "📋 Suggestion de préparation pour demain (moy. 7j ×1,1) : {list}" },
+  alertPrepPortions: { en: "{dish} {n}", zh: "{dish} {n}份", fr: "{dish} {n}" },
+  // equipment suggest-input placeholders
+  phEquipment: { en: "e.g. Fridge", zh: "例：冰箱", fr: "ex : Réfrigérateur" },
+  phVendor: { en: "e.g. XX Repair Co.", zh: "例：XX 维修公司", fr: "ex : Société de réparation XX" },
+  phIssue: { en: "e.g. Compressor noise", zh: "例：压缩机异响", fr: "ex : Bruit du compresseur" },
+};
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
 const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElement> = {
@@ -40,6 +188,7 @@ const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElem
   "qr-menu": QrMenuPortal,
   "online-orders": OrdersPortal,
   "sales": SalesPortal,
+  "sales-stats": SalesStatsPortal,
   "food-safety": FoodSafetyPortal,
 };
 
@@ -81,16 +230,35 @@ function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Re
       result = vals.reduce((a, b) => a + b, 0);
     } else if (rule.formula === "multiply") {
       result = vals.reduce((a, b) => a * b, 1);
+    } else if (rule.formula === "percent") {
+      const [num, denom] = vals;
+      result = denom ? (num / denom) * 100 : 0;
     }
     next[rule.target] = result ? String(Math.round(result * 100) / 100) : "";
   }
   return next;
 }
 
-/** "5月26日" from a YYYY-MM-DD string. */
-function fmtMonthDay(dateStr: string): string {
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Monday (YYYY-MM-DD) of the week containing dateStr. */
+function mondayOf(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  const day = d.getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Short "month day" from a YYYY-MM-DD string, localized: zh 5月26日 · en May 26 · fr 26 mai. */
+function fmtMonthDay(dateStr: string, lang: "zh" | "en" | "fr" = "en"): string {
+  const d = new Date(dateStr + "T00:00:00");
+  if (lang === "zh") return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { month: "short", day: "numeric" });
 }
 
 function getMoneyFields(mod: ModuleDef): Field[] {
@@ -129,7 +297,7 @@ function exportCsv(mod: ModuleDef, rows: RecordRow[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${mod.label.zh}_${shopToday()}.csv`;
+  a.download = `${mod.label.zh}_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -177,11 +345,12 @@ async function importCsv(
   mod: ModuleDef,
   slug: string,
   moduleId: string,
+  lang: "zh" | "en" | "fr" = "en",
 ): Promise<{ count: number; error?: string }> {
   const text = await file.text();
   const clean = text.replace(/^﻿/, "");
   const parsed = parseCsv(clean);
-  if (parsed.length < 2) return { count: 0, error: "CSV 文件为空或只有表头" };
+  if (parsed.length < 2) return { count: 0, error: lang === "zh" ? "CSV 文件为空或只有表头" : lang === "fr" ? "Le fichier CSV est vide ou ne contient qu'un en-tête" : "The CSV file is empty or has only a header row" };
 
   const headerRow = parsed[0].map((h) => h.trim());
   const fieldMap: (Field | null)[] = headerRow.map((h) => {
@@ -189,11 +358,10 @@ async function importCsv(
   });
 
   if (fieldMap.every((f) => f === null)) {
-    return { count: 0, error: "表头无法匹配任何字段，请确认 CSV 列名与模块字段一致" };
+    return { count: 0, error: lang === "zh" ? "表头无法匹配任何字段，请确认 CSV 列名与模块字段一致" : lang === "fr" ? "Aucune colonne ne correspond à un champ — vérifiez que les noms de colonnes correspondent aux champs du module" : "No column headers matched any field — check that the CSV column names match the module fields" };
   }
 
   let count = 0;
-  let failed = 0;
   for (let i = 1; i < parsed.length; i++) {
     const row = parsed[i];
     const data: Record<string, string> = {};
@@ -204,18 +372,11 @@ async function importCsv(
       }
     }
     if (Object.keys(data).length > 0) {
-      const { error } = await addRecord(slug, moduleId, applyComputed(data, mod.computed));
-      if (error) failed++;
-      else count++;
+      await addRecord(slug, moduleId, data);
+      count++;
     }
   }
-  // Same as the manual single-entry submit(): a batch of imported purchases
-  // needs its stock sync too, so imported rows don't just sit unreflected in
-  // stock until someone happens to add a purchase by hand.
-  if (moduleId === "purchasing" && count > 0) {
-    await syncPurchasingToStock(slug);
-  }
-  return { count, error: failed > 0 ? `${failed} 行导入失败（已成功导入 ${count} 行）` : undefined };
+  return { count };
 }
 
 /** The YYYY-MM-DD a record belongs to: its `date` field, else when it was created.
@@ -224,8 +385,16 @@ function rowDate(r: RecordRow): string {
   return r.date || (r.createdAt ? String(r.createdAt).slice(0, 10) : "");
 }
 
+/** Local (device/shop TZ) YYYY-MM-DD. Avoids the UTC off-by-one that
+ *  toISOString() causes in negative-offset zones like Toronto near midnight. */
+function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function filterByDateRange(rows: RecordRow[], days: number): RecordRow[] {
-  const cutoffStr = addDays(shopToday(), -days);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = localYmd(cutoff);
   return rows.filter((r) => {
     const d = rowDate(r);
     return d && d >= cutoffStr;
@@ -239,11 +408,12 @@ function renderCell(field: Field, value: any) {
 }
 
 function EditCellInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+  const { lang } = useLang();
   if (field.type === "select") {
     return (
       <select className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">—</option>
-        {field.options?.map((o) => <option key={o.zh} value={o.zh}>{o.zh}</option>)}
+        {field.options?.map((o) => <option key={o.zh} value={o.zh}>{biLabel(o, lang)}</option>)}
       </select>
     );
   }
@@ -293,6 +463,7 @@ function GroupedRows({
   cancelEdit: () => void;
   deleteRecord: (id: string) => Promise<void>;
 }) {
+  const { t, lang } = useLang();
   const groups = useMemo(() => {
     const map = new Map<string, RecordRow[]>();
     for (const r of rows) {
@@ -316,7 +487,7 @@ function GroupedRows({
   };
 
   const renderCellCompact = (f: Field, value: any) => {
-    if (compactDates && f.type === "date" && value) return fmtMonthDay(String(value));
+    if (compactDates && f.type === "date" && value) return fmtMonthDay(String(value), lang);
     return renderCell(f, value);
   };
 
@@ -354,8 +525,8 @@ function GroupedRows({
               );
             })}
             <td className="px-2 py-1.5 text-right whitespace-nowrap">
-              <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
-              <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+              <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.save)}</button>
+              <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">{t(T.cancel)}</button>
             </td>
           </>
         ) : (
@@ -366,17 +537,12 @@ function GroupedRows({
               </td>
             ))}
             <td className="px-4 py-2.5 text-right whitespace-nowrap">
-              {r.photo_url && (
-                <a href={r.photo_url} target="_blank" rel="noreferrer" className="text-xs text-ink-faint hover:text-brand mr-2" title="查看照片">
-                  照片
-                </a>
-              )}
-              <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+              <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
               <button
-                onClick={async () => { if (confirm("删除这条记录？")) await doDelete(r.id); }}
+                onClick={async () => { if (confirm(t(T.confirmDelete))) await doDelete(r.id); }}
                 className="text-xs text-ink-faint hover:text-red-600"
               >
-                删除
+                {t(T.del)}
               </button>
             </td>
           </>
@@ -396,7 +562,14 @@ function GroupedRows({
   );
 }
 
+// Catalog labels are {zh,en} (no fr) — resolve by lang, falling back to en so
+// the UI never shows Chinese in EN/FR mode. Stored option VALUES stay in zh.
+function biLabel(d: { zh: string; en: string; fr?: string }, lang: string): string {
+  return (d as Record<string, string>)[lang] ?? d.en;
+}
+
 export default function ModulePage() {
+  const { t, lang } = useLang();
   const params = useParams();
   const slug = params.tenant as string;
   const moduleId = params.moduleId as string;
@@ -412,7 +585,6 @@ export default function ModulePage() {
   const [customStatsFrom, setCustomStatsFrom] = useState("");
   const [customStatsTo, setCustomStatsTo] = useState("");
   const [importing, setImporting] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
@@ -421,7 +593,7 @@ export default function ModulePage() {
   const [filterSearch, setFilterSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [weekAnchor, setWeekAnchor] = useState(() => shopToday());
+  const [weekAnchor, setWeekAnchor] = useState(() => new Date().toISOString().slice(0, 10));
   const [shiftPreset, setShiftPreset] = useState<string>("custom");
   const [presetConfigId, setPresetConfigId] = useState<string | null>(null);
   const [presetConfig, setPresetConfig] = useState<Record<string, string>>({});
@@ -491,12 +663,10 @@ export default function ModulePage() {
   };
 
   const savePresets = async () => {
-    const { error } = presetConfigId
-      ? await updateRecord(presetConfigId, presetForm)
-      : await addRecord(slug, "scheduling_presets", presetForm);
-    if (error) {
-      alert("保存失败，请重试：" + error);
-      return;
+    if (presetConfigId) {
+      await updateRecord(presetConfigId, presetForm);
+    } else {
+      await addRecord(slug, "scheduling_presets", presetForm);
     }
     setEditingPresets(false);
     setTick((t) => t + 1);
@@ -533,9 +703,8 @@ export default function ModulePage() {
     const toCopy = filteredRows.filter((r) => selectedForCopy.has(r.id));
     if (toCopy.length === 0 || copyingWeek) return;
     setCopyingWeek(true);
-    let failed = 0;
     try {
-      const results = await Promise.all(
+      await Promise.all(
         toCopy.map((r) => {
           const data: Record<string, string> = {};
           for (const f of mod.fields) {
@@ -545,12 +714,8 @@ export default function ModulePage() {
           return addRecord(slug, "scheduling", data);
         }),
       );
-      failed = results.filter((r) => r.error).length;
     } finally {
       setCopyingWeek(false);
-    }
-    if (failed > 0) {
-      alert(`${failed} 条排班复制失败，请重试（其余 ${toCopy.length - failed} 条已成功）`);
     }
     setCopyMode(false);
     setSelectedForCopy(new Set());
@@ -598,12 +763,10 @@ export default function ModulePage() {
 
   const removeEquipmentSuggestion = async (val: string) => {
     const next = Array.from(new Set([...hiddenEquipmentOptions, val]));
-    const { error } = equipmentOptionConfig?.id
-      ? await updateRecord(equipmentOptionConfig.id, { hidden: next })
-      : await addRecord(slug, "equipment-options-config", { hidden: next });
-    if (error) {
-      alert("保存失败，请重试：" + error);
-      return;
+    if (equipmentOptionConfig?.id) {
+      await updateRecord(equipmentOptionConfig.id, { hidden: next });
+    } else {
+      await addRecord(slug, "equipment-options-config", { hidden: next });
     }
     setTick((t) => t + 1);
   };
@@ -620,12 +783,10 @@ export default function ModulePage() {
 
   const removeVendorSuggestion = async (val: string) => {
     const next = Array.from(new Set([...hiddenVendors, val]));
-    const { error } = vendorConfig?.id
-      ? await updateRecord(vendorConfig.id, { hidden: next })
-      : await addRecord(slug, "equipment-vendor-config", { hidden: next });
-    if (error) {
-      alert("保存失败，请重试：" + error);
-      return;
+    if (vendorConfig?.id) {
+      await updateRecord(vendorConfig.id, { hidden: next });
+    } else {
+      await addRecord(slug, "equipment-vendor-config", { hidden: next });
     }
     setTick((t) => t + 1);
   };
@@ -642,12 +803,10 @@ export default function ModulePage() {
 
   const removeIssueSuggestion = async (val: string) => {
     const next = Array.from(new Set([...hiddenIssues, val]));
-    const { error } = issueConfig?.id
-      ? await updateRecord(issueConfig.id, { hidden: next })
-      : await addRecord(slug, "equipment-issue-config", { hidden: next });
-    if (error) {
-      alert("保存失败，请重试：" + error);
-      return;
+    if (issueConfig?.id) {
+      await updateRecord(issueConfig.id, { hidden: next });
+    } else {
+      await addRecord(slug, "equipment-issue-config", { hidden: next });
     }
     setTick((t) => t + 1);
   };
@@ -661,7 +820,62 @@ export default function ModulePage() {
       });
     }
     if (moduleId === "stock-loss") {
-      return computeStockLossFifo(rawRows);
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      // group rows by item
+      const byItem: Record<string, RecordRow[]> = {};
+      for (const r of rawRows) {
+        const item = r.item || "";
+        if (item) (byItem[item] ??= []).push(r);
+      }
+      // FIFO value per row + onHand per item
+      const valueMap = new Map<string, { scrapValue: number; lossValue: number }>();
+      const itemOnHand: Record<string, number> = {};
+      for (const [item, itemRows] of Object.entries(byItem)) {
+        const sorted = [...itemRows].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+        // build batch queue from "in" rows
+        const batches: { qty: number; cost: number }[] = [];
+        for (const r of sorted) {
+          const inQty = parseFloat(r.inQty) || 0;
+          if (inQty > 0) batches.push({ qty: inQty, cost: parseFloat(r.unitCost) || 0 });
+        }
+        // deduct scrap+loss in date order, assign FIFO cost per row
+        let bi = 0;
+        for (const r of sorted) {
+          const scrap = parseFloat(r.scrapQty) || 0;
+          const loss = parseFloat(r.lossQty) || 0;
+          let scrapVal = 0;
+          let lossVal = 0;
+          let toDeduct = scrap;
+          while (toDeduct > 0 && bi < batches.length) {
+            const take = Math.min(toDeduct, batches[bi].qty);
+            scrapVal += take * batches[bi].cost;
+            batches[bi].qty -= take;
+            toDeduct -= take;
+            if (batches[bi].qty <= 0) bi++;
+          }
+          toDeduct = loss;
+          while (toDeduct > 0 && bi < batches.length) {
+            const take = Math.min(toDeduct, batches[bi].qty);
+            lossVal += take * batches[bi].cost;
+            batches[bi].qty -= take;
+            toDeduct -= take;
+            if (batches[bi].qty <= 0) bi++;
+          }
+          valueMap.set(r.id, { scrapValue: r2(scrapVal), lossValue: r2(lossVal) });
+        }
+        const remainQty = batches.slice(bi).reduce((s, b) => s + b.qty, 0);
+        itemOnHand[item] = r2(remainQty);
+      }
+      return rawRows.map((r) => {
+        const v = valueMap.get(r.id) ?? { scrapValue: 0, lossValue: 0 };
+        const onHand = itemOnHand[r.item || ""] ?? 0;
+        return {
+          ...r,
+          scrapValue: String(v.scrapValue),
+          lossValue: String(v.lossValue),
+          onHand: String(onHand),
+        };
+      });
     }
     return rawRows;
   }, [rawRows, moduleId]);
@@ -741,8 +955,8 @@ export default function ModulePage() {
           </td>
         ))}
         <td className="px-2 py-1.5 text-right whitespace-nowrap">
-          <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">保存</button>
-          <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">取消</button>
+          <button onClick={saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.save)}</button>
+          <button onClick={cancelEdit} className="text-xs text-ink-faint hover:text-ink">{t(T.cancel)}</button>
         </td>
       </>
     ) : (
@@ -753,17 +967,17 @@ export default function ModulePage() {
           </td>
         ))}
         <td className="px-4 py-2.5 text-right whitespace-nowrap">
-          <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">修改</button>
+          <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
           <button
             onClick={async () => {
-              if (confirm("删除这条记录？")) {
+              if (confirm(t(T.confirmDelete))) {
                 await deleteRecord(r.id);
-                setTick((t) => t + 1);
+                setTick((tk) => tk + 1);
               }
             }}
             className="text-xs text-ink-faint hover:text-red-600"
           >
-            删除
+            {t(T.del)}
           </button>
         </td>
       </>
@@ -790,68 +1004,58 @@ export default function ModulePage() {
       );
       const low = Object.entries(totals).filter(([, v]) => v > 0 && v <= 5);
       const zero = Object.entries(totals).filter(([, v]) => v <= 0);
-      if (zero.length) list.push({ type: "warn", text: `零库存：${zero.map(([k]) => k).join("、")}` });
-      if (low.length) list.push({ type: "warn", text: `低库存（≤5）：${low.map(([k, v]) => `${k}(${v})`).join("、")}` });
+      if (zero.length) list.push({ type: "warn", text: t(T.alertZeroStock).replace("{items}", zero.map(([k]) => k).join("、")) });
+      if (low.length) list.push({ type: "warn", text: t(T.alertLowStock).replace("{items}", low.map(([k, v]) => `${k}(${v})`).join("、")) });
       const highScrap = Object.entries(flow)
         .filter(([, f]) => f.in > 0 && f.scrap / f.in >= 0.1)
         .map(([k, f]) => `${k}(${Math.round((f.scrap / f.in) * 100)}%)`);
-      if (highScrap.length) list.push({ type: "warn", text: `报废率偏高（≥10%）：${highScrap.join("、")}` });
+      if (highScrap.length) list.push({ type: "warn", text: t(T.alertHighScrap).replace("{items}", highScrap.join("、")) });
     }
     if (moduleId === "group-booking") {
-      const today = shopToday();
+      const today = localYmd(new Date());
       const upcoming = rows.filter((r) => r.date && r.date >= today && r.date <= addDays(today, 3));
-      if (upcoming.length) list.push({ type: "info", text: `近3天有 ${upcoming.length} 个预订：${upcoming.map((r) => `${r.date} ${r.customer || ""}(${r.guests || "?"}人)`).join("、")}` });
+      if (upcoming.length) list.push({ type: "info", text: t(T.alertUpcomingBookings).replace("{n}", String(upcoming.length)).replace("{list}", upcoming.map((r) => `${r.date} ` + t(T.alertGuestsSuffix).replace("{name}", r.customer || "").replace("{n}", String(r.guests || "?"))).join("、")) });
     }
     if (moduleId === "equipment") {
-      // 紧急排在前面，同一优先级内维持原有（最新在前）顺序
-      const open = rows
-        .filter((r) => r.status === "待处理" || r.status === "处理中")
-        .sort((a, b) => (a.priority === "紧急" ? -1 : 0) - (b.priority === "紧急" ? -1 : 0));
-      if (open.length) {
-        const urgentCount = open.filter((r) => r.priority === "紧急").length;
-        list.push({
-          type: "warn",
-          text: `${open.length} 个设备问题待处理${urgentCount ? `（${urgentCount} 个紧急）` : ""}：${open
-            .map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`)
-            .join("、")}`,
-        });
-      }
-      // 保养到期提醒：下次保养日期已过期或在近7天内，跳过已停用和已确认处理过的
-      const today = shopToday();
+      const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
+      if (open.length) list.push({ type: "warn", text: t(T.alertOpenIssues).replace("{n}", String(open.length)).replace("{list}", open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")) });
+      // 保养到期提醒：下次保养日期已过期或在近7天内
+      const today = localYmd(new Date());
       const soon = addDays(today, 7);
-      const due = rows.filter(
-        (r) => r.nextService && r.nextService <= soon && r.status !== "停用" && r.servicedThrough !== r.nextService,
-      );
+      const due = rows.filter((r) => r.nextService && r.nextService <= soon);
       if (due.length) {
         const overdue = due.filter((r) => r.nextService < today);
         list.push({
           type: "warn",
-          text: `${due.length} 台设备保养到期${overdue.length ? `（${overdue.length} 台已过期）` : ""}：${due
-            .map((r) => `${r.equipment || "设备"}(${r.nextService})`)
-            .join("、")}`,
+          text: t(T.alertServiceDue)
+            .replace("{n}", String(due.length))
+            .replace("{overdue}", overdue.length ? t(T.alertServiceOverdue).replace("{n}", String(overdue.length)) : "")
+            .replace("{list}", due.map((r) => `${r.equipment || t(T.equipmentFallback)}(${r.nextService})`).join("、")),
         });
       }
     }
     if (moduleId === "reviews") {
       const unreplied = rows.filter((r) => r.replied !== "是" && parseFloat(r.rating) <= 3);
-      if (unreplied.length) list.push({ type: "warn", text: `${unreplied.length} 条低分评价未回复` });
+      if (unreplied.length) list.push({ type: "warn", text: t(T.alertUnrepliedReviews).replace("{n}", String(unreplied.length)) });
     }
     if (moduleId === "social") {
       const drafts = rows.filter((r) => r.status === "草稿" || r.status === "待发");
-      if (drafts.length) list.push({ type: "info", text: `${drafts.length} 条内容待发布` });
+      if (drafts.length) list.push({ type: "info", text: t(T.alertPendingPosts).replace("{n}", String(drafts.length)) });
     }
     if (moduleId === "members") {
       // 近7天（含今天）生日的会员，按 月-日 比对（忽略年份）
       const upcoming = new Set<string>();
-      const base = shopToday();
+      const base = new Date();
       for (let i = 0; i < 7; i++) {
-        upcoming.add(addDays(base, i).slice(5));
+        const d = new Date(base);
+        d.setDate(base.getDate() + i);
+        upcoming.add(`${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
       }
       const bday = rows.filter((r) => r.birthday && upcoming.has(String(r.birthday).slice(5)));
       if (bday.length) {
         list.push({
           type: "info",
-          text: `近7天 ${bday.length} 位会员生日：${bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")}`,
+          text: t(T.alertBirthdays).replace("{n}", String(bday.length)).replace("{list}", bday.map((r) => `${r.name || r.phone || "?"}(${String(r.birthday).slice(5)})`).join("、")),
         });
       }
     }
@@ -861,15 +1065,17 @@ export default function ModulePage() {
       if (soldOut.length) {
         list.push({
           type: "warn",
-          text: `卖断 ${soldOut.length} 次：${Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")}（可能少备了）`,
+          text: t(T.alertSoldOut).replace("{n}", String(soldOut.length)).replace("{items}", Array.from(new Set(soldOut.map((r) => r.dish).filter(Boolean))).join("、")),
         });
       }
       // 浪费提醒：剩余/报废合计
       const waste = rows.reduce((a, r) => a + (parseFloat(r.leftover) || 0), 0);
-      if (waste > 0) list.push({ type: "info", text: `累计剩余/报废 ${Math.round(waste)} 份` });
+      if (waste > 0) list.push({ type: "info", text: t(T.alertWaste).replace("{n}", String(Math.round(waste))) });
 
       // 明日备货建议 = round(近7天该菜日均售出 × 1.1)，多备10%防卖断
-      const cutoffStr = addDays(shopToday(), -7);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffStr = localYmd(cutoff);
       const byDish: Record<string, { sold: number; days: Set<string> }> = {};
       for (const r of rows) {
         if (!r.dish || !r.date || r.date < cutoffStr) continue;
@@ -879,11 +1085,11 @@ export default function ModulePage() {
       }
       const suggest = Object.entries(byDish)
         .filter(([, g]) => g.days.size > 0)
-        .map(([dish, g]) => `${dish} ${Math.round((g.sold / g.days.size) * 1.1)}份`);
-      if (suggest.length) list.push({ type: "info", text: `明日备货建议（近7天均销×1.1）：${suggest.join("、")}` });
+        .map(([dish, g]) => t(T.alertPrepPortions).replace("{dish}", dish).replace("{n}", String(Math.round((g.sold / g.days.size) * 1.1))));
+      if (suggest.length) list.push({ type: "info", text: t(T.alertPrepSuggest).replace("{list}", suggest.join("、")) });
     }
     return list;
-  }, [rows, moduleId]);
+  }, [rows, moduleId, t]);
 
   const autoFields = useMemo(() => {
     if (moduleId === "dish-margin") return new Set(["revenue"]);
@@ -925,15 +1131,17 @@ export default function ModulePage() {
   const equipmentSuggestFields: Record<string, { suggestions: string[]; remove: (v: string) => void; placeholder: string }> =
     moduleId === "equipment"
       ? {
-          equipment: { suggestions: equipmentSuggestions, remove: removeEquipmentSuggestion, placeholder: "例：冰箱" },
-          vendor: { suggestions: vendorSuggestions, remove: removeVendorSuggestion, placeholder: "例：XX 维修公司" },
-          issue: { suggestions: issueSuggestions, remove: removeIssueSuggestion, placeholder: "例：压缩机异响" },
+          equipment: { suggestions: equipmentSuggestions, remove: removeEquipmentSuggestion, placeholder: t(T.phEquipment) },
+          vendor: { suggestions: vendorSuggestions, remove: removeVendorSuggestion, placeholder: t(T.phVendor) },
+          issue: { suggestions: issueSuggestions, remove: removeIssueSuggestion, placeholder: t(T.phIssue) },
         }
       : {};
 
   useEffect(() => {
     if (!open || moduleId !== "daily-close") return;
-    const date = form.date || shopToday();
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const date = form.date || localDate;
     setAutoFilling(true);
     computeDailyClose(slug, date).then((result) => {
       setForm((prev) => {
@@ -955,28 +1163,18 @@ export default function ModulePage() {
   const updateForm = useCallback(
     (key: string, value: string) => {
       setForm((prev) => {
-        let next = { ...prev, [key]: value };
-        // 设备维护：填了保养周期、但还没手动填下次保养日期时，自动算一个出来
-        // （日期字段 + 周期天数，日期没填就用今天）——算出来的值会显示在下次
-        // 保养日期那栏，可以直接改掉，不会覆盖已经手动填过的日期。
-        if (moduleId === "equipment" && key === "intervalDays" && !prev.nextService) {
-          const days = parseInt(value, 10);
-          if (days > 0) {
-            const base = prev.date || shopToday();
-            next = { ...next, nextService: addDays(base, days) };
-          }
-        }
+        const next = { ...prev, [key]: value };
         return applyComputed(next, mod?.computed);
       });
     },
-    [mod, moduleId]
+    [mod]
   );
 
   if (!mod) {
     return (
       <main className="px-6 py-8">
-        <p className="text-ink-soft">未知模块。</p>
-        <Link href={`/${slug}`} className="text-brand">← 返回总览</Link>
+        <p className="text-ink-soft">{t(T.unknownModule)}</p>
+        <Link href={`/${slug}`} className="text-brand">{t(T.backOverview)}</Link>
       </main>
     );
   }
@@ -988,8 +1186,9 @@ export default function ModulePage() {
     return (
       <main className="grid min-h-[60vh] place-items-center px-6 text-center">
         <div>
-          <p className="text-sm text-ink-soft">你没有这个模块的访问权限，请联系店主。</p>
-          <Link href={`/${slug}`} className="btn-primary mt-4 inline-block">← 返回总览</Link>
+          <div className="text-3xl">🔒</div>
+          <p className="mt-2 text-sm text-ink-soft">{t(T.noAccess)}</p>
+          <Link href={`/${slug}`} className="btn-primary mt-4 inline-block">{t(T.backOverview)}</Link>
         </div>
       </main>
     );
@@ -1002,57 +1201,15 @@ export default function ModulePage() {
 
   const enabled = tenant.enabled.includes(moduleId);
 
-  const handleEquipmentPhotoUpload = async (file: File | null) => {
-    if (!file) return;
-    setUploadingPhoto(true);
-    // replace any previously uploaded photo for this draft — re-picking a photo
-    // shouldn't leave the first upload orphaned in storage.
-    if (form.photo_url) await deleteEquipmentPhoto(form.photo_url);
-    const up = await uploadEquipmentPhoto(slug, file);
-    setUploadingPhoto(false);
-    if (up.error) {
-      alert("照片上传失败：" + up.error);
-      return;
-    }
-    updateForm("photo_url", up.url ?? "");
-  };
-
   const submit = async () => {
     const missing = mod.fields.filter((f) => f.required && !form[f.key]?.trim());
     if (missing.length) {
-      alert("请填写：" + missing.map((f) => f.label.zh).join("、"));
+      alert(t(T.fillRequired) + missing.map((f) => biLabel(f.label, lang)).join(lang === "zh" ? "、" : ", "));
       return;
     }
-    // 设备维护：填了「下次保养日期」的话，这条刚提交的记录本身标记成"已经为这个
-    // 下次保养日期建好提醒了"（servicedThrough），不然它自己也会因为没有
-    // servicedThrough 而被保养清单/提醒栏当成"还没处理"，跟下面新建的那条提醒
-    // 记录重复出现两次。真正承担提醒任务的是下面新建的那条独立记录。
-    const toSave = moduleId === "equipment" && form.nextService ? { ...form, servicedThrough: form.nextService } : form;
-    const { error } = await addRecord(slug, moduleId, toSave);
-    if (error) {
-      // The insert never happened, so nothing points at the photo we just
-      // uploaded — clean it up instead of leaving an orphan.
-      if (form.photo_url) await deleteEquipmentPhoto(form.photo_url);
-      alert("保存失败，请重试：" + error);
-      return;
-    }
+    await addRecord(slug, moduleId, form);
     if (moduleId === "purchasing") {
       await syncPurchasingToStock(slug);
-    }
-    // 和 markServiced 里"自动生成下一周期"是同一套逻辑，只是这里是新增时就建好，
-    // 不用等点了"本次已保养"才生成。
-    if (moduleId === "equipment" && form.nextService) {
-      const { error: reminderError } = await addRecord(slug, "equipment", {
-        equipment: form.equipment || "",
-        issue: form.issue || "",
-        vendor: form.vendor || "",
-        cost: "",
-        status: "待处理",
-        date: form.nextService,
-        nextService: form.nextService,
-        intervalDays: form.intervalDays || "",
-      });
-      if (reminderError) alert("记录已保存，但保养提醒创建失败，请手动补上：" + reminderError);
     }
     const orderModules = ["group-booking"];
     if (orderModules.includes(moduleId) && form.phone) {
@@ -1082,11 +1239,7 @@ export default function ModulePage() {
     if (!editingId) return;
     // Re-run computed rules (pay=hours×rate, net, balance, total…) so an inline
     // edit keeps derived fields consistent, same as the entry form does.
-    const { error } = await updateRecord(editingId, applyComputed(editForm, mod?.computed));
-    if (error) {
-      alert("保存失败，请重试：" + error);
-      return;
-    }
+    await updateRecord(editingId, applyComputed(editForm, mod?.computed));
     setEditingId(null);
     setEditForm({});
     setTick((t) => t + 1);
@@ -1114,29 +1267,29 @@ export default function ModulePage() {
 
   return (
     <main className="px-6 py-8 lg:px-10">
-      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← 总览</Link>
+      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">{t(T.overview)}</Link>
 
       <header className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-ink">
-            {mod.label.zh}
+            {mod.icon} {biLabel(mod.label, lang)}
           </h1>
-          <p className="mt-1 max-w-xl text-sm text-ink-soft">{mod.pain.zh}</p>
+          <p className="mt-1 max-w-xl text-sm text-ink-soft">{biLabel(mod.pain, lang)}</p>
         </div>
         {enabled && (
           <div className="flex flex-wrap gap-2">
             <button className="btn-primary" onClick={() => setOpen((o) => !o)}>
-              {open ? "收起" : "+ 新增记录"}
+              {open ? t(T.collapse) : t(T.addRecord)}
             </button>
             <button
               className="btn-ghost border border-slate-300"
               onClick={() => exportCsv(mod, rows)}
               disabled={rows.length === 0}
             >
-              导出 CSV
+              {t(T.exportCsv)}
             </button>
             <label className={`btn-ghost border border-slate-300 cursor-pointer ${importing ? "opacity-50" : ""}`}>
-              {importing ? "导入中…" : "导入 CSV"}
+              {importing ? t(T.importing) : t(T.importCsv)}
               <input
                 ref={fileRef}
                 type="file"
@@ -1147,14 +1300,14 @@ export default function ModulePage() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   setImporting(true);
-                  const { count, error } = await importCsv(file, mod, slug, moduleId);
+                  const { count, error } = await importCsv(file, mod, slug, moduleId, lang);
                   setImporting(false);
                   if (fileRef.current) fileRef.current.value = "";
                   if (error) {
-                    alert("导入失败：" + error);
+                    alert(t(T.importFailed) + error);
                   } else {
-                    alert(`成功导入 ${count} 条记录`);
-                    setTick((t) => t + 1);
+                    alert(t(T.importOk).replace("{n}", String(count)));
+                    setTick((tk) => tk + 1);
                   }
                 }}
               />
@@ -1165,14 +1318,14 @@ export default function ModulePage() {
 
       {!enabled && (
         <div className="card mb-6 border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          该模块未启用。到 <Link href={`/${slug}/settings`} className="underline">设置</Link> 中开启后即可录入。
+          {t(T.notEnabledPre)}<Link href={`/${slug}/settings`} className="underline">{t(T.settings)}</Link>{t(T.notEnabledPost)}
         </div>
       )}
 
       {/* ── Stats section ── */}
       <section className="mb-6">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">数据统计</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t(T.statsLabel)}</span>
           <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
             {([0, 7, 30] as const).map((d) => (
               <button
@@ -1180,14 +1333,14 @@ export default function ModulePage() {
                 onClick={() => setStatsRange(d)}
                 className={`rounded-md px-2.5 py-1 ${statsRange === d ? "bg-white font-medium shadow-sm text-ink" : "text-ink-faint"}`}
               >
-                {d === 0 ? "全部" : `近${d}天`}
+                {d === 0 ? t(T.all) : t(T.lastNDays).replace("{n}", String(d))}
               </button>
             ))}
             <button
               onClick={() => setStatsRange("custom")}
               className={`rounded-md px-2.5 py-1 ${statsRange === "custom" ? "bg-white font-medium shadow-sm text-ink" : "text-ink-faint"}`}
             >
-              自定义
+              {t(T.custom)}
             </button>
           </div>
           {statsRange === "custom" && (
@@ -1211,15 +1364,15 @@ export default function ModulePage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* record count */}
           <div className="card p-4">
-            <div className="text-xs text-ink-faint">记录数</div>
+            <div className="text-xs text-ink-faint">{t(T.recordCount)}</div>
             <div className="mt-1 text-xl font-bold text-ink">{statsRows.length}</div>
           </div>
           {/* KPI total */}
           {mod.amountKey && (
             <div className="card p-4">
               <div className="text-xs text-ink-faint">
-                {statsRange === "custom" ? "该时段" : statsRange === 0 ? "累计" : `近${statsRange}天`}
-                {mod.amountLabel?.zh ?? "合计"}
+                {statsRange === "custom" ? t(T.thisPeriod) : statsRange === 0 ? t(T.cumulative) : t(T.lastNDaysShort).replace("{n}", String(statsRange))}
+                {mod.amountLabel?.zh ?? t(T.totalLabel)}
               </div>
               <div className="mt-1 text-xl font-bold text-ink">
                 {mod.amountKind === "money" ? money(sum(statsRows, mod.amountKey)) : num(sum(statsRows, mod.amountKey))}
@@ -1228,7 +1381,7 @@ export default function ModulePage() {
           )}
           {moduleId === "stock-loss" && (
             <div className="card p-4">
-              <div className="text-xs text-ink-faint">累计报废价值</div>
+              <div className="text-xs text-ink-faint">{t(T.cumulativeScrapValue)}</div>
               <div className="mt-1 text-xl font-bold text-red-600">{money(sum(statsRows, "scrapValue"))}</div>
             </div>
           )}
@@ -1242,16 +1395,16 @@ export default function ModulePage() {
               if (f.unit) {
                 return (
                   <div key={f.key} className="card p-4">
-                    <div className="text-xs text-ink-faint">{f.label.zh}（均值）</div>
+                    <div className="text-xs text-ink-faint">{t(T.avgSuffix).replace("{label}", biLabel(f.label, lang))}</div>
                     <div className="mt-1 text-xl font-bold text-ink">{fmt(avg(statsRows, f.key))}</div>
                   </div>
                 );
               }
               return (
                 <div key={f.key} className="card p-4">
-                  <div className="text-xs text-ink-faint">{f.label.zh}（合计 / 均值）</div>
+                  <div className="text-xs text-ink-faint">{t(T.sumAvgSuffix).replace("{label}", biLabel(f.label, lang))}</div>
                   <div className="mt-1 text-xl font-bold text-ink">{fmt(sum(statsRows, f.key))}</div>
-                  <div className="text-xs text-ink-faint">均值: {fmt(avg(statsRows, f.key))}</div>
+                  <div className="text-xs text-ink-faint">{t(T.avgPrefix)}{fmt(avg(statsRows, f.key))}</div>
                 </div>
               );
             })}
@@ -1285,7 +1438,7 @@ export default function ModulePage() {
           <TrendChart
             rows={rows}
             valueKey={mod.amountKey}
-            label={mod.amountLabel?.zh ?? "数值"}
+            label={mod.amountLabel?.zh ?? t(T.value)}
             isMoney={mod.amountKind === "money"}
           />
         </div>
@@ -1294,21 +1447,21 @@ export default function ModulePage() {
       {/* entry form */}
       {open && enabled && (
         <section className="card mb-6 p-5">
-          <div className="mb-3 text-sm font-semibold text-ink">新增记录</div>
+          <div className="mb-3 text-sm font-semibold text-ink">{t(T.newRecord)}</div>
           {moduleId === "daily-close" && autoFilling && (
-            <div className="mb-4 text-xs text-ink-faint">汇算中…</div>
+            <div className="mb-4 text-xs text-ink-faint">{t(T.computing)}</div>
           )}
 
           {moduleId === "scheduling" && (
             <div className="mb-4">
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="label !mb-0">班次</label>
+                <label className="label !mb-0">{t(T.shift)}</label>
                 <button
                   type="button"
                   onClick={() => (editingPresets ? setEditingPresets(false) : openPresetEditor())}
                   className="text-xs font-medium text-brand hover:text-brand-soft"
                 >
-                  {editingPresets ? "完成" : "修改默认班次"}
+                  {editingPresets ? t(T.done) : t(T.editDefaultShifts)}
                 </button>
               </div>
 
@@ -1333,7 +1486,7 @@ export default function ModulePage() {
                     </div>
                   ))}
                   <button type="button" onClick={savePresets} className="btn-primary !py-1.5 !text-xs">
-                    保存默认班次
+                    {t(T.saveDefaultShifts)}
                   </button>
                 </div>
               ) : (
@@ -1361,7 +1514,7 @@ export default function ModulePage() {
                       shiftPreset === "custom" ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"
                     }`}
                   >
-                    自定义
+                    {t(T.custom)}
                   </button>
                 </div>
               )}
@@ -1376,7 +1529,7 @@ export default function ModulePage() {
                 {equipmentSuggestFields[f.key] ? (
                   <div>
                     <label className="label">
-                      {f.label.zh}
+                      {biLabel(f.label, lang)}
                       {f.required && <span className="text-red-500"> *</span>}
                     </label>
                     <SuggestInput
@@ -1402,49 +1555,9 @@ export default function ModulePage() {
               </div>
             ))}
           </div>
-          {moduleId === "equipment" && (
-            <div className="mt-3">
-              <label className="label">照片（可选）</label>
-              {form.photo_url ? (
-                <div className="flex items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={form.photo_url} alt="设备照片" className="h-16 w-16 rounded-lg object-cover" />
-                  <button
-                    type="button"
-                    className="text-xs text-ink-faint hover:text-red-600"
-                    onClick={async () => {
-                      await deleteEquipmentPhoto(form.photo_url);
-                      updateForm("photo_url", "");
-                    }}
-                  >
-                    移除
-                  </button>
-                </div>
-              ) : (
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={uploadingPhoto}
-                  className="input !py-1.5 text-xs"
-                  onChange={(e) => handleEquipmentPhotoUpload(e.target.files?.[0] ?? null)}
-                />
-              )}
-              {uploadingPhoto && <p className="mt-1 text-xs text-ink-faint">上传中…</p>}
-            </div>
-          )}
           <div className="mt-4 flex gap-2">
-            <button className="btn-primary" onClick={submit}>保存</button>
-            <button
-              className="btn-ghost"
-              onClick={() => {
-                if (form.photo_url) deleteEquipmentPhoto(form.photo_url);
-                setForm({});
-                setShiftPreset("custom");
-                setOpen(false);
-              }}
-            >
-              取消
-            </button>
+            <button className="btn-primary" onClick={submit}>{t(T.save)}</button>
+            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>{t(T.cancel)}</button>
           </div>
         </section>
       )}
@@ -1457,35 +1570,35 @@ export default function ModulePage() {
               className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
               onClick={() => setWeekAnchor((d) => addDays(d, -7))}
             >
-              ‹ 上一周
+              {t(T.prevWeek)}
             </button>
             <span className="min-w-[9.5rem] text-center font-medium text-ink">
-              {fmtMonthDay(dateFrom)} – {fmtMonthDay(dateTo)}
+              {fmtMonthDay(dateFrom, lang)} – {fmtMonthDay(dateTo, lang)}
             </span>
             <button
               className="rounded border border-slate-200 px-2 py-1 text-ink-soft hover:bg-slate-50"
               onClick={() => setWeekAnchor((d) => addDays(d, 7))}
             >
-              下一周 ›
+              {t(T.nextWeek)}
             </button>
             <button
               className="text-brand hover:text-brand-soft"
-              onClick={() => setWeekAnchor(shopToday())}
+              onClick={() => setWeekAnchor(new Date().toISOString().slice(0, 10))}
             >
-              本周
+              {t(T.thisWeek)}
             </button>
             {copyMode ? (
               <>
-                <span className="text-ink-faint">已选 {selectedForCopy.size} / {filteredRows.length} 条</span>
+                <span className="text-ink-faint">{t(T.selectedCount).replace("{a}", String(selectedForCopy.size)).replace("{b}", String(filteredRows.length))}</span>
                 <button
                   disabled={selectedForCopy.size === 0 || copyingWeek}
                   onClick={confirmCopySelection}
                   className="rounded-full border border-brand bg-brand px-3 py-1 font-semibold text-white hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {copyingWeek ? "复制中…" : `复制 ${selectedForCopy.size} 条到下一周 →`}
+                  {copyingWeek ? t(T.copying) : t(T.copyNToNextWeek).replace("{n}", String(selectedForCopy.size))}
                 </button>
                 <button onClick={cancelCopySelection} className="text-ink-faint hover:text-ink">
-                  取消
+                  {t(T.cancel)}
                 </button>
               </>
             ) : (
@@ -1494,13 +1607,13 @@ export default function ModulePage() {
                 onClick={startCopySelection}
                 className="rounded-full border border-brand px-3 py-1 font-semibold text-brand hover:bg-brand-wash disabled:cursor-not-allowed disabled:opacity-40"
               >
-                复制到下一周 →
+                {t(T.copyToNextWeek)}
               </button>
             )}
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-ink-faint">
-            <span>日期</span>
+            <span>{t(T.date)}</span>
             <input
               type="date"
               className="rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
@@ -1519,20 +1632,20 @@ export default function ModulePage() {
         {moduleId === "scheduling"
           ? Object.values(colFilters).some((s) => s.size > 0) && (
               <>
-                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <span className="text-ink-faint">{t(T.filteredCount).replace("{a}", String(filteredRows.length)).replace("{b}", String(rows.length))}</span>
                 <button className="text-brand hover:text-brand-soft" onClick={() => { setColFilters({}); setPage(1); }}>
-                  清除筛选
+                  {t(T.clearFilter)}
                 </button>
               </>
             )
           : hasAnyFilter && (
               <>
-                <span className="text-ink-faint">筛选中：{filteredRows.length} / {rows.length} 条</span>
+                <span className="text-ink-faint">{t(T.filteredCount).replace("{a}", String(filteredRows.length)).replace("{b}", String(rows.length))}</span>
                 <button
                   className="text-brand hover:text-brand-soft"
                   onClick={() => { setColFilters({}); setDateFrom(""); setDateTo(""); setPage(1); }}
                 >
-                  清除全部筛选
+                  {t(T.clearAllFilters)}
                 </button>
               </>
             )}
@@ -1540,9 +1653,11 @@ export default function ModulePage() {
 
       {moduleId === "scheduling" && <AttendanceAnomalies rows={filteredRows} />}
 
-      {/* records table */}
+      {/* records table — dense grid; scrolls within the card on mobile (contained,
+          never breaks the page). Card-ify is a separate larger effort (T2). */}
       <section className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-ink-faint sm:hidden">{t(T.swipeHint)}</div>
+        <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
@@ -1555,7 +1670,7 @@ export default function ModulePage() {
                         className="h-3.5 w-3.5 accent-brand"
                         checked={filteredRows.length > 0 && selectedForCopy.size === filteredRows.length}
                         onChange={toggleSelectAllForCopy}
-                        aria-label="全选"
+                        aria-label={t(T.selectAll)}
                       />
                     )}
                   </th>
@@ -1574,7 +1689,7 @@ export default function ModulePage() {
                         className="flex items-center gap-1 hover:text-ink"
                         onClick={() => { setFilterOpen(isOpen ? null : f.key); setFilterSearch(""); }}
                       >
-                        {f.label.zh}
+                        {biLabel(f.label, lang)}
                         <span className={`text-[10px] ${active ? "text-brand" : "text-slate-400"}`}>
                           {active ? "▼" : "▽"}
                         </span>
@@ -1588,7 +1703,7 @@ export default function ModulePage() {
                             <div className="border-b border-slate-100 p-2">
                               <input
                                 className="w-full rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand"
-                                placeholder="搜索..."
+                                placeholder={t(T.searchPlaceholder)}
                                 value={filterSearch}
                                 onChange={(e) => setFilterSearch(e.target.value)}
                                 autoFocus
@@ -1609,7 +1724,7 @@ export default function ModulePage() {
                                   });
                                 }}
                               />
-                              全选
+                              {t(T.selectAll)}
                             </label>
                             {searched.map((v) => {
                               const checked = !active || (colFilters[f.key]?.has(v) ?? false);
@@ -1646,7 +1761,7 @@ export default function ModulePage() {
                               className="text-xs text-brand hover:text-brand-soft px-2 py-0.5"
                               onClick={() => setFilterOpen(null)}
                             >
-                              确定
+                              {t(T.confirm)}
                             </button>
                           </div>
                         </div>
@@ -1672,14 +1787,7 @@ export default function ModulePage() {
                   startEdit={startEdit}
                   saveEdit={saveEdit}
                   cancelEdit={cancelEdit}
-                  deleteRecord={async (id) => {
-                    if (moduleId === "equipment") {
-                      const photoUrl = filteredRows.find((r) => r.id === id)?.photo_url;
-                      if (photoUrl) await deleteEquipmentPhoto(photoUrl);
-                    }
-                    await deleteRecord(id);
-                    setTick((t) => t + 1);
-                  }}
+                  deleteRecord={async (id) => { await deleteRecord(id); setTick((t) => t + 1); }}
                 />
               ) : groupByStaff
                 ? staffGroups.map((g) => {
@@ -1702,7 +1810,7 @@ export default function ModulePage() {
                                 <button
                                   onClick={() => toggleStaffExpanded(g.name)}
                                   className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-ink-soft hover:border-brand hover:bg-brand-wash hover:text-brand-ink"
-                                  aria-label={isExpanded ? "收起" : "展开"}
+                                  aria-label={isExpanded ? t(T.collapseRow) : t(T.expand)}
                                 >
                                   {isExpanded ? "▾" : "▸"}
                                 </button>
@@ -1739,8 +1847,8 @@ export default function ModulePage() {
                 <tr>
                   <td colSpan={mod.fields.length + 1 + (groupByStaff ? 1 : 0)} className="px-4 py-10 text-center text-sm text-ink-faint">
                     {rows.length === 0
-                      ? (enabled ? "还没有记录，点「+ 新增记录」开始录入。" : "还没有记录。")
-                      : "没有匹配的记录，试试调整筛选条件。"}
+                      ? (enabled ? t(T.emptyEnabled) : t(T.emptyDisabled))
+                      : t(T.emptyFiltered)}
                   </td>
                 </tr>
               )}
@@ -1751,7 +1859,10 @@ export default function ModulePage() {
         {!groupByStaff && totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-ink-faint">
             <span>
-              第 {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredRows.length)} 条，共 {filteredRows.length} 条
+              {t(T.pageRange)
+                .replace("{from}", String((safePage - 1) * PAGE_SIZE + 1))
+                .replace("{to}", String(Math.min(safePage * PAGE_SIZE, filteredRows.length)))
+                .replace("{total}", String(filteredRows.length))}
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -1766,7 +1877,7 @@ export default function ModulePage() {
                 disabled={safePage <= 1}
                 onClick={() => setPage((p) => p - 1)}
               >
-                ‹ 上一页
+                {t(T.prevPage)}
               </button>
               <span className="px-2 font-medium text-ink">{safePage} / {totalPages}</span>
               <button
@@ -1774,7 +1885,7 @@ export default function ModulePage() {
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
-                下一页 ›
+                {t(T.nextPage)}
               </button>
               <button
                 className="rounded px-2 py-1 hover:bg-slate-100 disabled:opacity-30"
@@ -1804,14 +1915,15 @@ function FieldInput({
   readOnly?: boolean;
   suggestions?: string[];
 }) {
+  const { t, lang } = useLang();
   const listId = suggestions?.length ? `dl-${field.key}` : undefined;
   return (
     <div>
       <label className="label">
-        {field.label.zh}
+        {biLabel(field.label, lang)}
         {field.required && <span className="text-red-500"> *</span>}
-        {field.suffix && <span className="text-ink-faint"> ({field.suffix})</span>}
-        {readOnly && <span className="text-brand"> (自动计算)</span>}
+        {field.suffix && <span className="text-ink-faint"> ({typeof field.suffix === "string" ? field.suffix : t(field.suffix)})</span>}
+        {readOnly && <span className="text-brand">{t(T.autoComputed)}</span>}
       </label>
       {field.type === "textarea" ? (
         <textarea className="input min-h-[72px]" value={value} onChange={(e) => onChange(e.target.value)} readOnly={readOnly} />
@@ -1819,7 +1931,7 @@ function FieldInput({
         <select className="input" value={value} onChange={(e) => onChange(e.target.value)} disabled={readOnly}>
           <option value="">—</option>
           {field.options?.map((o) => (
-            <option key={o.zh} value={o.zh}>{o.zh}</option>
+            <option key={o.zh} value={o.zh}>{biLabel(o, lang)}</option>
           ))}
         </select>
       ) : (
@@ -1857,6 +1969,7 @@ function FieldInput({
  *  迟到/请假 this week (计划内的 休息/正常 不算异常). `rows` is expected to
  *  already be scoped to the selected week. */
 function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const groups = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
     for (const r of rows) {
@@ -1883,13 +1996,13 @@ function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
   return (
     <section className="card mb-4 p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-ink">本周异常出勤</h2>
+        <h2 className="text-sm font-semibold text-ink">{t(T.anomalyTitle)}</h2>
         {groups.length > 0 && (
-          <span className="text-xs text-ink-faint">{Object.entries(totals).map(([k, v]) => `${k} ${v} 次`).join(" · ")}</span>
+          <span className="text-xs text-ink-faint">{Object.entries(totals).map(([k, v]) => t(T.timesSuffix).replace("{k}", k).replace("{v}", String(v))).join(" · ")}</span>
         )}
       </div>
       {groups.length === 0 ? (
-        <p className="text-sm text-ink-faint">本周出勤正常，暂无异常记录。</p>
+        <p className="text-sm text-ink-faint">{t(T.anomalyEmpty)}</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => (
@@ -1913,15 +2026,8 @@ function ModuleInsights({ moduleId, rows, slug, refresh }: { moduleId: string; r
   if (moduleId === "dish-margin") return <DishSalesRanking rows={rows} />;
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
-  if (moduleId === "members") return <TierSettings slug={slug} />;
-  if (moduleId === "equipment") {
-    return (
-      <>
-        <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />
-        <EquipmentRoster rows={rows} />
-      </>
-    );
-  }
+  if (moduleId === "members") return (<><MemberInsights rows={rows} /><TierSettings slug={slug} /></>);
+  if (moduleId === "equipment") return <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />;
   return null;
 }
 
@@ -1930,22 +2036,23 @@ function ModuleInsights({ moduleId, rows, slug, refresh }: { moduleId: string; r
  *  是否处理好了"，跟"下次保养提醒是否还没到"是两码事：同一台设备可以问题已解决
  *  （status=已完成）但下次保养日期仍落在本月，这时候仍然要出现在清单里。 */
 function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[]; slug: string; refresh: () => void }) {
+  const { t } = useLang();
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const due = useMemo(() => {
-    // Shop-timezone Y-M-D throughout, not the viewing device's own clock — a
-    // remote owner checking this near midnight or a month boundary must see
-    // the same due/overdue list a device physically at the shop would.
-    const todayStr = shopToday();
-    const [y, m] = todayStr.split("-").map(Number);
-    const nextMonthFirst = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`;
-    const monthEnd = addDays(nextMonthFirst, -1);
+    // Local Y-M-D throughout — .toISOString() converts to UTC first, which can
+    // shift the calendar day (e.g. evenings in UTC-negative zones roll over to
+    // "tomorrow" in UTC), silently dropping items near the month boundary.
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const now = new Date();
+    const todayStr = ymd(now);
+    const monthEnd = ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     return rows
       // servicedThrough records which nextService value was already acknowledged —
       // once it matches the current nextService, this cycle's reminder is done.
       // (We never touch nextService itself, so the date stays visible in the
-      // history table instead of getting wiped out.) 停用设备不再提醒。
-      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService && r.status !== "停用")
+      // history table instead of getting wiped out.)
+      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService)
       .map((r) => ({ ...r, overdue: r.nextService < todayStr }) as RecordRow & { overdue: boolean })
       .sort((a, b) => (a.equipment || "").localeCompare(b.equipment || "") || (a.nextService || "").localeCompare(b.nextService || ""));
   }, [rows]);
@@ -1967,7 +2074,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       // Don't refresh on failure — it would just reload the same unchanged
       // row, making it look like the action silently did nothing.
       setSavingId(null);
-      alert("操作失败，请重试：" + error);
+      alert(t(T.operationFailed) + error);
       return;
     }
     // Only spawn the next cycle when there's a fixed 保养周期 to compute it
@@ -1978,7 +2085,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
     const intervalDays = parseInt(r.intervalDays, 10);
     if (intervalDays > 0 && r.nextService) {
       const newNextService = addDays(r.nextService, intervalDays);
-      const { error: nextError } = await addRecord(slug, "equipment", {
+      await addRecord(slug, "equipment", {
         equipment: r.equipment || "",
         date: newNextService,
         issue: r.issue || "",
@@ -1988,10 +2095,6 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
         nextService: newNextService,
         intervalDays: r.intervalDays,
       });
-      // The "已完成" mark above already succeeded — don't hide that — but the
-      // next reminder cycle silently failing to spawn would mean this piece
-      // of equipment just stops getting maintenance reminders, unnoticed.
-      if (nextError) alert("已保养已记录，但下一周期提醒创建失败，请手动补上：" + nextError);
     }
     setSavingId(null);
     refresh();
@@ -2000,25 +2103,24 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
   return (
     <section className="card mb-6 p-5">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-sm font-semibold text-ink">本月保养清单</div>
-        <span className="text-xs text-ink-faint">{due.length} 项待处理</span>
+        <div className="text-sm font-semibold text-ink">{t(T.monthlyChecklist)}</div>
+        <span className="text-xs text-ink-faint">{t(T.itemsPending).replace("{n}", String(due.length))}</span>
       </div>
-      <p className="mb-3 text-xs text-ink-faint">下次保养日期落在本月（含已逾期）的设备，与「是否合格/已完成」无关</p>
+      <p className="mb-3 text-xs text-ink-faint">{t(T.checklistHint)}</p>
       <div className="space-y-1.5">
         {due.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
-            {r.priority === "紧急" && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-medium text-red-700">紧急</span>}
-            <span className="font-medium text-ink">{r.equipment || "设备"}</span>
+            <span className="font-medium text-ink">{r.equipment || t(T.equipmentFallback)}</span>
             {r.issue && <span className="text-ink-soft">{r.issue}</span>}
             <span className={`ml-auto text-xs font-medium tabular-nums ${r.overdue ? "text-red-600" : "text-ink-faint"}`}>
-              {r.overdue ? `已逾期 · ${r.nextService}` : r.nextService}
+              {r.overdue ? t(T.overduePrefix).replace("{d}", String(r.nextService)) : r.nextService}
             </span>
             <button
               className="btn-primary !py-1 !text-xs"
               disabled={savingId === r.id}
               onClick={() => markServiced(r)}
             >
-              {savingId === r.id ? "…" : "本次已保养"}
+              {savingId === r.id ? "…" : t(T.markServiced)}
             </button>
           </div>
         ))}
@@ -2027,66 +2129,8 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
   );
 }
 
-/** 设备总览：每台设备当前状态、下次保养日期、累计维修费用一览——不用逐条翻历史表
- *  去拼"这台设备到底花了多少钱、现在是什么状态"。按累计费用从高到低排，费用最高的
- *  设备最值得关注（可能该考虑换新的了）。 */
-function EquipmentRoster({ rows }: { rows: RecordRow[] }) {
-  const roster = useMemo(() => {
-    const byEquipment = new Map<string, RecordRow[]>();
-    for (const r of rows) {
-      const name = (r.equipment || "").trim();
-      if (!name) continue;
-      (byEquipment.get(name) ?? byEquipment.set(name, []).get(name)!).push(r);
-    }
-    return Array.from(byEquipment.entries())
-      .map(([name, recs]) => {
-        const sorted = [...recs].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-        const latest = sorted[0];
-        const totalCost = recs.reduce((s, r) => s + (parseFloat(r.cost) || 0), 0);
-        const openCount = recs.filter((r) => r.status === "待处理" || r.status === "处理中").length;
-        return { name, latest, totalCost, openCount };
-      })
-      .sort((a, b) => b.totalCost - a.totalCost);
-  }, [rows]);
-
-  if (roster.length < 2) return null;
-
-  return (
-    <section className="card mb-6 p-5">
-      <div className="mb-1 text-sm font-semibold text-ink">设备总览</div>
-      <p className="mb-3 text-xs text-ink-faint">按累计维修费用从高到低排——花费最多的设备可能该考虑换新的了</p>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
-              <th className="px-3 py-2 font-medium">设备</th>
-              <th className="px-3 py-2 font-medium">当前状态</th>
-              <th className="px-3 py-2 font-medium">下次保养</th>
-              <th className="px-3 py-2 font-medium text-right">累计维修费用</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster.map((e) => (
-              <tr key={e.name} className="border-b border-slate-100 last:border-0">
-                <td className="px-3 py-2 font-medium text-ink">
-                  {e.name}
-                  {e.openCount > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-700">{e.openCount} 个待处理</span>}
-                </td>
-                <td className="px-3 py-2 text-ink-soft">
-                  {e.latest?.status === "停用" ? <span className="text-ink-faint">已停用</span> : (e.latest?.status || "—")}
-                </td>
-                <td className="px-3 py-2 text-ink-soft">{e.latest?.nextService || "—"}</td>
-                <td className="px-3 py-2 text-right font-medium tabular-nums text-ink">{money(e.totalCost)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 function TierSettings({ slug }: { slug: string }) {
+  const { t } = useLang();
   const [tiers, setTiers] = useState<TierRule[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2110,14 +2154,14 @@ function TierSettings({ slug }: { slug: string }) {
   const remove = (i: number) => setTiers((prev) => prev.filter((_, j) => j !== i));
 
   const save = async () => {
-    const valid = tiers.filter((t) => t.name.trim());
+    const valid = tiers.filter((tier) => tier.name.trim());
     if (!valid.length) return;
     setSaving(true);
     setMsg("");
     await saveTierRules(slug, valid);
     const updated = await reapplyTiers(slug);
     setTiers(valid.sort((a, b) => a.minSpend - b.minSpend));
-    setMsg(updated > 0 ? `已保存，${updated} 位会员等级已更新` : "已保存");
+    setMsg(updated > 0 ? t(T.savedTiersUpdated).replace("{n}", String(updated)) : t(T.saved));
     setSaving(false);
   };
 
@@ -2129,41 +2173,41 @@ function TierSettings({ slug }: { slug: string }) {
         className="flex w-full items-center justify-between text-sm font-semibold text-ink"
         onClick={() => setExpanded((v) => !v)}
       >
-        <span>会员等级规则</span>
+        <span>{t(T.tierRules)}</span>
         <span className={`text-xl leading-none transition-transform ${expanded ? "rotate-180" : ""}`}>▾</span>
       </button>
       {expanded && (
         <>
-          <p className="mt-3 mb-3 text-xs text-ink-faint">设定累计消费满多少自动升级，保存后立即生效</p>
+          <p className="mt-3 mb-3 text-xs text-ink-faint">{t(T.tierHint)}</p>
           <div className="space-y-2">
-            {tiers.map((t, i) => (
+            {tiers.map((tier, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input
                   className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
-                  placeholder="等级名称"
-                  value={t.name}
+                  placeholder={t(T.tierNamePlaceholder)}
+                  value={tier.name}
                   onChange={(e) => update(i, "name", e.target.value)}
                 />
-                <span className="text-xs text-ink-faint">满</span>
+                <span className="text-xs text-ink-faint">{t(T.tierAtLeast)}</span>
                 <input
                   className="w-24 rounded border border-slate-200 px-2 py-1.5 text-sm text-right outline-none focus:border-brand"
                   type="number"
                   min={0}
                   placeholder="0"
-                  value={t.minSpend || ""}
+                  value={tier.minSpend || ""}
                   onChange={(e) => update(i, "minSpend", e.target.value)}
                 />
-                <span className="text-xs text-ink-faint">元</span>
+                <span className="text-xs text-ink-faint">{t(T.tierUnit)}</span>
                 {tiers.length > 1 && (
-                  <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(i)}>删除</button>
+                  <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(i)}>{t(T.del)}</button>
                 )}
               </div>
             ))}
           </div>
           <div className="mt-3 flex items-center gap-2">
-            <button className="btn-ghost border border-slate-300 text-xs" onClick={add}>+ 新增等级</button>
+            <button className="btn-ghost border border-slate-300 text-xs" onClick={add}>{t(T.addTier)}</button>
             <button className="btn-primary text-xs" onClick={save} disabled={saving}>
-              {saving ? "保存中…" : "保存并应用"}
+              {saving ? t(T.saving) : t(T.saveAndApply)}
             </button>
             {msg && <span className="text-xs text-emerald-600">{msg}</span>}
           </div>
@@ -2173,7 +2217,63 @@ function TierSettings({ slug }: { slug: string }) {
   );
 }
 
+/** LTV / repeat-purchase report — visits & spend are running totals kept up to
+ *  date by syncMemberFromOrder() on every completed order, so this reads the
+ *  full (unfiltered) member list rather than a date-scoped stats window. */
+function MemberInsights({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
+  const stats = useMemo(() => {
+    const members = rows
+      .filter((r) => r.phone)
+      .map((r) => ({
+        id: r.id,
+        name: r.name || r.phone,
+        visits: parseInt(r.visits, 10) || 0,
+        spend: parseFloat(r.spend) || 0,
+      }));
+    const total = members.length;
+    const repeat = members.filter((m) => m.visits > 1).length;
+    const repeatRate = total ? Math.round((repeat / total) * 1000) / 10 : 0;
+    const avgLtv = total ? members.reduce((s, m) => s + m.spend, 0) / total : 0;
+    const top = [...members].sort((a, b) => b.spend - a.spend).slice(0, 5);
+    return { total, repeat, repeatRate, avgLtv, top };
+  }, [rows]);
+
+  if (stats.total === 0) return null;
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-3 text-sm font-semibold text-ink">{t(T.memberReport)}</div>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+          <div className="text-xs text-ink-faint">{t(T.repeatRate)}</div>
+          <div className="mt-1 text-xl font-bold text-ink">{stats.repeatRate}%</div>
+          <div className="mt-0.5 text-xs text-ink-faint">{t(T.repeatRateHint).replace("{n}", String(stats.repeat)).replace("{total}", String(stats.total))}</div>
+        </div>
+        <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+          <div className="text-xs text-ink-faint">{t(T.avgLtv)}</div>
+          <div className="mt-1 text-xl font-bold text-ink">{money(stats.avgLtv)}</div>
+        </div>
+        <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+          <div className="text-xs text-ink-faint">{t(T.memberCount)}</div>
+          <div className="mt-1 text-xl font-bold text-ink">{stats.total}</div>
+        </div>
+      </div>
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+        <div className="mb-1.5 text-xs font-semibold text-emerald-700">{t(T.topSpenders)}</div>
+        {stats.top.map((m, i) => (
+          <div key={m.id} className="flex items-center justify-between py-0.5 text-xs text-emerald-900">
+            <span>{i + 1}. {m.name}</span>
+            <span className="font-medium">{money(m.spend)} · {t(T.visitsCountShort).replace("{n}", String(m.visits))}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const ranked = useMemo(() => {
     return rows
       .map((r) => {
@@ -2192,35 +2292,35 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">销量排行</div>
+      <div className="mb-3 text-sm font-semibold text-ink">{t(T.salesRanking)}</div>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-700">最受欢迎</div>
+          <div className="mb-1.5 text-xs font-semibold text-emerald-700">{t(T.mostPopular)}</div>
           {top.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
+              <span className="font-medium">{t(T.portionsRevenue).replace("{n}", String(d.sold)).replace("{rev}", money(d.revenue))}</span>
             </div>
           ))}
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-700">销量最低</div>
+          <div className="mb-1.5 text-xs font-semibold text-amber-700">{t(T.lowestSales)}</div>
           {bottom.length ? bottom.map((d) => (
             <div key={d.dish} className="flex justify-between text-xs text-amber-900">
               <span>{d.dish}</span>
-              <span className="font-medium">{d.sold} 份 · {money(d.revenue)}</span>
+              <span className="font-medium">{t(T.portionsRevenue).replace("{n}", String(d.sold)).replace("{rev}", money(d.revenue))}</span>
             </div>
-          )) : <div className="text-xs text-amber-700/60">菜品太少，暂无</div>}
+          )) : <div className="text-xs text-amber-700/60">{t(T.tooFewDishes)}</div>}
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[320px] text-xs">
           <thead>
             <tr className="border-b border-slate-200 text-left text-ink-faint">
-              <th className="py-1.5 pr-3 font-medium">菜名</th>
-              <th className="py-1.5 px-3 font-medium text-right">售价</th>
-              <th className="py-1.5 px-3 font-medium text-right">月销</th>
-              <th className="py-1.5 pl-3 font-medium text-right">销售额</th>
+              <th className="py-1.5 pr-3 font-medium">{t(T.dishName)}</th>
+              <th className="py-1.5 px-3 font-medium text-right">{t(T.price)}</th>
+              <th className="py-1.5 px-3 font-medium text-right">{t(T.monthlySales)}</th>
+              <th className="py-1.5 pl-3 font-medium text-right">{t(T.revenue)}</th>
             </tr>
           </thead>
           <tbody>
@@ -2241,6 +2341,7 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
 
 /** 供应商比价：同一品项跨供应商的均价对比，标出最低价。 */
 function SupplierCompare({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const items = useMemo(() => {
     // item → supplier → {sum, n}
     const map: Record<string, Record<string, { sum: number; n: number }>> = {};
@@ -2267,8 +2368,8 @@ function SupplierCompare({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-1 text-sm font-semibold text-ink">供应商比价</div>
-      <div className="mb-3 text-xs text-ink-faint">同一品项各供应商的平均单价，绿色为最低价</div>
+      <div className="mb-1 text-sm font-semibold text-ink">{t(T.supplierCompare)}</div>
+      <div className="mb-3 text-xs text-ink-faint">{t(T.supplierCompareHint)}</div>
       <div className="space-y-3">
         {items.map(({ item, list }) => {
           const cheapest = list[0].avg;
@@ -2279,7 +2380,7 @@ function SupplierCompare({ rows }: { rows: RecordRow[] }) {
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-medium text-ink">{item}</span>
                 {save > 0 && (
-                  <span className="text-xs text-emerald-600">最低比最高省 {money(save)}/单位</span>
+                  <span className="text-xs text-emerald-600">{t(T.savesPerUnit).replace("{amt}", money(save))}</span>
                 )}
               </div>
               <div className="space-y-1">
@@ -2310,6 +2411,7 @@ function SupplierCompare({ rows }: { rows: RecordRow[] }) {
 
 /** 评价问题类别统计：各 topic 的条数与平均分。 */
 function ReviewTopics({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
   const topics = useMemo(() => {
     const map: Record<string, { n: number; ratingSum: number; ratingN: number }> = {};
     for (const r of rows) {
@@ -2330,20 +2432,20 @@ function ReviewTopics({ rows }: { rows: RecordRow[] }) {
 
   return (
     <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">问题类别统计</div>
+      <div className="mb-3 text-sm font-semibold text-ink">{t(T.topicStats)}</div>
       <div className="space-y-2">
-        {topics.map((t) => (
-          <div key={t.topic} className="flex items-center gap-2 text-xs">
-            <span className="w-16 shrink-0 text-ink-soft">{t.topic}</span>
+        {topics.map((topic) => (
+          <div key={topic.topic} className="flex items-center gap-2 text-xs">
+            <span className="w-16 shrink-0 text-ink-soft">{topic.topic}</span>
             <div className="h-3 flex-1 rounded bg-slate-100">
               <div
-                className={`h-3 rounded ${t.topic === "好评" ? "bg-emerald-400" : "bg-brand/60"}`}
-                style={{ width: `${(t.n / max) * 100}%` }}
+                className={`h-3 rounded ${topic.topic === "好评" ? "bg-emerald-400" : "bg-brand/60"}`}
+                style={{ width: `${(topic.n / max) * 100}%` }}
               />
             </div>
-            <span className="w-10 shrink-0 text-right font-medium text-ink">{t.n} 条</span>
+            <span className="w-10 shrink-0 text-right font-medium text-ink">{t(T.countSuffix).replace("{n}", String(topic.n))}</span>
             <span className="w-14 shrink-0 text-right text-ink-faint">
-              {t.avg != null ? `${(Math.round(t.avg * 10) / 10)}★` : "—"}
+              {topic.avg != null ? `${(Math.round(topic.avg * 10) / 10)}★` : "—"}
             </span>
           </div>
         ))}
@@ -2353,6 +2455,7 @@ function ReviewTopics({ rows }: { rows: RecordRow[] }) {
 }
 
 function TrendChart({ rows, valueKey, label, isMoney }: { rows: RecordRow[]; valueKey: string; label: string; isMoney?: boolean }) {
+  const { t } = useLang();
   const grouped = useMemo(() => {
     const map: Record<string, number> = {};
     for (const r of rows) {
@@ -2392,7 +2495,7 @@ function TrendChart({ rows, valueKey, label, isMoney }: { rows: RecordRow[]; val
 
   return (
     <div className="card p-4">
-      <div className="text-xs font-semibold text-ink-faint mb-2">{label} 趋势（近14天）</div>
+      <div className="text-xs font-semibold text-ink-faint mb-2">{t(T.trendTitle).replace("{label}", label)}</div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 180 }}>
         <defs>
           <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">

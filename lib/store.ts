@@ -9,7 +9,6 @@ import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
 import { computeTax } from "./tax";
 import { isValidSlug } from "./qrContract";
-import { shopYmd, shopHm } from "./shopTime";
 
 export type Role = "owner" | "manager" | "staff";
 
@@ -30,12 +29,25 @@ export interface RecordRow {
 
 type Bi = { zh: string; en: string };
 
+export interface TableSpot {
+  label: string;
+  x: number; // 0..1 relative
+  y: number; // 0..1 relative
+  shape?: "square" | "round";
+  w?: number;
+  h?: number;
+}
+
 export interface Tenant {
   slug: string;
   name: Bi;
   industry: string;
   address: string;
   enabled: string[];
+  tables: string[]; // printed QR table labels (permanent contract)
+  tableLayout: TableSpot[]; // floor-plan positions (additive; keyed by label)
+  trackPayments: boolean; // record cash/EMT/card at checkout + show method stats; off → everything is plain sales
+  dayStartHour: number; // business-day start hour (Toronto), 0 = midnight; after-midnight sales before this hour count to the previous day
   users: User[];
   records: Record<string, RecordRow[]>;
 }
@@ -53,6 +65,10 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     industry: row.industry ?? "restaurant",
     address: row.address ?? "",
     enabled: Array.isArray(row.enabled) ? row.enabled : [],
+    tables: Array.isArray(row.tables) ? row.tables : [],
+    tableLayout: Array.isArray(row.table_layout) ? row.table_layout : [],
+    trackPayments: row.track_payments ?? true, // default ON (method tracking)
+    dayStartHour: typeof row.day_start_hour === "number" ? row.day_start_hour : 0,
     users,
     records,
   };
@@ -146,6 +162,32 @@ export async function setEnabled(slug: string, enabled: string[]): Promise<void>
   if (error) console.error("setEnabled", error);
 }
 
+/** Toggle payment-method tracking (cash/EMT/card) for a tenant. */
+export async function setTrackPayments(slug: string, on: boolean): Promise<void> {
+  const { error } = await supabase.from("tenants").update({ track_payments: on }).eq("slug", slug);
+  if (error) console.error("setTrackPayments", error);
+}
+
+/** Light read of just the track_payments flag (default true). */
+export async function getTrackPayments(slug: string): Promise<boolean> {
+  const { data } = await supabase.from("tenants").select("track_payments").eq("slug", slug).maybeSingle();
+  return (data as { track_payments?: boolean } | null)?.track_payments ?? true;
+}
+
+/** Set the business-day start hour (0–23, Toronto) for a tenant. */
+export async function setDayStartHour(slug: string, hour: number): Promise<void> {
+  const h = Math.max(0, Math.min(23, Math.round(hour) || 0));
+  const { error } = await supabase.from("tenants").update({ day_start_hour: h }).eq("slug", slug);
+  if (error) console.error("setDayStartHour", error);
+}
+
+/** Light read of the business-day start hour (default 0 = midnight). */
+export async function getDayStartHour(slug: string): Promise<number> {
+  const { data } = await supabase.from("tenants").select("day_start_hour").eq("slug", slug).maybeSingle();
+  const h = (data as { day_start_hour?: number } | null)?.day_start_hour;
+  return typeof h === "number" ? h : 0;
+}
+
 export async function addMember(
   slug: string,
   user: { name: string; role: Role; access: string[] }
@@ -205,23 +247,17 @@ export async function myAccess(slug: string): Promise<{ role: Role; allowed: str
   return { role: m.role as Role, allowed: m.role === "owner" || access.length === 0 ? null : access };
 }
 
-/** Returns { error } on failure — same contract as updateRecord — so callers
- *  can warn the user instead of closing a form / reloading as if it saved. */
 export async function addRecord(
   slug: string,
   moduleId: string,
   data: Record<string, any>
-): Promise<{ error?: string }> {
+): Promise<void> {
   const { error } = await supabase.from("records").insert({
     tenant_slug: slug,
     module_id: moduleId,
     data,
   });
-  if (error) {
-    console.error("addRecord", error);
-    return { error: error.message || "保存失败" };
-  }
-  return {};
+  if (error) console.error("addRecord", error);
 }
 
 /** Returns { error } on failure so callers that need to know (e.g. "mark done"
@@ -238,6 +274,51 @@ export async function updateRecord(id: string, data: Record<string, any>): Promi
 export async function deleteRecord(id: string): Promise<void> {
   const { error } = await supabase.from("records").delete().eq("id", id);
   if (error) console.error("deleteRecord", error);
+}
+
+// ── daily close (folded into Sales Stats) ─────────────────────────────────
+// The old daily-close module is retired; its expenses + net now live as a
+// per-date row edited from the Sales Stats screen. Revenue comes from real
+// checkout sessions; only expenses/note are entered by hand.
+// actualCash/cashVariance are null until staff physically counts the drawer —
+// distinct from 0, which would read as "counted, came up $0 short/over".
+export type DailyClose = {
+  id: string; date: string; expenses: number; note: string; collected: number; net: number;
+  actualCash: number | null; expectedCash: number; cashVariance: number | null;
+};
+
+export async function getDailyClose(slug: string, date: string): Promise<DailyClose | null> {
+  const { data } = await supabase.from("records").select("id, data").eq("tenant_slug", slug).eq("module_id", "daily-close");
+  const row = (data ?? []).find((r: { data?: { date?: string } }) => r.data?.date === date) as { id: string; data: Record<string, unknown> } | undefined;
+  if (!row) return null;
+  const actualCashRaw = row.data.actualCash;
+  const actualCash = actualCashRaw === "" || actualCashRaw == null ? null : Number(actualCashRaw);
+  const expectedCash = Number(row.data.expectedCash) || 0;
+  return {
+    id: row.id, date, expenses: Number(row.data.expenses) || 0, note: String(row.data.note ?? ""),
+    collected: Number(row.data.collected) || 0, net: Number(row.data.net) || 0,
+    actualCash, expectedCash,
+    cashVariance: actualCash == null ? null : Math.round((actualCash - expectedCash) * 100) / 100,
+  };
+}
+
+/** Upsert the daily close for a date. Revenue (collected) and expectedCash (the
+ *  cash-method total for the day) are passed in from the real sales aggregate;
+ *  net = collected − expenses, cashVariance = actualCash − expectedCash. */
+export async function saveDailyClose(
+  slug: string,
+  date: string,
+  patch: { expenses: number; note?: string; collected: number; actualCash: number | null; expectedCash: number },
+): Promise<void> {
+  const net = Math.round((patch.collected - patch.expenses) * 100) / 100;
+  const data = {
+    date, expenses: patch.expenses, note: patch.note ?? "", collected: patch.collected, net,
+    actualCash: patch.actualCash == null ? "" : patch.actualCash,
+    expectedCash: patch.expectedCash,
+  };
+  const existing = await getDailyClose(slug, date);
+  if (existing) await updateRecord(existing.id, data);
+  else await addRecord(slug, "daily-close", data);
 }
 
 // ── cross-module sync helpers ──────────────────────────────────────────────
@@ -308,13 +389,11 @@ export async function syncMemberFromOrder(
       .select("*")
       .eq("tenant_slug", slug)
       .eq("module_id", "members")
-      .eq("data->>phone", phone)
-      .order("created_at", { ascending: false })
-      .limit(1),
+      .order("created_at", { ascending: false }),
     loadTierRules(slug),
   ]);
 
-  const match = (existing ?? [])[0];
+  const match = (existing ?? []).find((r) => r.data?.phone === phone);
   if (match) {
     const prev = match.data ?? {};
     const visits = (parseInt(prev.visits) || 0) + 1;
@@ -382,21 +461,15 @@ export async function recordOrderSale(
 ): Promise<void> {
   const { data: existing } = await supabase
     .from("records")
-    .select("id")
+    .select("id,data")
     .eq("tenant_slug", slug)
-    .eq("module_id", "sales")
-    .eq("data->>orderId", order.id)
-    .limit(1);
-  if ((existing ?? []).length > 0) return;
+    .eq("module_id", "sales");
+  if ((existing ?? []).some((r) => r.data?.orderId === order.id)) return;
 
   const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
-  // Shop-timezone date/time, not the completing device's local clock — a
-  // remote owner or a staff device in another timezone completing near
-  // midnight must still land on the shop's actual day, or daily-close
-  // totals won't reconcile.
   const now = new Date();
-  const date = shopYmd(now);
-  const ts = shopHm(now);
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
 
   const { error } = await supabase.from("records").insert({
@@ -503,9 +576,7 @@ async function _syncMenuToMarginImpl(slug: string): Promise<{ added: number; upd
     const match = byDish.get(name);
     if (match) {
       const prev = match.data ?? {};
-      // Same rule as postOrderSales: a merchant-set price (e.g. a promo)
-      // wins over the menu price — only fill in when it's genuinely blank.
-      const price = prev.price && prev.price !== "" ? prev.price : (d.price != null ? String(d.price) : "");
+      const price = d.price != null ? String(d.price) : prev.price ?? "";
       if (prev.price !== price) {
         await supabase.from("records").update({ data: { ...prev, price } }).eq("id", match.id);
         updated++;
@@ -695,17 +766,10 @@ export async function newTenantSlug(name: string): Promise<string> {
   if (base.length < 3) base = `${base}-shop`.slice(0, 30).replace(/^-|-$/g, "");
   base = base.slice(0, 30).replace(/-$/g, "");
   if (!isValidSlug(base).ok) base = `${base.slice(0, 25)}-shop`;
-  // Check one candidate at a time against `storefront`, not `tenants` — RLS on
-  // `tenants` only shows slugs the caller already owns/belongs to, so a
-  // brand-new user with zero shops would see an empty table and never detect
-  // a real collision (it'd surface later as a raw unique-constraint error on
-  // insert instead). `storefront` is the public, RLS-unrestricted view.
-  const slugTaken = async (candidate: string) => {
-    const { data } = await supabase.from("storefront").select("slug").eq("slug", candidate).maybeSingle();
-    return !!data;
-  };
-  if (!(await slugTaken(base))) return base;
+  const { data } = await supabase.from("tenants").select("slug");
+  const existing = new Set((data ?? []).map((t) => t.slug));
+  if (!existing.has(base)) return base;
   let i = 2;
-  while (await slugTaken(`${base}-${i}`)) i++;
+  while (existing.has(`${base}-${i}`)) i++;
   return `${base}-${i}`;
 }

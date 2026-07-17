@@ -5,10 +5,14 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
+import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
 import { FSA_NAMES, fsaLabel, publicDeliveryFsas } from "@/lib/deliveryZone";
-import CloverPayment from "@/components/CloverPayment";
+import CheckoutSheet from "@/components/CheckoutSheet";
+import { resolveMenuView, MENU_VIEW_KEY, type MenuView } from "@/lib/menuView";
+import { BentoMark } from "@/components/BentoMark";
+import { trackFunnel } from "@/lib/analytics";
 
 const ORDER = [
   "招牌精选", "滋补菜式", "火锅", "火锅配菜", "海鲜", "汤羹", "头盘", "蔬菜豆腐",
@@ -16,15 +20,18 @@ const ORDER = [
   "汤粉面", "粥类", "酒水饮品",
 ];
 
-type Lang = "zh" | "en";
+type Lang = "zh" | "en" | "fr";
 
 const T = {
-  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理", another: "再点一单", market: "时价", submitting: "提交中…",
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…", sendOrder: "送出订单", sentCallback: "订单已送出 🎉 富来会致电与您确认", callbackHint: "无需在线支付 · 富来会致电确认订单与地址", estNote: "预计金额 · 以电话确认为准",
     togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付",
     chooseMode: "怎么取餐？", pickupHint: "到店自取 · 无额外费用", deliveryHint: "满 $30 起送 · 10% 配送小费", addrTitle: "配送地址", postalHint: "先填邮编，马上告诉你能不能送", canDeliver: "可以配送到", noDeliver: "暂不配送到", switchPickup: "改为自取 →", zoneList: "查看全部配送范围", city: "Toronto, ON", deliverTo: "配送到", addrMissing: "请填写完整配送地址" },
-  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it", another: "Order again", market: "Market", submitting: "Submitting…",
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…", sendOrder: "Send order", sentCallback: "Order sent 🎉 Fulai will call to confirm", callbackHint: "No online payment — Fulai will call to confirm your order & address", estNote: "Estimate — confirmed by phone",
     togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now",
     chooseMode: "How would you like your order?", pickupHint: "Pick up at the restaurant · no fees", deliveryHint: "$30 minimum · 10% delivery tip", addrTitle: "Delivery address", postalHint: "Postal code first — we'll check your area instantly", canDeliver: "We deliver to", noDeliver: "We don't deliver to", switchPickup: "Switch to pickup →", zoneList: "See all delivery areas", city: "Toronto, ON", deliverTo: "Deliver to", addrMissing: "Please complete the delivery address" },
+  fr: { menu: "Menu numérique", search: "Rechercher un plat", noResults: "Aucun plat trouvé", add: "Ajouter", cart: "Voir la commande", submit: "Commander", table: "N° de table (facultatif)", phone: "Téléphone (requis)", phoneErr: "Entrez un numéro à 10 chiffres", note: "Note (facultatif)", empty: "Aucun article", items: "articles", total: "Total", subtotal: "Sous-total", prevOrdered: "Déjà commandé", thisRound: "Cette fois", grand: "Total cumulé", placed: "Commande passée — la cuisine s'en occupe 🎉", another: "Commander encore", market: "Prix du jour", submitting: "Envoi…", sendOrder: "Envoyer la commande", sentCallback: "Commande envoyée 🎉 Fulai vous appellera pour confirmer", callbackHint: "Aucun paiement en ligne — Fulai vous appellera pour confirmer la commande et l'adresse", estNote: "Estimation — confirmée par téléphone",
+    togoBadge: "À emporter · Livraison", pickup: "À emporter", delivery: "Livraison", street: "Adresse (requise)", unit: "Unité (facultatif)", postal: "Code postal (requis)", postalBad: "Code postal invalide (ex. M5T 2E7)", zoneBad: "Hors de notre zone de livraison", minShort: "Minimum 30 $ — ajoutez", hst: "TVH 13 %", tipLine: "Pourboire livraison 10 %", email: "Courriel (facultatif, pour le suivi)", payFirst: "À emporter et livraison payés en ligne; la cuisine commence après le paiement", paySoon: "Paiement en ligne bientôt disponible", goPay: "Payer",
+    chooseMode: "Comment souhaitez-vous commander ?", pickupHint: "Au restaurant · sans frais", deliveryHint: "Minimum 30 $ · pourboire 10 %", addrTitle: "Adresse de livraison", postalHint: "Le code postal d'abord — on vérifie votre secteur", canDeliver: "Nous livrons à", noDeliver: "Nous ne livrons pas à", switchPickup: "Passer à emporter →", zoneList: "Voir toutes les zones", city: "Toronto, ON", deliverTo: "Livrer à", addrMissing: "Veuillez compléter l'adresse de livraison" },
 };
 
 // Flipped to "1" when the Clover checkout routes go live (Phase 0/1).
@@ -44,6 +51,8 @@ export default function PublicMenu() {
   const [open, setOpen] = useState(false);
   const [tableNo, setTableNo] = useState("");
   const [lockedTable, setLockedTable] = useState<string | null>(null);
+  const [tables, setTables] = useState<string[]>([]); // real table labels for the 整店一码 dropdown
+  const [tableErr, setTableErr] = useState(false);
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("1"); // country code, +1 default
   const [phoneErr, setPhoneErr] = useState(false);
@@ -54,15 +63,33 @@ export default function PublicMenu() {
   const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number; lines: PlacedLine[] } | null>(null);
   const [activeCat, setActiveCat] = useState<string>("");
   const [sheetDish, setSheetDish] = useState<MenuItem | null>(null); // open 多规格 size sheet
+  const [sidesOpen, setSidesOpen] = useState(false); // full 火锅配菜 sheet (auto-opens on hotpot)
+  // staff (?staff=1) per-item customization: note + price adjustment (±), keyed by cartKey
+  // Per-PORTION note + price adjustment: units[u] customizes the u-th portion, so a
+  // note can apply to just one of several identical dishes (grouped back into order lines).
+  const [itemMeta, setItemMeta] = useState<Record<string, { units: { note?: string; adjust?: number }[] }>>({});
+  const [staffEditKey, setStaffEditKey] = useState<string | null>(null); // cartKey whose editor sheet is open
+  const [editUnits, setEditUnits] = useState<{ note: string; adjust: string }[]>([]);
   const railRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
   // 外卖/自取 mode: entered via the separate QR (?m=togo). Dine-in tables use ?t=N.
   const [togoMode, setTogoMode] = useState(false);
+  // Campus order-ahead PICKUP (?m=pickup): a food-truck / single-window vendor.
+  // Implies togoMode's layout (no table, phone required, cart checkout) but is
+  // always pickup (no delivery chooser), order-only, and on submit routes through
+  // the server pickup-create route → redirects to the /order/[id]?t=<token> tracker.
+  const [pickupMode, setPickupMode] = useState(false);
   // ?embed=1 (landing showcase): hide the shop's name until we have written
   // authorization to feature it. Purely additive — printed QR params untouched.
   const [embed, setEmbed] = useState(false);
+  const [staff, setStaff] = useState(false); // opened from the floor plan (?staff=1): phone optional + ping parent on placement
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
+  // Desktop/iPad vs phone layout. `viewOverride` = the manual toggle (null = auto).
+  // The auto layout is driven by CSS `md:` breakpoints (correct on first paint, no
+  // hydration flash); this state only powers the manual override attribute + toggle.
+  const [viewOverride, setViewOverride] = useState<MenuView | null>(null);
+  const [wideAuto, setWideAuto] = useState(false); // viewport ≥768 (toggle highlight only)
   const [street, setStreet] = useState("");
   const [unit, setUnit] = useState("");
   const [postal, setPostal] = useState("");
@@ -74,6 +101,32 @@ export default function PublicMenu() {
   const [zoneOpen, setZoneOpen] = useState(false);
 
   const t = (k: keyof typeof T["zh"]) => T[lang][k];
+  // Inline 3-language helper for UI chrome not in the dict. Dish NAMES stay 2-way
+  // (fr falls back to English — there is no French dish data in the catalog).
+  const tri = (zh: string, en: string, fr: string) => (lang === "zh" ? zh : lang === "fr" ? fr : en);
+  // For helpers/data with only zh/en (category & postal-zone names, Clover sheet):
+  // French shows English (no French data exists for those).
+  const lang2: "zh" | "en" = lang === "zh" ? "zh" : "en";
+
+  // Layout view: read the saved manual choice + track viewport width. Layout itself
+  // is CSS-driven (md: breakpoints + the [data-view] override in globals.css); this
+  // only resolves the toggle's active state and the override attribute.
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(MENU_VIEW_KEY); } catch { /* private mode */ }
+    if (stored === "phone" || stored === "desktop") setViewOverride(stored);
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    setWideAuto(mq.matches);
+    const on = () => setWideAuto(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  const effectiveView = resolveMenuView(viewOverride, wideAuto);
+  const setView = (v: MenuView) => {
+    setViewOverride(v);
+    try { localStorage.setItem(MENU_VIEW_KEY, v); } catch { /* ignore */ }
+  };
 
   // Auto-format the postal code as the customer types: "m5t2e7" → "M5T 2E7"
   const onPostal = (raw: string) => {
@@ -110,7 +163,16 @@ export default function PublicMenu() {
       setTableNo(tParam);
     }
     if (params.get("m") === "togo") setTogoMode(true);
+    // pickup QR: /menu/<slug>?m=pickup → campus order-ahead. Reuses the togo
+    // layout (togoMode) but is pickup-only + routes to the tracking screen.
+    if (params.get("m") === "pickup") { setTogoMode(true); setPickupMode(true); }
     if (params.get("embed") === "1") setEmbed(true);
+    // ?lang= lets an embedder (e.g. the landing showcase iframe) pick the menu
+    // language. Menu is zh/en only (FR omitted); anything non-zh falls to en.
+    const lp = params.get("lang");
+    if (lp === "zh") setLang("zh");
+    else if (lp) setLang("en");
+    if (params.get("staff") === "1") setStaff(true);
     // Separate query so a pre-migration storefront view (no delivery_fsas
     // column) errors quietly here instead of taking the whole menu down.
     supabase.from("storefront").select("delivery_fsas").eq("slug", slug).maybeSingle()
@@ -118,6 +180,10 @@ export default function PublicMenu() {
         const z = publicDeliveryFsas(data);
         if (z) setZoneFsas(z);
       });
+    // Separate query (like delivery_fsas): a pre-migration storefront view with
+    // no `tables` column errors quietly here instead of breaking the whole menu.
+    supabase.from("storefront").select("tables").eq("slug", slug).maybeSingle()
+      .then(({ data }) => { const tb = (data as { tables?: unknown } | null)?.tables; if (Array.isArray(tb)) setTables(tb as string[]); });
     Promise.all([
       supabase.from("storefront").select("name, cat_order").eq("slug", slug).maybeSingle(),
       listMenuItems(slug),
@@ -132,7 +198,8 @@ export default function PublicMenu() {
   }, [slug]);
 
   const byId = useMemo(() => Object.fromEntries(dishes.map((d) => [d.id, d])), [dishes]);
-  const inc = (key: string, delta: number) =>
+  const inc = (key: string, delta: number) => {
+    if (delta > 0) trackFunnel(slug, "menu_item_added");
     setCart((c) => {
       const q = Math.max(0, (c[key] ?? 0) + delta);
       const next = { ...c };
@@ -140,24 +207,29 @@ export default function PublicMenu() {
       else next[key] = q;
       return next;
     });
+  };
 
   // Cart is keyed by dish id (single-price) or `id#variantIndex` (a chosen size).
-  const cartLines = Object.entries(cart)
-    .map(([key, qty]) => {
-      const { id, vi } = parseCartKey(key);
-      const d = byId[id];
-      if (!d) return null;
-      const variant = vi != null ? d.variants?.[vi] ?? null : null;
-      // 时价 line = market dish whose chosen price is 0 (no today-price, or a
-      // priceless cooking-style variant like 生猛龙虾·清蒸). Staff prices it at
-      // completion. A market dish with a today-price entered charges normally.
-      const isMarket = !!d.is_market && !(unitPrice(d, vi) > 0);
-      return { key, d, variant, isMarket, unit: isMarket ? 0 : unitPrice(d, vi), qty };
-    })
-    .filter((x): x is { key: string; d: MenuItem; variant: Variant | null; isMarket: boolean; unit: number; qty: number } => !!x);
+  const cartLines = Object.entries(cart).flatMap(([key, qty]) => {
+    const { id, vi } = parseCartKey(key);
+    const d = byId[id];
+    if (!d) return [];
+    const variant = vi != null ? d.variants?.[vi] ?? null : null;
+    // 时价 line = market dish whose chosen price is 0 (no today-price, or a
+    // priceless cooking-style variant like 生猛龙虾·清蒸). Staff prices it at
+    // completion. A market dish with a today-price entered charges normally.
+    const isMarket = !!d.is_market && !(unitPrice(d, vi) > 0);
+    const meta = itemMeta[key];
+    const base = isMarket ? 0 : unitPrice(d, vi);
+    const unitAt = (u: number) => Math.max(0, Math.round((base + (meta?.units?.[u]?.adjust ?? 0)) * 100) / 100);
+    const unit = unitAt(0); // representative (first portion) for the cart row
+    const lineTotal = isMarket ? 0 : Array.from({ length: qty }, (_, u) => unitAt(u)).reduce((a, b) => a + b, 0);
+    const customized = Array.from({ length: qty }, (_, u) => meta?.units?.[u]).some((m) => m && ((m.adjust ?? 0) !== 0 || (m.note ?? "").trim() !== ""));
+    return [{ key, d, variant, isMarket, base, unit, lineTotal, qty, meta, customized }];
+  });
   const hasMarketItems = cartLines.some((x) => x.isMarket);
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
-  const total = cartLines.reduce((a, x) => a + x.unit * x.qty, 0);
+  const total = cartLines.reduce((a, x) => a + x.lineTotal, 0);
   // Display name with size baked in, so kitchen ticket / receipt / ledger read "红烧蟹肉翅（中）".
   const lineName = (d: MenuItem, v: Variant | null, en = false) =>
     en
@@ -187,6 +259,9 @@ export default function PublicMenu() {
   // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
   // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
   const isDelivery = togoMode && togoType === "delivery";
+  // Phone required for togo/delivery and per-table (每桌一码) customer scans.
+  // Optional only for the whole-store QR (整店一码) and staff-placed orders.
+  const phoneRequired = togoMode || (!!lockedTable && !staff);
 
   // Delivery address fields — postal FIRST with an instant in-zone check.
   // Rendered in the up-front chooser panel AND in the checkout sheet (same
@@ -214,7 +289,7 @@ export default function PublicMenu() {
         </div>
         {zoneStatus === "idle" && <p className="mt-1 text-[11px] text-ink-faint">{t("postalHint")}</p>}
         {zoneStatus === "ok" && (
-          <p className="mt-1 text-xs font-medium text-jade">✓ {t("canDeliver")} {fsaLabel(fsa, lang)}</p>
+          <p className="mt-1 text-xs font-medium text-jade">✓ {t("canDeliver")} {fsaLabel(fsa, lang2)}</p>
         )}
         {zoneStatus === "no" && (
           <p className="mt-1 text-xs font-medium text-[#C0392B]">
@@ -238,65 +313,123 @@ export default function PublicMenu() {
       </div>
     </div>
   );
-  const pricing = priceOrder(total, isDelivery ? DELIVERY_TIP_RATE : 0);
+  // Order-only mode charges nothing online, so no mandatory delivery tip is applied.
+  const pricing = priceOrder(total, isDelivery && PAYMENTS_LIVE ? DELIVERY_TIP_RATE : 0);
   const shortfall = isDelivery ? deliveryShortfall(total) : 0;
 
   // upsell: when a 火锅 dish is in the cart, suggest 火锅配菜 add-ons
   const hasHotpot = cartLines.some((x) => x.d.category === "火锅");
   const hotpotSides = useMemo(() => dishes.filter((d) => d.category === "火锅配菜"), [dishes]);
+  const sidesCount = cartLines.filter((x) => x.d.category === "火锅配菜").reduce((a, x) => a + x.qty, 0);
+  // Ordering hotpot → picking sides IS the next step: auto-open the full 配菜 sheet
+  // once when the first hotpot lands in the cart. Won't re-nag if the diner closes it.
+  useEffect(() => {
+    if (hasHotpot && hotpotSides.length > 0) setSidesOpen(true);
+  }, [hasHotpot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
     // Required phone. +1 (default): strip formatting, drop a typed leading "1",
     // require exactly 10 digits — stored bare (legacy format). Other country
     // codes: 7-12 digits, stored as +<code><digits>.
     let phoneToSave = "";
-    if (phoneCode === "1") {
-      const digits = phone.replace(/\D/g, "").replace(/^1(\d{10})$/, "$1");
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!phoneRequired && phoneDigits.length === 0) {
+      // Optional (整店一码 or staff-placed): left blank, stored as N/A.
+      phoneToSave = "";
+    } else if (phoneCode === "1") {
+      const digits = phoneDigits.replace(/^1(\d{10})$/, "$1");
       if (digits.length !== 10) {
         setPhoneErr(true);
         return;
       }
       phoneToSave = digits;
     } else {
-      const digits = phone.replace(/\D/g, "");
-      if (digits.length < 7 || digits.length > 12) {
+      if (phoneDigits.length < 7 || phoneDigits.length > 12) {
         setPhoneErr(true);
         return;
       }
-      phoneToSave = `+${phoneCode}${digits}`;
+      phoneToSave = `+${phoneCode}${phoneDigits}`;
     }
     setPhoneErr(false);
+
+    // 整店一码: a customer-typed table number must be a REAL table (can't invent one).
+    if (!togoMode && !lockedTable && tableNo.trim() && tables.length > 0 && !tables.includes(tableNo.trim())) {
+      setTableErr(true);
+      return;
+    }
+    setTableErr(false);
 
     // Delivery: validate address + downtown zone + $30 minimum before anything else.
     // (Client-side hint only — the checkout server re-validates authoritatively.)
     if (isDelivery) {
-      if (!street.trim()) { setAddrErr(lang === "zh" ? "请填写街道地址" : "Please enter a street address"); return; }
+      if (!street.trim()) { setAddrErr(tri("请填写街道地址", "Please enter a street address", "Veuillez saisir une adresse")); return; }
       if (!isValidPostal(postal)) { setAddrErr(t("postalBad")); return; }
       if (!inDeliveryZone(postal, zoneFsas)) { setAddrErr(`${t("noDeliver")} ${postalFsa(postal)} · ${t("zoneBad")}`); return; }
       if (shortfall > 0) { setAddrErr(`${t("minShort")} $${shortfall.toFixed(2)}`); return; }
       setAddrErr(null);
     }
 
-    // Pay-first rule: takeout/delivery orders are only submitted once online
-    // payment is live — otherwise they'd sit invisible (pending) forever.
-    if (togoMode && !PAYMENTS_LIVE) return;
-    // 时价 items can't be pre-paid online (price unknown at checkout) — dine-in only.
-    if (togoMode && hasMarketItems) {
-      setAddrErr(lang === "zh" ? "时价菜品暂不支持外卖/自取在线支付，请移除后再下单" : "Market-price items can't be pre-paid online — please remove them for takeout/delivery");
+    // Order-only mode (PAYMENTS_LIVE off): takeout/delivery place WITHOUT paying —
+    // staff call back to confirm. 时价 is fine here (price settled on the callback).
+    // When online payment IS live, keep the pay-first + no-market-items rules.
+    if (togoMode && PAYMENTS_LIVE && hasMarketItems) {
+      setAddrErr(tri("时价菜品暂不支持外卖/自取在线支付，请移除后再下单", "Market-price items can't be pre-paid online — please remove them for takeout/delivery", "Les articles à prix du jour ne peuvent être payés en ligne — retirez-les pour la commande à emporter/livraison"));
       return;
     }
 
     setSubmitting(true);
-    const items: OrderItem[] = cartLines.map((x) => ({
-      id: x.d.id,
-      name_zh: lineName(x.d, x.variant),
-      name_en: lineName(x.d, x.variant, true),
-      price: x.isMarket ? null : x.unit,
-      qty: x.qty,
-      ...(x.isMarket ? { market: true } : {}),
-    }));
+    // Drinks (酒水饮品) and plain white rice (白饭/白米饭) aren't cooked — a round of
+    // only these skips the kitchen ticket (see /api/epson). Still prints on the bill.
+    const isNoCook = (d: MenuItem) => d.category === "酒水饮品" || /^白\s*米?\s*饭$/.test((d.name_zh || "").trim());
+    const items: OrderItem[] = cartLines.flatMap((x) => {
+      // Group this dish's portions by identical (note, adjust) → one order line per group,
+      // so 白饭×3 with a note on portion 2 becomes 白饭×2 + 白饭×1(备注).
+      const groups = new Map<string, { note?: string; adjust: number; qty: number }>();
+      for (let u = 0; u < x.qty; u++) {
+        const note = (x.meta?.units?.[u]?.note ?? "").trim();
+        const adjust = x.meta?.units?.[u]?.adjust ?? 0;
+        const gk = `${note}|${adjust}`;
+        const g = groups.get(gk) ?? { note: note || undefined, adjust, qty: 0 };
+        g.qty += 1;
+        groups.set(gk, g);
+      }
+      return [...groups.values()].map((g) => {
+        // Clamp a discount to never exceed the dish price: the line price floors
+        // at $0, so store the SAME clamped delta — otherwise the bill would print
+        // "$0.00 · 加价 −$100.00" (line & reason disagree). Clamp at the source so
+        // price and the printed annotation are consistent by construction.
+        const adj = Math.round(Math.max(g.adjust, -x.base) * 100) / 100;
+        return {
+          id: x.d.id,
+          name_zh: lineName(x.d, x.variant),
+          name_en: lineName(x.d, x.variant, true),
+          price: x.isMarket ? null : Math.max(0, Math.round((x.base + adj) * 100) / 100),
+          qty: g.qty,
+          ...(x.isMarket ? { market: true } : {}),
+          ...(g.note ? { note: g.note } : {}),
+          ...(!x.isMarket && adj !== 0 ? { adjust: adj } : {}),
+          ...(isNoCook(x.d) ? { noKitchen: true } : {}),
+        };
+      });
+    });
+    // Campus pickup: route through the server (it mints the tracking_token +
+    // pickup_code), then hand off to the anonymous /order/[id] tracking screen.
+    // Order-only — no online charge; staff settle at the truck.
+    if (pickupMode) {
+      const pu = await createPickupOrder({ slug, items, phone: phoneToSave, note });
+      setSubmitting(false);
+      if ("error" in pu) {
+        alert(tri("提交失败：", "Couldn't place the order: ", "Échec de la commande : ") + pu.error);
+        return;
+      }
+      trackFunnel(slug, "order_placed", { order_type: "pickup" });
+      window.location.href = `/order/${pu.id}?t=${encodeURIComponent(pu.tracking_token)}`;
+      return;
+    }
+
     const res = await createOrder(slug, {
       items,
+      total,
       table_no: togoMode ? "" : tableNo,
       phone: phoneToSave,
       note,
@@ -310,9 +443,10 @@ export default function PublicMenu() {
       return;
     }
 
-    if (togoMode && res.id) {
+    if (togoMode && PAYMENTS_LIVE && res.id) {
       // Pay-first: show the Clover card sheet. On success the server (re-prices +)
       // charges and marks the order paid, which releases it to the kitchen/printer.
+      trackFunnel(slug, "order_placed", { order_type: togoType });
       setPayingOrder({
         id: res.id,
         amount: pricing.grandTotal,
@@ -324,7 +458,13 @@ export default function PublicMenu() {
     // Dine-in: kitchen fires immediately. No push to a printer here — the Epson
     // TM-T88VI PULLS via Server Direct Print (it polls /api/epson and picks up
     // this order on its next cycle). Nothing to do client-side.
+    trackFunnel(slug, "order_placed", { order_type: togoMode ? togoType : "dine_in" });
     setPlaced(true);
+    // Opened from the floor plan (?staff=1): tell the parent so the modal can
+    // auto-close and refresh the table's tab.
+    if (staff && typeof window !== "undefined" && window.parent !== window) {
+      window.parent.postMessage({ type: "bento-staff-order-placed" }, "*");
+    }
     setPlacedOrders((p) => [
       ...p,
       { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total },
@@ -420,13 +560,13 @@ export default function PublicMenu() {
             {hasVariants && (
               <span className="ml-1.5 rounded border border-jade px-1 align-middle text-[9px] font-bold text-jade">
                 {choice
-                  ? lang === "zh" ? `${d.variants.length} 选 1` : "pick 1"
-                  : `${d.variants.length} ${lang === "zh" ? "规格" : d.variants.length > 1 ? "sizes" : "size"}`}
+                  ? tri(`${d.variants.length} 选 1`, "pick 1", "choisir 1")
+                  : `${d.variants.length} ${lang === "zh" ? "规格" : lang === "fr" ? (d.variants.length > 1 ? "tailles" : "taille") : d.variants.length > 1 ? "sizes" : "size"}`}
               </span>
             )}
             {d.is_market && (
               <span className="ml-1.5 rounded border border-gold px-1 align-middle text-[9px] font-bold text-gold">
-                {lang === "zh" ? "时价" : "Market"}
+                {t("market")}
               </span>
             )}
           </div>
@@ -438,7 +578,7 @@ export default function PublicMenu() {
               marketPriced ? fmtPrice(d.price) /* today's market price, in gold */ : t("market")
             ) : (
               <>
-                {hasVariants && !choice && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{lang === "zh" ? "起" : "from"}</span>}
+                {hasVariants && !choice && dp != null && <span className="mr-1 text-xs font-medium text-ink-faint">{tri("起", "from", "dès")}</span>}
                 {fmtPrice(dp) || t("market")}
               </>
             )}
@@ -446,38 +586,120 @@ export default function PublicMenu() {
         </div>
         {sold ? (
           <span className="flex-none rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-ink-faint">
-            {lang === "zh" ? "沽清" : "Sold out"}
+            {tri("沽清", "Sold out", "Épuisé")}
           </span>
         ) : hasVariants ? (
           <button
             onClick={() => setSheetDish(d)}
             className="relative flex flex-none items-center gap-1 rounded-full border-[1.5px] border-jade bg-white px-3 py-1.5 text-sm font-medium text-jade"
           >
-            {choice ? (lang === "zh" ? "选择" : "Choose") : lang === "zh" ? "选规格" : "Size"} ›
+            {choice ? tri("选择", "Choose", "Choisir") : tri("选规格", "Size", "Taille")} ›
             {qty > 0 && <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-1 text-[10px] font-bold text-white">{qty}</span>}
           </button>
         ) : unpriced ? (
-          <span className="flex-none rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-ink-faint" title={lang === "zh" ? "未定价" : "Not priced"}>
-            {lang === "zh" ? "请询问" : "Ask staff"}
+          <span className="flex-none rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-ink-faint" title={tri("未定价", "Not priced", "Non tarifé")}>
+            {tri("请询问", "Ask staff", "Demander")}
           </span>
-        ) : qty === 0 ? (
-          <button onClick={() => inc(d.id, 1)} className="flex-none rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">
-            ＋
-          </button>
         ) : (
           <div className="flex flex-none items-center gap-2">
-            <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
-            <span className="w-5 text-center font-semibold text-ink">{qty}</span>
-            <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+            {/* staff-only: per-item 备注 + 加价/减价 for this dish (opens the editor sheet) */}
+            {staff && (
+              <button
+                onClick={() => {
+                  const n = Math.max(1, cart[d.id] ?? 0);
+                  const u = itemMeta[d.id]?.units ?? [];
+                  setEditUnits(Array.from({ length: n }, (_, i) => ({ note: u[i]?.note ?? "", adjust: u[i]?.adjust != null ? String(u[i]!.adjust) : "" })));
+                  setStaffEditKey(d.id);
+                }}
+                title={tri("备注 / 改价", "Note / price", "Note / prix")}
+                className={`grid h-7 w-7 flex-none place-items-center rounded-full border text-sm ${(itemMeta[d.id]?.units ?? []).some((m) => (m?.adjust ?? 0) !== 0 || (m?.note ?? "").trim() !== "") ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
+              >
+                ✎
+              </button>
+            )}
+            {qty === 0 ? (
+              <button onClick={() => inc(d.id, 1)} className="rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                <span className="w-5 text-center font-semibold text-ink">{qty}</span>
+                <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+              </div>
+            )}
           </div>
         )}
       </div>
     );
   };
 
+  // Desktop/iPad persistent order panel (right column). Reuses the same cartLines +
+  // inc handlers as the phone cart sheet; the primary button opens the cart sheet
+  // (a centered dialog on desktop) for phone/note + final submit — no logic fork.
+  const renderOrderPanel = () => {
+    const headTable = lockedTable ? tri(`本单 · ${displayTable(lockedTable)} 号桌`, `Order · Table ${displayTable(lockedTable)}`, `Commande · Table ${displayTable(lockedTable)}`) : tri("本单", "Your order", "Votre commande");
+    return (
+      <>
+        <div className="flex-none border-b border-slate-100 px-4 py-3 text-sm font-bold text-ink">{headTable}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          {placedLines.length > 0 && (
+            <div className="mb-3 rounded-xl border border-jade/20 bg-jade-wash/50 p-3">
+              <div className="mb-1 flex items-center justify-between text-xs font-semibold text-jade">
+                <span>✓ {t("prevOrdered")}</span><span className="tabular-nums">${placedTotal.toFixed(2)}</span>
+              </div>
+              <div className="space-y-0.5">
+                {placedLines.map((l, i) => (
+                  <div key={i} className="flex justify-between gap-2 text-xs text-ink-soft">
+                    <span className="min-w-0 truncate">{lang === "zh" ? l.name_zh : l.name_en || l.name_zh} ×{l.qty}</span>
+                    <span className="flex-none tabular-nums">{fmtPrice((Number(l.price) || 0) * l.qty)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {cartLines.length === 0 ? (
+            <p className="py-10 text-center text-sm text-ink-faint">{t("empty")}</p>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {cartLines.map((x) => (
+                <div key={x.key} className="flex items-center justify-between gap-2 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-ink">{lineName(x.d, x.variant, lang !== "zh")}</div>
+                    <div className={`text-xs ${x.isMarket ? "font-semibold text-gold" : "text-ink-faint"}`}>
+                      {x.isMarket ? t("market") : x.customized ? `${fmtPrice(x.lineTotal)}${x.qty > 1 ? ` · ${x.qty} ${t("items")}` : ""}` : fmtPrice(x.unit) || t("market")}
+                      {x.customized && <span className="ml-1 text-gold">✎</span>}
+                    </div>
+                  </div>
+                  <div className="flex flex-none items-center gap-1.5">
+                    <button onClick={() => inc(x.key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                    <span className="w-5 text-center font-semibold">{x.qty}</span>
+                    <button onClick={() => inc(x.key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex-none border-t border-slate-100 p-4">
+          <div className="mb-2 flex items-center justify-between text-base font-bold text-ink">
+            <span>{placedTotal > 0 ? t("grand") : t("total")}</span>
+            <span className="tabular-nums">${(placedTotal > 0 ? grandTotal : total).toFixed(2)}{hasMarketItems && <span className="ml-1 text-xs font-semibold text-gold">+ {t("market")}</span>}</span>
+          </div>
+          <button
+            onClick={() => { setOpen(true); trackFunnel(slug, "checkout_opened"); }}
+            disabled={count === 0}
+            className="w-full rounded-full bg-jade py-3 text-sm font-semibold text-white transition enabled:hover:opacity-90 disabled:opacity-40"
+          >
+            {count > 0 ? (togoMode ? (PAYMENTS_LIVE ? t("goPay") : t("sendOrder")) : t("submit")) : t("empty")}
+          </button>
+        </div>
+      </>
+    );
+  };
+
   return (
     <main
-      className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32" : "pb-20"}`}
+      data-view={viewOverride ?? undefined}
+      className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32 md:pb-6" : "pb-20 md:pb-6"}`}
       style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
@@ -489,7 +711,7 @@ export default function PublicMenu() {
       <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet" />
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[440px] items-center gap-3 px-5 py-4">
+        <div className="mv-shell mx-auto flex w-full max-w-[440px] items-center gap-3 px-5 py-4 md:max-w-[1440px]">
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
               {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? name.zh : "…"}
@@ -498,33 +720,56 @@ export default function PublicMenu() {
               <div className="text-[11px] uppercase tracking-[0.15em] text-ink-faint">{name.en}</div>
             )}
           </div>
+          {/* phone ⇄ desktop layout toggle — auto-detects by screen, manual choice sticks */}
+          <div className="flex flex-none items-center rounded-full border border-slate-200 p-0.5" role="group" aria-label={tri("视图", "Layout", "Vue")}>
+            <button
+              onClick={() => setView("phone")}
+              aria-pressed={effectiveView === "phone"}
+              title={tri("手机版", "Phone view", "Vue mobile")}
+              className={`grid h-7 w-8 place-items-center rounded-full text-sm transition ${effectiveView === "phone" ? "bg-jade text-white" : "text-ink-faint hover:bg-slate-50"}`}
+            >📱</button>
+            <button
+              onClick={() => setView("desktop")}
+              aria-pressed={effectiveView === "desktop"}
+              title={tri("桌面版", "Desktop view", "Vue bureau")}
+              className={`grid h-7 w-8 place-items-center rounded-full text-sm transition ${effectiveView === "desktop" ? "bg-jade text-white" : "text-ink-faint hover:bg-slate-50"}`}
+            >🖥️</button>
+          </div>
           <button
+            // FR omitted from the diner menu for now (menu content is zh/en only;
+            // French fell back to English anyway). Landing keeps EN/FR/中.
             onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
             className="flex-none rounded-full border border-slate-200 px-3 py-1 text-xs text-ink-soft"
           >
-            {lang === "zh" ? "EN" : "中文"}
+            {lang === "zh" ? "EN" : "中"}
           </button>
         </div>
       </header>
 
       {lockedTable && !togoMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          {lang === "zh" ? `您正在为 ${displayTable(lockedTable)} 号桌点餐` : `Ordering for Table ${displayTable(lockedTable)}`}
+          🪑 {tri(`您正在为 ${displayTable(lockedTable)} 号桌点餐`, `Ordering for Table ${displayTable(lockedTable)}`, `Commande pour la table ${displayTable(lockedTable)}`)}
         </div>
       )}
-      {togoMode && (
+      {togoMode && !pickupMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          {t("togoBadge")} · {t("payFirst")}
+          🛵 {t("togoBadge")} · {PAYMENTS_LIVE ? t("payFirst") : t("callbackHint")}
+        </div>
+      )}
+      {pickupMode && (
+        <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
+          🚚 {tri("到餐车取餐 · 做好后通知你来取", "Pickup at the truck · we'll ping you when it's ready", "Ramassage au camion · on vous avertit quand c'est prêt")}
         </div>
       )}
 
-      <div className="mx-auto max-w-[440px] px-5 py-6">
+      <div className="mv-shell mx-auto w-full max-w-[440px] px-5 py-6 md:max-w-[1440px]">
         {loaded && dishes.length === 0 && (
-          <p className="py-20 text-center text-sm text-ink-faint">{lang === "zh" ? "菜单还没准备好。" : "The menu isn't ready yet."}</p>
+          <p className="py-20 text-center text-sm text-ink-faint">{tri("菜单还没准备好。", "The menu isn't ready yet.", "Le menu n'est pas encore prêt.")}</p>
         )}
 
-        {/* togo: pickup-vs-delivery chooser + up-front address (postal-first) */}
-        {togoMode && dishes.length > 0 && (
+        {/* togo: pickup-vs-delivery chooser + up-front address (postal-first).
+            Pickup mode is always pickup — no chooser. */}
+        {togoMode && !pickupMode && dishes.length > 0 && (
           <div className="mb-6">
             <div className="mb-2 text-sm font-semibold text-ink">{t("chooseMode")}</div>
             <div className="grid grid-cols-2 gap-2">
@@ -534,7 +779,7 @@ export default function PublicMenu() {
                   !isDelivery ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"
                 }`}
               >
-                <div className={`text-[15px] font-semibold ${!isDelivery ? "text-jade" : "text-ink"}`}>{t("pickup")}</div>
+                <div className={`text-[15px] font-semibold ${!isDelivery ? "text-jade" : "text-ink"}`}>🛍️ {t("pickup")}</div>
                 <div className="mt-0.5 text-[11px] leading-snug text-ink-faint">{t("pickupHint")}</div>
               </button>
               <button
@@ -543,7 +788,7 @@ export default function PublicMenu() {
                   isDelivery ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"
                 }`}
               >
-                <div className={`text-[15px] font-semibold ${isDelivery ? "text-jade" : "text-ink"}`}>{t("delivery")}</div>
+                <div className={`text-[15px] font-semibold ${isDelivery ? "text-jade" : "text-ink"}`}>🛵 {t("delivery")}</div>
                 <div className="mt-0.5 text-[11px] leading-snug text-ink-faint">{t("deliveryHint")}</div>
               </button>
             </div>
@@ -563,7 +808,7 @@ export default function PublicMenu() {
                     {[...zoneFsas].sort().map((f) => (
                       <span key={f} className="rounded-full bg-jade-wash px-2.5 py-1 text-[11px] font-medium text-jade">
                         {f}
-                        {FSA_NAMES[f] && <span className="ml-1 text-jade/70">{FSA_NAMES[f][lang]}</span>}
+                        {FSA_NAMES[f] && <span className="ml-1 text-jade/70">{FSA_NAMES[f][lang2]}</span>}
                       </span>
                     ))}
                   </div>
@@ -576,12 +821,13 @@ export default function PublicMenu() {
         {/* search bar — filters across all categories */}
         {dishes.length > 0 && (
           <div className="relative mb-5">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("search")}
               type="search"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-9 text-sm outline-none focus:border-jade focus:ring-2 focus:ring-jade/20"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none focus:border-jade focus:ring-2 focus:ring-jade/20"
             />
             {query && (
               <button
@@ -600,7 +846,7 @@ export default function PublicMenu() {
             {results.length === 0 ? (
               <p className="py-12 text-center text-sm text-ink-faint">{t("noResults")}</p>
             ) : (
-              <div className="space-y-3">{results.map(renderDish)}</div>
+              <div className="mv-grid grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-x-6 xl:grid-cols-3">{results.map(renderDish)}</div>
             )}
           </section>
         ) : (
@@ -610,7 +856,7 @@ export default function PublicMenu() {
           {cats.length > 1 && (
             <nav
               ref={railRef}
-              className="sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="mv-rail sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
             >
               {cats.map((g, i) => {
                 const on = g.category === activeCat;
@@ -624,7 +870,7 @@ export default function PublicMenu() {
                     }`}
                   >
                     {on && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-jade" />}
-                    {catLabel(g.category, lang)}
+                    {catLabel(g.category, lang2)}
                     <span className={`mt-0.5 block text-[10px] ${on ? "text-jade/70" : "text-ink-faint"}`}>{g.items.length}</span>
                   </button>
                 );
@@ -637,12 +883,18 @@ export default function PublicMenu() {
             {cats.map((g, i) => (
               <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[76px]">
                 <h2 className="mb-3 flex items-baseline gap-2 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">
-                  {catLabel(g.category, lang)}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
+                  {catLabel(g.category, lang2)}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
                 </h2>
-                <div className="space-y-3">{g.items.map(renderDish)}</div>
+                <div className="mv-grid grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-x-6 xl:grid-cols-3">{g.items.map(renderDish)}</div>
               </section>
             ))}
           </div>
+
+          {/* desktop/iPad: persistent order panel — live order while browsing.
+              Always in DOM; CSS `md:` (+ [data-view] override) controls visibility. */}
+          <aside className="mv-desktop sticky top-[68px] hidden max-h-[calc(100vh-88px)] w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex">
+            {renderOrderPanel()}
+          </aside>
         </div>
         </>
         )}
@@ -650,9 +902,9 @@ export default function PublicMenu() {
 
       {/* slim bottom checkout bar — one row, no dish list (美团 pattern) */}
       {(count > 0 || placedTotal > 0) && !open && !sheetDish && (
-        <div className="fixed inset-x-0 bottom-0 z-20 px-3 pb-3">
+        <div className="mv-phone fixed inset-x-0 bottom-0 z-20 px-3 pb-3 md:hidden">
           <button
-            onClick={() => setOpen(true)}
+            onClick={() => { setOpen(true); trackFunnel(slug, "checkout_opened"); }}
             className="mx-auto flex w-full max-w-[440px] items-center justify-between rounded-full bg-jade py-3 pl-5 pr-2 text-white shadow-[0_6px_24px_rgba(17,122,101,0.35)] transition active:scale-[0.99]"
           >
             <span className="flex items-center gap-2.5 text-sm font-semibold">
@@ -676,16 +928,150 @@ export default function PublicMenu() {
               </span>
             </span>
             <span className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-bold">
-              {count > 0 ? (togoMode ? t("goPay") : t("submit")) : t("cart")} →
+              {count > 0 ? (togoMode ? (PAYMENTS_LIVE ? t("goPay") : t("sendOrder")) : t("submit")) : t("cart")} →
             </span>
           </button>
         </div>
       )}
 
       {/* 多规格 size selector — tap 选规格 opens this */}
+      {sidesOpen && hotpotSides.length > 0 && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setSidesOpen(false)}>
+          <div className="mx-auto flex max-h-[82vh] w-full max-w-[440px] flex-col rounded-t-2xl md:rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+            {/* sticky header — the top-right action is ALWAYS visible (no scroll to skip/finish) */}
+            <div className="flex flex-none items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-lg font-bold text-ink">🍲 {tri("火锅配菜", "Hot-pot sides", "Accompagnements fondue")}</div>
+                <div className="mt-0.5 text-xs text-ink-faint">{tri("加点更丰富 · 可跳过", "Optional add-ons", "Extras (optionnel)")}</div>
+              </div>
+              <button
+                onClick={() => setSidesOpen(false)}
+                className={`flex-none rounded-full px-4 py-2 text-sm font-semibold transition ${sidesCount > 0 ? "bg-jade text-white hover:opacity-90" : "border border-slate-300 text-ink-soft hover:bg-slate-50"}`}
+              >
+                {sidesCount > 0 ? `${tri("完成", "Done", "Terminé")} · ${sidesCount} ${t("items")}` : tri("跳过", "Skip", "Passer")}
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+            <div className="grid grid-cols-2 gap-2">
+              {hotpotSides.map((d) => {
+                const hasV = (d.variants?.length ?? 0) > 0;
+                const q = hasV ? dishQty(d.id) : cart[d.id] ?? 0;
+                const market = !!d.is_market && !hasV && !(Number(d.price) > 0);
+                return (
+                  <div key={d.id} className={`flex flex-col justify-between rounded-xl border p-3 ${q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white"}`}>
+                    <div>
+                      <div className="text-[15px] font-semibold leading-snug text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+                      {(lang === "zh" ? d.name_en : d.name_zh) && <div className="truncate text-xs text-ink-faint">{lang === "zh" ? d.name_en : d.name_zh}</div>}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-1">
+                      <span className={`text-sm font-bold ${market ? "text-gold" : "text-jade"}`}>{hasV ? fmtPrice(displayPrice(d)) : market ? t("market") : fmtPrice(d.price)}</span>
+                      {hasV ? (
+                        <button onClick={() => setSheetDish(d)} className="relative flex-none rounded-full border-[1.5px] border-jade bg-white px-2.5 py-1 text-xs font-medium text-jade">
+                          {tri("规格", "Size", "Taille")} ›
+                          {q > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-0.5 text-[10px] font-bold text-white">{q}</span>}
+                        </button>
+                      ) : q === 0 ? (
+                        <button onClick={() => inc(d.id, 1)} className="grid h-8 w-8 flex-none place-items-center rounded-full bg-jade text-lg font-bold text-white">＋</button>
+                      ) : (
+                        <div className="flex flex-none items-center gap-1">
+                          <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                          <span className="w-4 text-center text-sm font-semibold text-ink">{q}</span>
+                          <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* staff per-PORTION 备注 + 加价/减价 editor — a note can apply to just one of several portions */}
+      {staffEditKey && (() => {
+        const { id, vi } = parseCartKey(staffEditKey);
+        const d = byId[id];
+        if (!d) return null;
+        const base = d.is_market && !(unitPrice(d, vi) > 0) ? 0 : unitPrice(d, vi);
+        // Bare number defaults to + (add). "-5" subtracts. Kept as the signed delta so
+        // the live preview + printed bill can show "+$5.00" / "−$5.00" explicitly.
+        const deltaOf = (s: string) => (s.trim() === "" ? 0 : parseFloat(s) || 0);
+        const priceOf = (s: string) => Math.max(0, Math.round((base + deltaOf(s)) * 100) / 100);
+        const signed = (n: number) => (n >= 0 ? "+" : "−") + fmtPrice(Math.abs(n));
+        const setUnit = (i: number, patch: Partial<{ note: string; adjust: string }>) => setEditUnits((us) => us.map((u, k) => (k === i ? { ...u, ...patch } : u)));
+        const setN = (n: number) => setEditUnits((us) => Array.from({ length: Math.max(1, Math.min(20, n)) }, (_, i) => us[i] ?? { note: "", adjust: "" }));
+        const n = editUnits.length;
+        return (
+          <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setStaffEditKey(null)}>
+            <div className="mx-auto flex max-h-[84vh] w-full max-w-[440px] flex-col rounded-t-2xl md:rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+              {/* sticky header: dish name + 份数 stepper */}
+              <div className="flex flex-none items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                <div className="min-w-0 truncate text-lg font-bold text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
+                <div className="flex flex-none items-center gap-2">
+                  <span className="text-xs text-ink-faint">{tri("份数", "Qty", "Qté")}</span>
+                  <button onClick={() => setN(n - 1)} className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                  <span className="w-5 text-center text-base font-bold text-ink">{n}</span>
+                  <button onClick={() => setN(n + 1)} className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-ink">＋</button>
+                </div>
+              </div>
+              <div className="flex-1 space-y-2.5 overflow-y-auto p-5">
+                {n > 1 && (
+                  <button onClick={() => setEditUnits((us) => us.map(() => ({ note: us[0]?.note ?? "", adjust: us[0]?.adjust ?? "" })))}
+                    className="w-full rounded-lg border border-slate-200 py-2 text-xs font-medium text-ink-soft transition hover:bg-slate-50">
+                    {tri("把第 1 份应用到全部", "Apply portion 1 to all", "Appliquer la 1re à toutes")}
+                  </button>
+                )}
+                {editUnits.map((u, i) => {
+                  const hasNote = u.note.trim() !== "";
+                  const hasAdj = u.adjust.trim() !== "" && (parseFloat(u.adjust) || 0) !== 0;
+                  const tag = hasNote && hasAdj ? tri("已备注 · 改价", "Note · price", "Note · prix") : hasNote ? tri("已备注", "Note", "Note") : hasAdj ? tri("改价", "Price", "Prix") : "";
+                  return (
+                  <div key={i} className={`rounded-xl border p-3 ${tag ? "border-gold/50 bg-gold/[0.06]" : "border-slate-100"}`}>
+                    {(n > 1 || tag) && (
+                      <div className="mb-1.5 flex items-center justify-between">
+                        {n > 1 && <span className="text-xs font-semibold text-ink-soft">{lang === "zh" ? `第 ${i + 1} 份` : `Portion ${i + 1}`}</span>}
+                        {tag && <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">{tag}</span>}
+                      </div>
+                    )}
+                    <input value={u.note} onChange={(e) => setUnit(i, { note: e.target.value })} placeholder={tri("备注 例：加一条鱼", "Note, e.g. add a fish", "Note ex. ajouter un poisson")} className="input mb-2 w-full text-sm" />
+                    <div className="flex items-center gap-2">
+                      <span className="flex-none text-xs text-ink-faint">{tri("加/减价 $", "Adjust $", "Ajust. $")}</span>
+                      <input type="number" inputMode="decimal" value={u.adjust} onChange={(e) => setUnit(i, { adjust: e.target.value })} placeholder="+15 / -5" className="input min-h-9 flex-1 text-sm" />
+                      <span className="flex-none text-right text-sm font-bold text-jade">
+                        {deltaOf(u.adjust) !== 0 && <span className="mr-1 text-xs font-semibold text-gold">{signed(deltaOf(u.adjust))}</span>}
+                        {fmtPrice(priceOf(u.adjust))}
+                      </span>
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+              <div className="flex-none border-t border-slate-100 p-4">
+                <button
+                  onClick={() => {
+                    const units = editUnits.map((u) => {
+                      const a = u.adjust.trim() === "" ? 0 : parseFloat(u.adjust) || 0;
+                      return { note: u.note.trim() || undefined, adjust: a || undefined };
+                    });
+                    setItemMeta((mm) => ({ ...mm, [staffEditKey]: { units } }));
+                    setCart((c) => ({ ...c, [staffEditKey]: n }));
+                    setStaffEditKey(null);
+                  }}
+                  className="w-full rounded-lg bg-jade py-3 font-medium text-white"
+                >
+                  {tri("完成", "Done", "Terminé")}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {sheetDish && (
-        <div className="fixed inset-0 z-40 flex items-end bg-black/40" onClick={() => setSheetDish(null)}>
-          <div className="mx-auto max-h-[78vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setSheetDish(null)}>
+          <div className="mx-auto max-h-[78vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-slate-200" />
             <div className="mb-1 flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -699,8 +1085,8 @@ export default function PublicMenu() {
             </div>
             <div className="mb-1 text-xs text-ink-soft">
               {isChoiceDish(sheetDish)
-                ? lang === "zh" ? "请选择" : "Choose one"
-                : lang === "zh" ? "选择大小" : "Choose a size"}
+                ? tri("请选择", "Choose one", "Choisir un")
+                : tri("选择大小", "Choose a size", "Choisir une taille")}
             </div>
             <div className="divide-y divide-slate-100">
               {sheetDish.variants.map((v, vi) => {
@@ -732,7 +1118,7 @@ export default function PublicMenu() {
               })}
             </div>
             <button onClick={() => setSheetDish(null)} className="mt-4 w-full rounded-lg bg-jade py-3 font-medium text-white">
-              {lang === "zh" ? "完成" : "Done"}{count > 0 ? ` · ${count} ${t("items")}` : ""}
+              {tri("完成", "Done", "Terminé")}{count > 0 ? ` · ${count} ${t("items")}` : ""}
             </button>
           </div>
         </div>
@@ -740,8 +1126,8 @@ export default function PublicMenu() {
 
       {/* cart sheet */}
       {open && (
-        <div className="fixed inset-0 z-30 flex items-end bg-black/40" onClick={() => setOpen(false)}>
-          <div className="mx-auto max-h-[85vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-30 flex items-end bg-black/40 md:items-center" onClick={() => setOpen(false)}>
+          <div className="mx-auto max-h-[85vh] w-full max-w-[440px] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <div className="text-lg font-bold text-ink">{t("cart")}</div>
               <button onClick={() => setOpen(false)} className="text-ink-faint">✕</button>
@@ -775,7 +1161,8 @@ export default function PublicMenu() {
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-ink">{lineName(x.d, x.variant, lang !== "zh")}</div>
                         <div className={`text-xs ${x.isMarket ? "font-semibold text-gold" : "text-ink-faint"}`}>
-                          {x.isMarket ? t("market") : fmtPrice(x.unit) || t("market")}
+                          {x.isMarket ? t("market") : x.customized ? `${fmtPrice(x.lineTotal)}${x.qty > 1 ? ` · ${x.qty} ${t("items")}` : ""}` : fmtPrice(x.unit) || t("market")}
+                          {x.customized && <span className="ml-1 text-gold">✎</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -787,58 +1174,39 @@ export default function PublicMenu() {
                   ))}
                 </div>
 
-                {/* hot-pot add-on upsell */}
+                {/* hot-pot add-on: opens the full 配菜 sheet (auto-opens on first hotpot) */}
                 {hasHotpot && hotpotSides.length > 0 && (
-                  <div className="mt-4 rounded-xl bg-amber-50 p-3">
-                    <div className="mb-2 text-sm font-medium text-amber-800">
-                      {lang === "zh" ? "点了火锅，加点配菜？" : "Hot pot — add some sides?"}
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {hotpotSides.map((d) => {
-                        // multi-size sides open the size sheet (adding by bare id would sell at $0)
-                        const hasV = (d.variants?.length ?? 0) > 0;
-                        const q = hasV ? dishQty(d.id) : cart[d.id] ?? 0;
-                        return (
-                          <button
-                            key={d.id}
-                            onClick={() => (hasV ? setSheetDish(d) : inc(d.id, 1))}
-                            className={`flex-none rounded-lg border px-3 py-2 text-left transition ${
-                              q > 0 ? "border-jade bg-jade-wash" : "border-slate-200 bg-white hover:border-slate-300"
-                            }`}
-                          >
-                            <div className="text-sm font-medium text-ink">
-                              {lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
-                              {q > 0 && <span className="ml-1 text-jade">×{q}</span>}
-                            </div>
-                            <div className="text-xs text-ink-faint">
-                              {hasV
-                                ? `${isChoiceDish(d) ? "" : lang === "zh" ? "起 " : "from "}${fmtPrice(displayPrice(d))} ›`
-                                : `${fmtPrice(d.price) || t("market")} ＋`}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => setSidesOpen(true)}
+                    className="mt-4 flex w-full items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-amber-800">🍲 {tri("加火锅配菜", "Add hot-pot sides", "Ajouter des accompagnements")}</span>
+                    <span className="text-sm font-semibold text-amber-700">
+                      {sidesCount > 0 ? `${sidesCount} ${tri("份 ›", "· edit ›", "· modifier ›")}` : tri("查看全部 ›", "See all ›", "Voir tout ›")}
+                    </span>
+                  </button>
                 )}
 
-                {/* togo: pickup/delivery toggle + delivery address */}
+                {/* togo: pickup/delivery toggle + delivery address.
+                    Pickup mode is pickup-only (no toggle), keeps the email field. */}
                 {togoMode && (
                   <div className="mt-4 grid gap-2">
+                    {!pickupMode && (
                     <div className="flex rounded-lg bg-slate-100 p-1 text-sm">
                       <button
                         onClick={() => setTogoType("togo")}
                         className={`flex-1 rounded-md py-2 font-medium ${togoType === "togo" ? "bg-jade text-white" : "text-ink-soft"}`}
                       >
-                        {t("pickup")}
+                        🛍️ {t("pickup")}
                       </button>
                       <button
                         onClick={() => setTogoType("delivery")}
                         className={`flex-1 rounded-md py-2 font-medium ${togoType === "delivery" ? "bg-jade text-white" : "text-ink-soft"}`}
                       >
-                        {t("delivery")}
+                        🛵 {t("delivery")}
                       </button>
                     </div>
+                    )}
                     {isDelivery && (
                       <>
                         {renderAddress()}
@@ -852,10 +1220,21 @@ export default function PublicMenu() {
                 <div className={`grid gap-2 ${togoMode ? "mt-2" : "mt-4"}`}>
                   {!togoMode && (lockedTable ? (
                     <div className="rounded-lg border border-jade/30 bg-jade-wash px-3 py-2 text-sm font-medium text-jade">
-                      {displayTable(lockedTable)} 号桌
+                      🪑 {tri(`${displayTable(lockedTable)} 号桌`, `Table ${displayTable(lockedTable)}`, `Table ${displayTable(lockedTable)}`)}
                     </div>
                   ) : (
-                    <input className="input" placeholder={t("table")} value={tableNo} onChange={(e) => setTableNo(e.target.value)} />
+                    <div>
+                      <input
+                        className={`input w-full ${tableErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
+                        placeholder={t("table")}
+                        value={tableNo}
+                        list="bento-tables"
+                        autoComplete="off"
+                        onChange={(e) => { setTableNo(e.target.value); if (tableErr) setTableErr(false); }}
+                      />
+                      <datalist id="bento-tables">{tables.map((n) => <option key={n} value={n} />)}</datalist>
+                      {tableErr && <p className="mt-1 text-xs text-[#C0392B]">{tri("请选择列表中已有的桌号", "Pick a table from the list", "Choisissez une table dans la liste")}</p>}
+                    </div>
                   ))}
                   <div>
                     <div className="flex gap-2">
@@ -863,7 +1242,7 @@ export default function PublicMenu() {
                         className="input !w-28 flex-none"
                         value={phoneCode}
                         onChange={(e) => { setPhoneCode(e.target.value); if (phoneErr) setPhoneErr(false); }}
-                        aria-label={lang === "zh" ? "区号" : "Country code"}
+                        aria-label={tri("区号", "Country code", "Indicatif")}
                       >
                         <option value="1">🇨🇦 +1</option>
                         <option value="86">🇨🇳 +86</option>
@@ -874,14 +1253,14 @@ export default function PublicMenu() {
                         className={`input min-w-0 flex-1 ${phoneErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
                         type="tel"
                         inputMode="tel"
-                        placeholder={t("phone")}
+                        placeholder={phoneRequired ? t("phone") : tri("电话号码（可选）", "Phone (optional)", "Téléphone (facultatif)")}
                         value={phone}
                         onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
                       />
                     </div>
                     {phoneErr && (
                       <p className="mt-1 text-xs text-red-600">
-                        {phoneCode === "1" ? t("phoneErr") : lang === "zh" ? "请填写有效电话号码" : "Please enter a valid phone number"}
+                        {phoneCode === "1" ? t("phoneErr") : tri("请填写有效电话号码", "Please enter a valid phone number", "Entrez un numéro de téléphone valide")}
                       </p>
                     )}
                   </div>
@@ -889,15 +1268,18 @@ export default function PublicMenu() {
                 </div>
 
                 <div className="mt-4">
-                  {togoMode ? (
+                  {togoMode && !pickupMode ? (
                     /* takeout/delivery: full price breakdown — HST + mandatory delivery tip */
                     <div className="mb-3 space-y-1 text-sm tabular-nums">
                       <div className="flex justify-between text-ink-soft"><span>{t("subtotal")}</span><span>${pricing.subtotal.toFixed(2)}</span></div>
                       <div className="flex justify-between text-ink-soft"><span>{t("hst")}</span><span>${(pricing.gst + pricing.pst).toFixed(2)}</span></div>
-                      {isDelivery && (
+                      {isDelivery && PAYMENTS_LIVE && (
                         <div className="flex justify-between text-ink-soft"><span>{t("tipLine")}</span><span>${pricing.tip.toFixed(2)}</span></div>
                       )}
                       <div className="flex justify-between border-t border-slate-100 pt-1.5 text-base font-bold text-ink"><span>{t("total")}</span><span>${pricing.grandTotal.toFixed(2)}</span></div>
+                      {!PAYMENTS_LIVE && (
+                        <p className="text-right text-[11px] text-ink-faint">{t("estNote")}</p>
+                      )}
                       {isDelivery && shortfall > 0 && (
                         <p className="text-xs font-medium text-amber-700">{t("minShort")} ${shortfall.toFixed(2)}</p>
                       )}
@@ -916,23 +1298,29 @@ export default function PublicMenu() {
                       </div>
                       {hasMarketItems && (
                         <p className="mt-1 text-right text-[11px] text-ink-faint">
-                          {lang === "zh" ? "时价菜品按当日报价，结账时确认" : "Market-price items charged at today's rate, confirmed at checkout"}
+                          {tri("时价菜品按当日报价，结账时确认", "Market-price items charged at today's rate, confirmed at checkout", "Les articles à prix du jour sont facturés au tarif du jour, confirmé à la commande")}
                         </p>
                       )}
                     </div>
                   )}
                   {togoMode && !PAYMENTS_LIVE && (
-                    <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-800">{t("paySoon")}</p>
+                    <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">📞 {t("callbackHint")}</p>
                   )}
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
                   )}
                   <button
                     onClick={submit}
-                    disabled={submitting || (togoMode && (!PAYMENTS_LIVE || (isDelivery && shortfall > 0)))}
+                    disabled={submitting || (togoMode && isDelivery && shortfall > 0)}
                     className="w-full rounded-lg bg-jade py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50"
                   >
-                    {submitting ? t("submitting") : togoMode ? `${t("goPay")} · $${pricing.grandTotal.toFixed(2)}` : t("submit")}
+                    {submitting
+                      ? t("submitting")
+                      : togoMode
+                        ? PAYMENTS_LIVE
+                          ? `${t("goPay")} · $${pricing.grandTotal.toFixed(2)}`
+                          : t("sendOrder")
+                        : t("submit")}
                   </button>
                 </div>
               </>
@@ -941,12 +1329,12 @@ export default function PublicMenu() {
         </div>
       )}
 
-      {/* pay-first: Clover card sheet for togo/delivery */}
+      {/* pay-first: checkout method sheet for togo/delivery */}
       {payingOrder && (
-        <CloverPayment
+        <CheckoutSheet
           orderId={payingOrder.id}
           amount={payingOrder.amount}
-          lang={lang}
+          lang={lang2}
           onClose={() => setPayingOrder(null)}
           onPaid={() => {
             const po = payingOrder;
@@ -965,7 +1353,8 @@ export default function PublicMenu() {
       {placed && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 px-6" onClick={() => { setPlaced(false); setOpen(false); }}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
-            <p className="font-medium text-ink">{t("placed")}</p>
+            <div className="text-4xl">✅</div>
+            <p className="mt-3 font-medium text-ink">{togoMode && !PAYMENTS_LIVE ? t("sentCallback") : t("placed")}</p>
             <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>
@@ -976,9 +1365,9 @@ export default function PublicMenu() {
         <a
           href="/"
           className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] text-ink-faint transition hover:bg-white hover:text-jade"
-          title="BentoOS — 小商家的轻量后台"
+          title={tri("BentoOS — 小商家的轻量后台", "BentoOS — lightweight back-office for small merchants", "BentoOS — arrière-guichet léger pour petits commerçants")}
         >
-          Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
+          <BentoMark className="h-3.5 w-3.5" /> Powered by <span className="font-semibold underline decoration-dotted underline-offset-2">BentoOS</span>
         </a>
       </footer>
     </main>
