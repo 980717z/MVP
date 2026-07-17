@@ -60,15 +60,20 @@ export interface TableCheckout {
   total: number;
 }
 
-/** Today's checkout records, optionally for one table (newest first). */
-export async function listTableCheckouts(slug: string, tableNo?: string): Promise<TableCheckout[]> {
+/** Checkout records for ONE business day (defaults to un-filtered — pass the
+ *  shop's current business_date to scope to "today"). Newest first. Without a
+ *  businessDate this returns the last 50 across all history, which is only ever
+ *  right for a raw dump; the table sheet always passes today's business_date so
+ *  the "paid today" list can't bleed into prior days. */
+export async function listTableCheckouts(slug: string, tableNo?: string, businessDate?: string): Promise<TableCheckout[]> {
   let q = supabase
     .from("table_sessions")
     .select("id,table_no,closed_at,payment_method,amount_tendered,change_given,subtotal,total")
     .eq("tenant_slug", slug)
     .order("closed_at", { ascending: false })
-    .limit(50);
+    .limit(200);
   if (tableNo) q = q.eq("table_no", tableNo);
+  if (businessDate) q = q.eq("business_date", businessDate);
   const { data, error } = await q;
   if (error) {
     console.error("listTableCheckouts", error);

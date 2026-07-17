@@ -837,7 +837,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       </div>
 
       {view === "dine" && (
-        <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} trackPayments={trackPay} onChanged={load} />
+        <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} trackPayments={trackPay} dayStartHour={tenant?.dayStartHour ?? 0} onChanged={load} />
       )}
 
       {view === "togo" && (

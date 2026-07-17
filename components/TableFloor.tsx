@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import type { TableSpot } from "@/lib/store";
 import { reprintOrder, requestBill, cancelOrderItem, markServed, deleteOrder, setOrderStatus, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { listMenuItems } from "@/lib/menu";
-import { tableOccupancy, listTableCheckouts, type TableState, type TableCheckout } from "@/lib/tableSessions";
+import { tableOccupancy, listTableCheckouts, listSessionOrders, type TableState, type TableCheckout, type SessionItem } from "@/lib/tableSessions";
+import { torontoToday } from "@/lib/salesStats";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import CheckoutModal from "@/components/CheckoutModal";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
@@ -28,6 +29,11 @@ const T: Record<string, Dict> = {
   order: { zh: "点单", en: "Take order", fr: "Commander" },
   addRound: { zh: "加单", en: "Add round", fr: "Ajouter" },
   paidHistory: { zh: "今日已结", en: "Paid today", fr: "Payé aujourd'hui" },
+  paidToday: { zh: "今日已结", en: "Paid today", fr: "Payé aujourd'hui" },
+  paidBtn: { zh: "今日已结 · {n} 单", en: "Paid today · {n}", fr: "Payé aujourd'hui · {n}" },
+  paidNone: { zh: "今天这桌还没有结账记录", en: "No checkouts for this table today", fr: "Aucun encaissement aujourd'hui" },
+  tapForItems: { zh: "点开看菜品", en: "Tap to see items", fr: "Voir les plats" },
+  noItems: { zh: "这单没有菜品明细", en: "No item detail on this order", fr: "Aucun détail" },
   close: { zh: "关闭", en: "Close", fr: "Fermer" },
   cancelItem: { zh: "取消", en: "Cancel", fr: "Annuler" },
   cancelled: { zh: "已取消", en: "Cancelled", fr: "Annulé" },
@@ -68,6 +74,7 @@ export default function TableFloor({
   tables,
   layout,
   trackPayments = true,
+  dayStartHour = 0,
   onChanged,
 }: {
   slug: string;
@@ -75,6 +82,7 @@ export default function TableFloor({
   tables: string[];
   layout: TableSpot[];
   trackPayments?: boolean;
+  dayStartHour?: number; // business-day boundary (fulai = 7 → 7am-7am)
   onChanged: () => void | Promise<void>;
 }) {
   const { t } = useLang();
@@ -84,17 +92,33 @@ export default function TableFloor({
   const [checkout, setCheckout] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [history, setHistory] = useState<TableCheckout[]>([]);
+  const [paidView, setPaidView] = useState(false); // the "paid today" list modal
+  const [expanded, setExpanded] = useState<string | null>(null); // session id whose items are open
+  const [expandedItems, setExpandedItems] = useState<Record<string, SessionItem[]>>({});
   const [rowMenu, setRowMenu] = useState<string | null>(null); // order id whose ⋯ (destructive) menu is open
   const now = Date.now();
+  const paidSum = history.reduce((s, h) => s + Number(h.total || 0), 0);
+
+  const openSession = async (id: string) => {
+    if (expanded === id) { setExpanded(null); return; }
+    setExpanded(id);
+    if (!expandedItems[id]) {
+      const items = await listSessionOrders(id).catch(() => []);
+      setExpandedItems((m) => ({ ...m, [id]: items }));
+    }
+  };
 
   const byLabel = new Map(layout.map((l) => [l.label, l]));
   // Show every configured table; fall back to auto-grid for any without a layout entry.
   const spots = tables.map((label, i) => byLabel.get(label) ?? { label, ...autoGrid(i, tables.length), shape: "square" as const });
 
+  // Only THIS business day's checkouts (7am-7am for fulai) — never all history.
+  const todayBiz = torontoToday(new Date(), dayStartHour);
   useEffect(() => {
-    if (sel) listTableCheckouts(slug, sel).then(setHistory).catch(() => setHistory([]));
+    if (sel) listTableCheckouts(slug, sel, todayBiz).then(setHistory).catch(() => setHistory([]));
     else setHistory([]);
-  }, [sel, slug, orders]);
+    setPaidView(false); setExpanded(null);
+  }, [sel, slug, orders, todayBiz]);
 
   const state = (label: string): TableState | undefined => occ.get(label);
   const isNew = (s?: TableState) => !!s && now - s.newestAt < NEW_MS;
@@ -271,15 +295,18 @@ export default function TableFloor({
                 </div>
               )}
 
+              {/* Today's settled checkouts collapse behind one button (a busy
+                  table can settle many times a day; the full list drowned the
+                  sheet). Tap → modal with per-order detail. */}
               {history.length > 0 && (
                 <div className="mt-4 border-t border-slate-100 pt-3">
-                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-faint">{t(T.paidHistory)}</div>
-                  {history.map((h) => (
-                    <div key={h.id} className="flex justify-between py-0.5 text-xs text-ink-faint">
-                      <span>{new Date(h.closed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {t(T[`m_${h.payment_method}`] ?? T.m_other)}</span>
-                      <span>{fmtPrice(h.total)}</span>
-                    </div>
-                  ))}
+                  <button
+                    onClick={() => setPaidView(true)}
+                    className="flex min-h-11 w-full items-center justify-between rounded-lg border border-slate-200 px-3 text-sm text-ink-soft transition hover:bg-slate-50"
+                  >
+                    <span className="font-medium">🧾 {t(T.paidBtn).replace("{n}", String(history.length))}</span>
+                    <span className="tabular-nums font-semibold text-ink">{fmtPrice(paidSum)} ›</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -315,6 +342,69 @@ export default function TableFloor({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Paid-today detail modal — this table's settled checkouts for the
+          current business day; each row expands to its dishes. */}
+      {paidView && sel && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4" onClick={() => setPaidView(false)}>
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-bold text-ink">{t(T.paidToday)} · {displayTable(sel)}</h3>
+                <p className="text-xs text-ink-faint">{history.length} · {fmtPrice(paidSum)}</p>
+              </div>
+              <button onClick={() => setPaidView(false)} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-lg text-xl leading-none text-ink-faint hover:bg-slate-50">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2">
+              {history.length === 0 ? (
+                <div className="py-12 text-center text-sm text-ink-faint">{t(T.paidNone)}</div>
+              ) : (
+                history.map((h) => {
+                  const open = expanded === h.id;
+                  const items = expandedItems[h.id];
+                  return (
+                    <div key={h.id} className="border-b border-slate-50 last:border-0">
+                      <button onClick={() => openSession(h.id)} className="flex w-full items-center justify-between gap-2 px-2 py-3 text-left hover:bg-slate-50">
+                        <span className="min-w-0">
+                          <span className="text-sm font-medium text-ink">{new Date(h.closed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span className="ml-2 text-xs text-ink-faint">{t(T[`m_${h.payment_method}`] ?? T.m_other)}</span>
+                          {!open && <span className="ml-2 text-xs text-ink-faint">· {t(T.tapForItems)}</span>}
+                        </span>
+                        <span className="flex flex-none items-center gap-2">
+                          <span className="tabular-nums font-semibold text-ink">{fmtPrice(h.total)}</span>
+                          <span className={`text-ink-faint transition ${open ? "rotate-90" : ""}`}>›</span>
+                        </span>
+                      </button>
+                      {open && (
+                        <div className="px-2 pb-3">
+                          {items === undefined ? (
+                            <div className="py-2 text-center text-xs text-ink-faint">…</div>
+                          ) : items.length === 0 ? (
+                            <div className="py-2 text-center text-xs text-ink-faint">{t(T.noItems)}</div>
+                          ) : (
+                            <div className="divide-y divide-slate-50 rounded-lg bg-slate-50/60 px-3">
+                              {items.map((it, i) => (
+                                <div key={i} className="flex items-center justify-between py-1.5 text-sm">
+                                  <span className="min-w-0 text-ink">{it.name_zh || it.name_en} <span className="text-ink-faint">×{it.qty}</span></span>
+                                  <span className="flex-none tabular-nums text-ink-soft">{fmtPrice((Number(it.price) || 0) * it.qty)}</span>
+                                </div>
+                              ))}
+                              <div className="flex items-center justify-between py-1.5 text-sm font-semibold text-ink">
+                                <span>{t(T.checkout)}</span>
+                                <span className="tabular-nums">{fmtPrice(h.total)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}
