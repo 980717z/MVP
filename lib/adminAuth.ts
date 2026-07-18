@@ -6,6 +6,19 @@ import { supabaseAdmin } from "./supabaseAdmin";
 // checks the email against ADMIN_EMAILS (comma-separated env, case-insensitive).
 // Fails CLOSED when ADMIN_EMAILS is unset. Returns the service-role client +
 // the caller's uid/email on success, or a ready-to-return NextResponse.
+//
+// ⚠️ ADMIN_EMAILS IS PLATFORM-OPERATOR ONLY — NEVER ADD A MERCHANT/VENDOR.
+// This gate is deliberately global, not per-tenant: it answers "is this one of
+// US?", then hands back a SERVICE-ROLE client that bypasses RLS entirely. The
+// routes behind it (notably /api/admin/vendor) accept any `slug`, so anyone in
+// this list can read and write EVERY tenant's data. That's correct for the
+// people running BentoOS and a cross-tenant breach for anyone else — a vendor
+// added here could edit a competitor's listing, hours, and status.
+//
+// When vendors need to manage their own listing (self-serve), do NOT widen this
+// list. Add a separate requireTenantAdmin(slug) that verifies ownership/
+// membership first, or let the vendor's own authenticated client write through
+// the owner-scoped RLS in campus-vendors.sql. (Eng review T12 / codex #2.)
 
 export type AdminAuth =
   | { ok: true; db: SupabaseClient; userId: string; email: string }

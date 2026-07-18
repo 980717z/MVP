@@ -22,6 +22,11 @@ export const runtime = "nodejs";
 //
 //  GET  ?check=<slug>  → { ok, available, reason? }   (live handle validation)
 //  POST { name_en, name_zh?, slug, zone?, ownerEmail? } → { ok, sql, menuUrl }
+//  ownerEmail is a PASS-THROUGH note, not an account: the generated SQL sets
+//  owner_id to the requesting admin (we own campus trucks and configure their
+//  menu), and the result card uses this to remind you whom to invite from
+//  Members afterwards. Deliberate — don't "fix" it into an owner assignment
+//  without building a real invite flow first.
 // ─────────────────────────────────────────────────────────────────────────
 
 // Blank campus-truck starter: same shape as templates/demo-truck.json, but no

@@ -83,6 +83,15 @@ async function handle(req: Request): Promise<Response> {
     const eligOr = orderOnly
       ? "order_type.eq.dine_in,order_type.eq.pickup,payment_status.eq.paid"
       : "order_type.eq.dine_in,payment_status.eq.paid";
+    // Scheduled-pickup hold, in the QUERY rather than after it (eng review T4).
+    // A ticket printed at order time makes a ticket-driven cook fire a 12:15
+    // order at 11:40, so scheduled pickups are withheld until target − prep. Doing
+    // that skip in JS meant not-yet-due tickets still consumed the LIMIT window
+    // and could starve a walk-up order from ever being fetched; excluding them in
+    // SQL means the window only ever holds printable work.
+    // Requires supabase/pickup-time.sql (requested_pickup_at) — run 2026-07-18.
+    const PICKUP_PREP_MS = 15 * 60_000;
+    const dueBy = new Date(Date.now() + PICKUP_PREP_MS).toISOString();
     const { data, error } = await db
       .from("orders")
       .select("*")
@@ -90,13 +99,9 @@ async function handle(req: Request): Promise<Response> {
       .is("printed_at", null)
       .neq("status", "cancelled")
       .or(eligOr)
+      // ANDed with eligOr above: not a scheduled pickup, or its prep window opened.
+      .or(`requested_pickup_at.is.null,requested_pickup_at.lte.${dueBy}`)
       .order("created_at", { ascending: true })
-      // 25, not 5: scheduled pickups are held (skipped) in JS below, so a small
-      // window can fill entirely with not-yet-due tickets and starve a walk-up
-      // ASAP order from ever being fetched (eng review T3). The eligibility rule
-      // belongs in SQL before the LIMIT — deferred to T4 because referencing
-      // requested_pickup_at in the query breaks printing on any tenant that
-      // hasn't run pickup-time.sql yet.
       .limit(25);
     if (error) {
       // Most likely the `printed_at` column isn't migrated yet — fail quiet so the
@@ -108,11 +113,9 @@ async function handle(req: Request): Promise<Response> {
     // Drain pending kitchen tickets oldest-first. A round of ONLY no-kitchen items
     // (drinks / plain rice) gets claimed but NOT printed — the kitchen doesn't cook
     // it (it still shows on the bill). Print the first round that has cookable food.
-    // Scheduled-pickup hold (design review 7A): a ticket printed at order time
-    // makes a ticket-driven cook fire a 12:15 order at 11:40. Hold scheduled
-    // pickup tickets until target − prep window; the poll re-offers them later
-    // (printed_at stays null, so nothing is lost — just deferred).
-    const PICKUP_PREP_MS = 15 * 60_000;
+    // Held tickets are already excluded by the query; this re-check is a cheap
+    // invariant guard so a future change to that filter can't fire an order early
+    // (printed_at stays null either way, so a withheld ticket is deferred, not lost).
     for (const order of (data as Order[] | null) ?? []) {
       const target = (order as { requested_pickup_at?: string | null }).requested_pickup_at;
       if (order.order_type === "pickup" && target && Date.parse(target) - Date.now() > PICKUP_PREP_MS) continue;
