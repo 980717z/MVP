@@ -25,6 +25,10 @@ export interface OrderItem {
   /** true for items the kitchen doesn't cook (drinks / plain rice). A round that is
    *  ALL no-kitchen items skips the kitchen ticket; it still prints on the bill. */
   noKitchen?: boolean;
+  /** Chosen size/variant index into the dish's `variants` (absent = single-price).
+   *  The display name bakes the label in; this carries the index so the pickup
+   *  route can re-price the line from menu_items instead of trusting client price. */
+  vi?: number;
 }
 
 export interface OrderAddress {

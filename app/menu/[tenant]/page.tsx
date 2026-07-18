@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, type MenuItem, type Variant } from "@/lib/menu";
+import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -277,11 +277,8 @@ export default function PublicMenu() {
   const hasMarketItems = cartLines.some((x) => x.isMarket);
   const count = cartLines.reduce((a, x) => a + x.qty, 0);
   const total = cartLines.reduce((a, x) => a + x.lineTotal, 0);
-  // Display name with size baked in, so kitchen ticket / receipt / ledger read "红烧蟹肉翅（中）".
-  const lineName = (d: MenuItem, v: Variant | null, en = false) =>
-    en
-      ? v ? `${d.name_en || d.name_zh} (${v.label_en || v.label_zh})` : d.name_en || d.name_zh
-      : v ? `${d.name_zh}（${v.label_zh}）` : d.name_zh;
+  // Display name with size baked in ("红烧蟹肉翅（中）") — lives in lib/menu so the
+  // pickup route can rebuild the same name server-side instead of trusting ours.
   // qty of a dish across all its sizes (for the 选规格 button badge)
   const dishQty = (id: string) =>
     cartLines.reduce((a, x) => (x.d.id === id ? a + x.qty : a), 0);
@@ -441,8 +438,11 @@ export default function PublicMenu() {
     setSubmitting(true);
     // Drinks (酒水饮品) and plain white rice (白饭/白米饭) aren't cooked — a round of
     // only these skips the kitchen ticket (see /api/epson). Still prints on the bill.
-    const isNoCook = (d: MenuItem) => d.category === "酒水饮品" || /^白\s*米?\s*饭$/.test((d.name_zh || "").trim());
+    // isNoCookDish lives in lib/menu so the pickup route derives it from the dish
+    // too, rather than trusting a client-sent noKitchen flag.
     const items: OrderItem[] = cartLines.flatMap((x) => {
+      // Chosen size index (null = single-price dish).
+      const vi = parseCartKey(x.key).vi;
       // Group this dish's portions by identical (note, adjust) → one order line per group,
       // so 白饭×3 with a note on portion 2 becomes 白饭×2 + 白饭×1(备注).
       const groups = new Map<string, { note?: string; adjust: number; qty: number }>();
@@ -466,10 +466,14 @@ export default function PublicMenu() {
           name_en: lineName(x.d, x.variant, true),
           price: x.isMarket ? null : Math.max(0, Math.round((x.base + adj) * 100) / 100),
           qty: g.qty,
+          // Which size was chosen. The name bakes the label in for humans, but the
+          // pickup route needs the INDEX to re-price the line from menu_items
+          // server-side (a name string can't be priced). Additive: dine-in ignores it.
+          ...(vi != null ? { vi } : {}),
           ...(x.isMarket ? { market: true } : {}),
           ...(g.note ? { note: g.note } : {}),
           ...(!x.isMarket && adj !== 0 ? { adjust: adj } : {}),
-          ...(isNoCook(x.d) ? { noKitchen: true } : {}),
+          ...(isNoCookDish(x.d) ? { noKitchen: true } : {}),
         };
       });
     });

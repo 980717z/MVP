@@ -1,7 +1,27 @@
-import { describe, it, expect } from "vitest";
-import { tableOccupancy, evenPartition, reconcileShares, itemizePartitions } from "./tableSessions";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  tableOccupancy, evenPartition, reconcileShares, itemizePartitions,
+  listTableCheckouts, listSessionOrders,
+} from "./tableSessions";
 import { computeTax } from "./tax";
 import type { Order } from "./orders";
+
+// Minimal stand-in for the Supabase query builder: records the chained calls so
+// a test can assert WHICH filters were applied, and resolves to a canned result.
+// Lets the two data-layer contracts below be tested without a live database.
+const h = vi.hoisted(() => ({
+  calls: [] as unknown[][],
+  result: { data: [] as unknown, error: null as { message: string } | null },
+}));
+vi.mock("./supabase", () => {
+  const builder: Record<string, unknown> = {};
+  for (const m of ["select", "eq", "order", "limit", "gte", "lte"]) {
+    builder[m] = (...args: unknown[]) => { h.calls.push([m, ...args]); return builder; };
+  }
+  builder.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+    Promise.resolve(h.result).then(res, rej);
+  return { supabase: { from: (t: string) => { h.calls.push(["from", t]); return builder; } } };
+});
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -156,5 +176,64 @@ describe("cash change math", () => {
     const total = computeTax(116.98, false).total; // 132.19
     expect(total).toBeCloseTo(132.19, 2);
     expect(Math.round((150 - total) * 100) / 100).toBeCloseTo(17.81, 2);
+  });
+});
+
+// ── Regression locks (eng review T8) ───────────────────────────────────────
+// Both of these are behaviour CHANGES that shipped in 1d2292e. They're locked
+// here because each one silently misleads staff mid-service if it regresses.
+describe("listTableCheckouts scopes to one business day", () => {
+  beforeEach(() => { h.calls.length = 0; h.result = { data: [], error: null }; });
+
+  // The 今日已结 bug: the list was unfiltered, so "paid today" showed the last 50
+  // checkouts across ALL history — staff saw yesterday's tables in today's total.
+  it("filters by business_date when one is given", () => {
+    listTableCheckouts("fulai", undefined, "2026-07-18");
+    expect(h.calls).toContainEqual(["eq", "business_date", "2026-07-18"]);
+    expect(h.calls).toContainEqual(["eq", "tenant_slug", "fulai"]);
+  });
+
+  it("also scopes by table when both are given", () => {
+    listTableCheckouts("fulai", "12", "2026-07-18");
+    expect(h.calls).toContainEqual(["eq", "table_no", "12"]);
+    expect(h.calls).toContainEqual(["eq", "business_date", "2026-07-18"]);
+  });
+
+  it("omitting business_date is an explicit raw dump, not an accident", () => {
+    listTableCheckouts("fulai");
+    expect(h.calls.some((c) => c[0] === "eq" && c[1] === "business_date")).toBe(false);
+  });
+});
+
+describe("listSessionOrders distinguishes 'load failed' from 'genuinely empty'", () => {
+  beforeEach(() => { h.calls.length = 0; h.result = { data: [], error: null }; });
+
+  // An error that renders as an empty list tells staff the table ordered nothing.
+  it("THROWS on a query error rather than returning []", async () => {
+    h.result = { data: null, error: { message: "connection reset" } };
+    await expect(listSessionOrders("sess-1")).rejects.toThrow("connection reset");
+  });
+
+  it("returns [] for a settled session with no linked orders", async () => {
+    h.result = { data: [], error: null };
+    await expect(listSessionOrders("sess-1")).resolves.toEqual([]);
+  });
+
+  it("returns [] for a missing session id without hitting the database", async () => {
+    await expect(listSessionOrders("")).resolves.toEqual([]);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("flattens rounds oldest-first and drops cancelled dishes", async () => {
+    h.result = {
+      data: [
+        { items: [{ name_zh: "白饭", name_en: "Rice", qty: 2, price: 2 }, { name_zh: "退掉", name_en: "Void", qty: 1, price: 9, cancelled: true }] },
+        { items: [{ name_zh: "牛肉", name_en: "Beef", qty: 1, price: 18 }] },
+      ],
+      error: null,
+    };
+    const out = await listSessionOrders("sess-1");
+    expect(out.map((i) => i.name_en)).toEqual(["Rice", "Beef"]);
+    expect(out[0].qty).toBe(2);
   });
 });

@@ -96,9 +96,13 @@ export async function PUT(req: Request) {
   patch.status_updated_at = new Date().toISOString();
 
   // Upsert so a vendor whose row is somehow missing still lists cleanly.
+  // `campus` is deliberately NOT in the payload: on conflict, Supabase updates
+  // every column it's given, so including it would rewrite campus on EVERY save
+  // and silently drag a vendor back to St. George once a second campus exists
+  // (eng review T5). New rows get the column's default instead.
   const { error } = await gate.db
     .from("campus_vendors")
-    .upsert({ tenant_slug: slug, campus: "uoft-stgeorge", ...patch }, { onConflict: "tenant_slug" });
+    .upsert({ tenant_slug: slug, ...patch }, { onConflict: "tenant_slug" });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

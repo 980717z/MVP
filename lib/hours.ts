@@ -74,3 +74,72 @@ export function hoursStatus(hours: Hours | null | undefined, at: Date, tz = "Ame
     closesAt: next ? toHHMM(next[1]) : null,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Pickup ordering gate — the single "may this order be placed?" decision.
+//  Extracted from /api/pickup/create so it is unit-testable: it is the most
+//  safety-critical branch in the campus flow (get it wrong and students either
+//  can't order from an open truck, or order food from a closed one that never
+//  gets cooked). Pure: no DB, no clock of its own — pass `now`.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** How far ahead a student may schedule a pickup, and how much slack we allow
+ *  behind `now` (a tab that sat open for a minute mid-checkout shouldn't fail). */
+export const PICKUP_MAX_AHEAD_MS = 12 * 3_600_000;
+export const PICKUP_PAST_SLACK_MS = 5 * 60_000;
+
+export type PickupGateResult =
+  | { ok: true; requestedPickupAt: string | null }
+  | { ok: false; reason: "bad_time" | "closed_now" | "closed_at_time"; error: string };
+
+/**
+ * Decide whether a pickup order may be placed.
+ *   - `pickupAt` absent/null  → ASAP: the truck must be open right now.
+ *   - `pickupAt` set          → scheduled: the time must parse, sit inside
+ *                               [now − 5min, now + 12h], AND land in an open window.
+ * Unconfigured hours never gate (non-campus tenants have no hours row).
+ * Returns the normalized ISO timestamp so the caller doesn't re-parse.
+ */
+export function pickupGate(
+  hours: Hours | null | undefined,
+  pickupAt: string | null | undefined,
+  now: Date,
+  tz = "America/Toronto",
+): PickupGateResult {
+  let requestedPickupAt: string | null = null;
+
+  if (pickupAt) {
+    const t = Date.parse(pickupAt);
+    if (Number.isNaN(t) || t < now.getTime() - PICKUP_PAST_SLACK_MS || t > now.getTime() + PICKUP_MAX_AHEAD_MS) {
+      return { ok: false, reason: "bad_time", error: "取餐时间无效，请重新选择 / Pickup time is invalid — please pick again" };
+    }
+    requestedPickupAt = new Date(t).toISOString();
+  }
+
+  const nowStatus = hoursStatus(hours, now, tz);
+  if (nowStatus.unconfigured) return { ok: true, requestedPickupAt };
+
+  if (requestedPickupAt) {
+    if (!hoursStatus(hours, new Date(requestedPickupAt), tz).open) {
+      return {
+        ok: false,
+        reason: "closed_at_time",
+        error: nowStatus.open && nowStatus.closesAt
+          ? `当天营业到 ${nowStatus.closesAt}，请选早一点的时间 / The truck closes at ${nowStatus.closesAt} — pick an earlier time`
+          : "该时间不在营业时间内 / That time is outside today's hours",
+      };
+    }
+    return { ok: true, requestedPickupAt };
+  }
+
+  if (!nowStatus.open) {
+    return {
+      ok: false,
+      reason: "closed_now",
+      error: nowStatus.opensAt
+        ? `现在打烊了，${nowStatus.opensAt} 开门 / Closed right now — opens at ${nowStatus.opensAt}`
+        : "今天已打烊 / Closed for today",
+    };
+  }
+  return { ok: true, requestedPickupAt: null };
+}

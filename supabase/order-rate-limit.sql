@@ -30,6 +30,14 @@
 --  Supabase → SQL Editor → Run (idempotent).
 -- ===========================================================================
 
+-- Supporting index for the per-phone count below. The per-tenant count already
+-- rides orders_tenant_idx (tenant_slug, created_at desc), but `phone` had no
+-- index, so every real-phone insert scanned the orders table inside the trigger
+-- — a cost that grows with total order history (eng review T9). Pickup orders
+-- require a phone, so every campus order paid it.
+create index if not exists orders_phone_recent_idx
+  on public.orders (phone, created_at desc);
+
 create or replace function public.orders_rate_limit()
 returns trigger
 language plpgsql

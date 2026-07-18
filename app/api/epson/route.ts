@@ -91,7 +91,13 @@ async function handle(req: Request): Promise<Response> {
       .neq("status", "cancelled")
       .or(eligOr)
       .order("created_at", { ascending: true })
-      .limit(5);
+      // 25, not 5: scheduled pickups are held (skipped) in JS below, so a small
+      // window can fill entirely with not-yet-due tickets and starve a walk-up
+      // ASAP order from ever being fetched (eng review T3). The eligibility rule
+      // belongs in SQL before the LIMIT — deferred to T4 because referencing
+      // requested_pickup_at in the query breaks printing on any tenant that
+      // hasn't run pickup-time.sql yet.
+      .limit(25);
     if (error) {
       // Most likely the `printed_at` column isn't migrated yet — fail quiet so the
       // printer just gets "nothing to print" instead of erroring.

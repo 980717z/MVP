@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "./supabase";
+import { unitPrice } from "./dish";
 
 /** A size/portion option for a dish (多规格): 全/半, 位/小/中/大/特大, etc. */
 export interface Variant {
@@ -125,11 +126,12 @@ export function parseCartKey(key: string): { id: string; vi: number | null } {
   const i = key.indexOf("#");
   return i < 0 ? { id: key, vi: null } : { id: key.slice(0, i), vi: Number(key.slice(i + 1)) };
 }
-/** Unit price for a cart entry (variant price when a size is chosen, else base). */
-export function unitPrice(d: MenuItem, vi: number | null): number {
-  if (vi != null && d.variants?.[vi]) return Number(d.variants[vi].price) || 0;
-  return Number(d.price) || 0;
-}
+// Naming / pricing / kitchen-routing rules live in ./dish (zero imports) so the
+// server-side pickup route can apply the SAME rules without pulling in the
+// browser Supabase client this module creates. Re-exported here so callers that
+// already import from @/lib/menu are unaffected.
+export { lineName, isNoCookDish, unitPrice } from "./dish";
+export type { DishLike, VariantLike } from "./dish";
 /** Total for a cart, resolving each key's dish + variant. Pure — unit-tested. */
 export function cartTotal(cart: Record<string, number>, byId: Record<string, MenuItem>): number {
   let sum = 0;
