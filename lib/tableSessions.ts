@@ -125,9 +125,12 @@ export async function listSessionOrders(sessionId: string): Promise<SessionItem[
     .select("items,created_at")
     .eq("table_session_id", sessionId)
     .order("created_at", { ascending: true });
+  // THROW on a real query error so callers can tell "load failed" from "genuinely
+  // no items" (a settled session with zero linked orders returns []). An error
+  // that renders as an empty list misleads staff mid-service.
   if (error) {
     console.error("listSessionOrders", error);
-    return [];
+    throw new Error(error.message);
   }
   const out: SessionItem[] = [];
   for (const o of (data ?? []) as { items?: SessionItem[] & { cancelled?: boolean }[] }[]) {

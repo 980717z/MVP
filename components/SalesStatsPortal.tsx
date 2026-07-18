@@ -141,6 +141,8 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
     setDetailLoading(true);
     try {
       setDetailItems(await listSessionOrders(r.id));
+    } catch {
+      setDetailItems([]); // this drawer keeps its prior empty-on-error behavior
     } finally {
       setDetailLoading(false);
     }

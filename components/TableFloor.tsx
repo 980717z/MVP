@@ -34,6 +34,7 @@ const T: Record<string, Dict> = {
   paidNone: { zh: "今天这桌还没有结账记录", en: "No checkouts for this table today", fr: "Aucun encaissement aujourd'hui" },
   tapForItems: { zh: "点开看菜品", en: "Tap to see items", fr: "Voir les plats" },
   noItems: { zh: "这单没有菜品明细", en: "No item detail on this order", fr: "Aucun détail" },
+  loadFailed: { zh: "加载失败，点重试", en: "Couldn't load — tap to retry", fr: "Échec — toucher pour réessayer" },
   close: { zh: "关闭", en: "Close", fr: "Fermer" },
   cancelItem: { zh: "取消", en: "Cancel", fr: "Annuler" },
   cancelled: { zh: "已取消", en: "Cancelled", fr: "Annulé" },
@@ -94,18 +95,26 @@ export default function TableFloor({
   const [history, setHistory] = useState<TableCheckout[]>([]);
   const [paidView, setPaidView] = useState(false); // the "paid today" list modal
   const [expanded, setExpanded] = useState<string | null>(null); // session id whose items are open
-  const [expandedItems, setExpandedItems] = useState<Record<string, SessionItem[]>>({});
+  const [expandedItems, setExpandedItems] = useState<Record<string, SessionItem[] | "error">>({});
   const [rowMenu, setRowMenu] = useState<string | null>(null); // order id whose ⋯ (destructive) menu is open
   const now = Date.now();
   const paidSum = history.reduce((s, h) => s + Number(h.total || 0), 0);
 
-  const openSession = async (id: string) => {
+  const loadSession = async (id: string) => {
+    try {
+      const items = await listSessionOrders(id);
+      setExpandedItems((m) => ({ ...m, [id]: items }));
+    } catch {
+      // Load failed (not empty) — mark it so the row offers a retry instead of
+      // a false "no items" (which staff would read as "this order was empty").
+      setExpandedItems((m) => ({ ...m, [id]: "error" }));
+    }
+  };
+  const openSession = (id: string) => {
     if (expanded === id) { setExpanded(null); return; }
     setExpanded(id);
-    if (!expandedItems[id]) {
-      const items = await listSessionOrders(id).catch(() => []);
-      setExpandedItems((m) => ({ ...m, [id]: items }));
-    }
+    // (re)load unless we already have a successful result cached
+    if (!Array.isArray(expandedItems[id])) loadSession(id);
   };
 
   const byLabel = new Map(layout.map((l) => [l.label, l]));
@@ -367,7 +376,7 @@ export default function TableFloor({
                   const items = expandedItems[h.id];
                   return (
                     <div key={h.id} className="border-b border-slate-50 last:border-0">
-                      <button onClick={() => openSession(h.id)} className="flex w-full items-center justify-between gap-2 px-2 py-3 text-left hover:bg-slate-50">
+                      <button onClick={() => openSession(h.id)} aria-expanded={open} className="flex min-h-11 w-full items-center justify-between gap-2 px-2 py-3 text-left hover:bg-slate-50">
                         <span className="min-w-0">
                           <span className="text-sm font-medium text-ink">{new Date(h.closed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                           <span className="ml-2 text-xs text-ink-faint">{t(T[`m_${h.payment_method}`] ?? T.m_other)}</span>
@@ -382,6 +391,10 @@ export default function TableFloor({
                         <div className="px-2 pb-3">
                           {items === undefined ? (
                             <div className="py-2 text-center text-xs text-ink-faint">…</div>
+                          ) : items === "error" ? (
+                            <button onClick={() => loadSession(h.id)} className="w-full py-2 text-center text-xs font-medium text-brand-ink hover:underline">
+                              {t(T.loadFailed)}
+                            </button>
                           ) : items.length === 0 ? (
                             <div className="py-2 text-center text-xs text-ink-faint">{t(T.noItems)}</div>
                           ) : (

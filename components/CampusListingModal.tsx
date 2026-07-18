@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { hoursStatus, type Hours } from "@/lib/hours";
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1";
 const DAYS: [string, string][] = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
@@ -86,9 +87,25 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
   const eatUrl = useMemo(() => (typeof window !== "undefined" ? `${window.location.origin}/eat` : ""), []);
   const backOfficeUrl = useMemo(() => (typeof window !== "undefined" ? `${window.location.origin}/${slug}` : ""), [slug]);
 
+  // A day toggled open whose end is not after its start would silently save as
+  // "closed" (a real trap on the field that gates ordering) — flag it, block save.
+  const invalidDays = form ? DAYS.filter(([k]) => { const d = form.hours[k]; return d.open && !(d.to > d.from); }).map(([k]) => k) : [];
+  // Live "right now" status, computed from the hours BEING EDITED via the same
+  // pure fn the ordering gate uses — so the preview can never diverge from
+  // enforcement. Recomputed each render (cheap, keeps the clock honest).
+  const live = useMemo(() => {
+    if (!form) return null;
+    const h: Hours = {};
+    for (const [k] of DAYS) { const d = form.hours[k]; h[k] = d.open && d.to > d.from ? [[d.from, d.to]] : []; }
+    return hoursStatus(h, new Date());
+  }, [form]);
+
   const save = async () => {
     if (!form) return;
     setErr(""); setSaving(true); setSaved(false);
+    if (invalidDays.length) {
+      setErr("Fix the days marked in red (end time must be after start)."); setSaving(false); return;
+    }
     const hours: Record<string, [string, string][]> = {};
     for (const [k] of DAYS) {
       const d = form.hours[k];
@@ -169,7 +186,7 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
                 <div className="mb-1.5 text-xs font-semibold text-ink">Status now</div>
                 <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
                   {(["open", "busy", "closed"] as const).map((s) => (
-                    <button key={s} onClick={() => set("status", s)} className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition ${focusRing} ${form.status === s ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}>{s}</button>
+                    <button key={s} onClick={() => set("status", s)} className={`min-h-11 rounded-md px-3.5 text-sm font-medium capitalize transition ${focusRing} ${form.status === s ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}>{s}</button>
                   ))}
                 </div>
                 <p className="mt-1 text-xs text-ink-faint">Hours below still auto-close it outside open times.</p>
@@ -184,14 +201,16 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
                 <div className="space-y-1.5">
                   {DAYS.map(([k, label]) => {
                     const d = form.hours[k];
+                    const bad = d.open && !(d.to > d.from);
                     return (
                       <div key={k} className="flex items-center gap-2">
-                        <button onClick={() => setDay(k, { open: !d.open })} className={`w-14 rounded-md border px-2 py-1.5 text-xs font-semibold transition ${focusRing} ${d.open ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-faint"}`}>{label}</button>
+                        <button onClick={() => setDay(k, { open: !d.open })} className={`min-h-11 w-14 rounded-md border text-xs font-semibold transition ${focusRing} ${d.open ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-faint"}`}>{label}</button>
                         {d.open ? (
                           <div className="flex items-center gap-1.5 text-sm">
-                            <input type="time" value={d.from} onChange={(e) => setDay(k, { from: e.target.value })} className="rounded-md border border-slate-300 px-2 py-1 text-sm" />
+                            <input type="time" value={d.from} onChange={(e) => setDay(k, { from: e.target.value })} className={`min-h-11 rounded-md border px-2 text-sm ${bad ? "border-red-400" : "border-slate-300"}`} />
                             <span className="text-ink-faint">to</span>
-                            <input type="time" value={d.to} onChange={(e) => setDay(k, { to: e.target.value })} className="rounded-md border border-slate-300 px-2 py-1 text-sm" />
+                            <input type="time" value={d.to} onChange={(e) => setDay(k, { to: e.target.value })} className={`min-h-11 rounded-md border px-2 text-sm ${bad ? "border-red-400" : "border-slate-300"}`} />
+                            {bad && <span className="text-xs font-medium text-red-600">end &gt; start</span>}
                           </div>
                         ) : (
                           <span className="text-sm text-ink-faint">Closed</span>
@@ -200,6 +219,15 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
                     );
                   })}
                 </div>
+                {/* Live result of the hours above — the same fn that gates
+                    ordering, so what you see is what students get. */}
+                {live && !live.unconfigured && (
+                  <p className={`mt-2 text-xs font-medium ${live.open ? "text-brand-ink" : "text-amber-700"}`}>
+                    {live.open
+                      ? `🟢 Right now: Open${live.closesAt ? ` · closes ${live.closesAt}` : ""}`
+                      : `⏸ Right now: Closed${live.opensAt ? ` · opens ${live.opensAt}` : ""}`}
+                  </p>
+                )}
               </div>
 
               {/* zone + price */}
@@ -215,7 +243,7 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
                   <div className="mb-1.5 text-xs font-semibold text-ink">Price</div>
                   <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
                     {(["$", "$$", "$$$"] as const).map((p) => (
-                      <button key={p} onClick={() => set("price_band", p)} className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${focusRing} ${form.price_band === p ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}>{p}</button>
+                      <button key={p} onClick={() => set("price_band", p)} className={`min-h-11 rounded-md px-3.5 text-sm font-medium transition ${focusRing} ${form.price_band === p ? "bg-brand-wash text-brand-ink" : "text-ink-soft hover:bg-slate-50"}`}>{p}</button>
                     ))}
                   </div>
                 </div>
@@ -228,7 +256,7 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
                   {DIETARY.map(([k, label]) => {
                     const on = form.dietary.includes(k);
                     return (
-                      <button key={k} onClick={() => set("dietary", on ? form.dietary.filter((t) => t !== k) : [...form.dietary, k])} className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${focusRing} ${on ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"}`}>{on ? "✓ " : ""}{label}</button>
+                      <button key={k} onClick={() => set("dietary", on ? form.dietary.filter((t) => t !== k) : [...form.dietary, k])} className={`min-h-11 rounded-full border px-3.5 text-sm font-medium transition ${focusRing} ${on ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"}`}>{on ? "✓ " : ""}{label}</button>
                     );
                   })}
                 </div>
@@ -243,7 +271,7 @@ export default function CampusListingModal({ slug, name, onClose, onSaved }: { s
 
             <div className="border-t border-slate-200 px-5 py-4">
               {err && <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</div>}
-              <button onClick={save} disabled={saving} className={`btn-primary w-full text-sm disabled:opacity-50 ${focusRing}`}>
+              <button onClick={save} disabled={saving || invalidDays.length > 0} className={`btn-primary w-full text-sm disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}>
                 {saving ? "Saving…" : saved ? "✓ Saved" : "Save listing"}
               </button>
             </div>
