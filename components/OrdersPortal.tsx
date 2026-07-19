@@ -66,6 +66,7 @@ const T: Record<string, Dict> = {
   trackPayHint: { en: "Off → no cash/EMT/card choice; everything is plain sales.", zh: "关闭后 → 结账不选现金/EMT/刷卡,一律计为销售额。", fr: "Désactivé → aucun choix comptant/virement/carte; tout est en ventes." },
   more: { en: "More", zh: "更多", fr: "Plus" },
   newOrder: { en: "New order", zh: "新建单", fr: "Nouvelle commande" },
+  close: { en: "Close", zh: "关闭", fr: "Fermer" },
   viewDine: { en: "Tables", zh: "桌面", fr: "Salle" },
   viewTogo: { en: "Pickup", zh: "自取", fr: "À emporter" },
   viewDelivery: { en: "Delivery", zh: "外送", fr: "Livraison" },
@@ -224,6 +225,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [view, setView] = useState<"dine" | "togo" | "delivery" | "pickup" | "market">("dine");
   const [headerMenu, setHeaderMenu] = useState(false); // ⋯ overflow for the header's utility actions
   const [newOrder, setNewOrder] = useState(false); // manual takeout/delivery order composer
+  // Non-blocking error toast. Status failures used to fire window.alert(), which
+  // freezes the whole portal behind an OS dialog staff must dismiss one-handed
+  // mid-service (and Chrome then offers "suppress dialogs", which would hide
+  // every future error). Inline + auto-dismissing per DESIGN-PLATFORM.md.
+  const [toast, setToast] = useState("");
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(""), 8000);
+    return () => clearTimeout(id);
+  }, [toast]);
   const [trackPay, setTrackPay] = useState(true); // record cash/EMT/card at checkout + method stats (tenant setting)
   const toggleTrackPay = () => { const next = !trackPay; setTrackPay(next); saveTrackPayments(slug, next).catch(() => {}); };
 
@@ -455,7 +466,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           ? await claimPickedUp(o.id)
           : await claimOrderDone(o.id);
         if (error) {
-          alert(t(T.statusFailed) + error);
+          setToast(t(T.statusFailed) + error);
           return;
         }
         if (claimed) {
@@ -476,7 +487,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         }
       } else {
         const { error } = await setOrderStatus(o.id, to);
-        if (error) alert(t(T.statusFailed) + error);
+        if (error) setToast(t(T.statusFailed) + error);
         // Tell the student their pickup order died — otherwise the tracker
         // shows "Order received" forever (design review 5A).
         if (!error && to === "cancelled" && o.order_type === "pickup") await notifyPickup(o.id, "cancelled");
@@ -495,7 +506,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     advancing.current.add(o.id);
     try {
       const { error } = await acceptPickup(o.id, eta);
-      if (error) alert(t(T.statusFailed) + error);
+      if (error) setToast(t(T.statusFailed) + error);
       load();
     } finally {
       advancing.current.delete(o.id);
@@ -523,7 +534,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     advancing.current.add(o.id);
     try {
       const { readied, error } = await markPickupReady(o.id);
-      if (error) alert(t(T.statusFailed) + error);
+      if (error) setToast(t(T.statusFailed) + error);
       // Only the CAS winner pushes, so the diner gets the "ready" alert once.
       if (readied) await notifyPickup(o.id, "ready");
       load();
@@ -874,6 +885,25 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           onClose={() => setNewOrder(false)}
           onCreated={(type) => { setNewOrder(false); setView(type); load(); }}
         />
+      )}
+
+      {/* Error toast — replaces window.alert() on status failures. Sits above the
+          content, never blocks the order list, auto-dismisses after 8s, and is
+          announced to screen readers. Staff can keep working while it's up. */}
+      {toast && (
+        <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex justify-center px-4">
+          <div className="pointer-events-auto flex max-w-lg items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg">
+            <span aria-hidden className="text-lg leading-none">⚠️</span>
+            <p className="flex-1 text-sm text-red-700">{toast}</p>
+            <button
+              onClick={() => setToast("")}
+              aria-label={t(T.close)}
+              className="-my-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg leading-none text-red-700 hover:bg-red-100"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
     </main>
   );
