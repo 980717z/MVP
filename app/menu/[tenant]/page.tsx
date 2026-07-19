@@ -520,7 +520,15 @@ export default function PublicMenu() {
     });
     setSubmitting(false);
     if (res.error) {
-      alert("提交失败：" + res.error);
+      // Inside the staff picker this runs in an IFRAME: a native alert() would
+      // trap the failure behind glass the parent can't see, so the modal keeps
+      // looking fine while the order never happened (design review D2). Tell the
+      // parent instead and let it surface the error where staff are looking.
+      if (staff && typeof window !== "undefined" && window.parent !== window) {
+        window.parent.postMessage({ type: "bento-staff-order-failed", message: res.error }, window.location.origin);
+      } else {
+        alert("提交失败：" + res.error);
+      }
       return;
     }
     track("order_placed", { tenant: slug, src: entrySrc(), meta: { type: togoMode ? togoType : "dine_in" } });
@@ -558,7 +566,7 @@ export default function PublicMenu() {
       // otherwise disappear from view and read as a failure.
       window.parent.postMessage(
         { type: "bento-staff-order-placed", orderType: togoMode ? togoType : "dine_in" },
-        "*",
+        window.location.origin, // same-origin embed; don't broadcast to "*"
       );
     }
     setPlacedOrders((p) => [
