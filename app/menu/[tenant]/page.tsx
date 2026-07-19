@@ -156,7 +156,15 @@ export default function PublicMenu() {
   useEffect(() => {
     let stored: string | null = null;
     try { stored = localStorage.getItem(MENU_VIEW_KEY); } catch { /* private mode */ }
-    if (stored === "phone" || stored === "desktop") setViewOverride(stored);
+    // STAFF EMBED IGNORES THE SAVED CHOICE. The picker runs same-origin, so it
+    // shares localStorage with the customer menu: if anyone ever previewed the
+    // menu in 📱 phone view on this browser, the staff picker inherited that
+    // forever and rendered a narrow phone column on a wide desktop, wasting most
+    // of the screen. Staff should always get the layout that fits the device
+    // they're on — width decides. The 📱/🖥 toggle still works for the session.
+    const isStaffEmbed =
+      typeof window !== "undefined" && new URLSearchParams(window.location.search).get("staff") === "1";
+    if (!isStaffEmbed && (stored === "phone" || stored === "desktop")) setViewOverride(stored);
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(min-width: 768px)");
     setWideAuto(mq.matches);
@@ -167,6 +175,11 @@ export default function PublicMenu() {
   const effectiveView = resolveMenuView(viewOverride, wideAuto);
   const setView = (v: MenuView) => {
     setViewOverride(v);
+    // Don't persist from inside the staff picker either — otherwise a staff
+    // member switching to phone view mid-order would silently change what the
+    // NEXT diner sees on this device (and vice versa). Staff toggles last for
+    // the session only.
+    if (staff) return;
     try { localStorage.setItem(MENU_VIEW_KEY, v); } catch { /* ignore */ }
   };
 
