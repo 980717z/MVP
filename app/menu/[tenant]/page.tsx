@@ -537,7 +537,13 @@ export default function PublicMenu() {
     // Opened from the floor plan (?staff=1): tell the parent so the modal can
     // auto-close and refresh the table's tab.
     if (staff && typeof window !== "undefined" && window.parent !== window) {
-      window.parent.postMessage({ type: "bento-staff-order-placed" }, "*");
+      // Carry the order type so the parent can switch to the tab the order
+      // actually landed in — a delivery order placed from the 自取 tab would
+      // otherwise disappear from view and read as a failure.
+      window.parent.postMessage(
+        { type: "bento-staff-order-placed", orderType: togoMode ? togoType : "dine_in" },
+        "*",
+      );
     }
     setPlacedOrders((p) => [
       ...p,

@@ -7,7 +7,7 @@ import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupRea
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
-import NewOrderModal from "@/components/NewOrderModal";
+import StaffOrderPicker from "@/components/StaffOrderPicker";
 import { supabase } from "@/lib/supabase";
 import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
@@ -75,6 +75,16 @@ const T: Record<string, Dict> = {
   deliverTo: { en: "Deliver to", zh: "送至", fr: "Livrer à" },
   emptyTogo: { en: "No pickup orders yet.", zh: "还没有自取订单。", fr: "Aucune commande à emporter." },
   emptyDelivery: { en: "No delivery orders yet.", zh: "还没有外送订单。", fr: "Aucune commande de livraison." },
+  // Empty state as a FEATURE (design review 1A): heading + context + one primary
+  // action, replacing the bare "No items." card. Headings drop the trailing 。
+  // because they're titles, not sentences.
+  emptyTogoTitle: { en: "No takeout orders yet", zh: "还没有自取订单", fr: "Aucune commande à emporter" },
+  emptyDeliveryTitle: { en: "No delivery orders yet", zh: "还没有外送订单", fr: "Aucune commande de livraison" },
+  emptyHint: {
+    en: "Orders appear here automatically when customers order from the QR menu. You can also take one by phone.",
+    zh: "顾客通过二维码菜单下单后,订单会实时出现在这里。也可以直接帮电话订单下单。",
+    fr: "Les commandes apparaissent ici dès qu'un client commande via le menu QR. Vous pouvez aussi en saisir une par téléphone.",
+  },
   // Campus order-ahead pickup (🚚) — distinct from fulai's takeout (自取)
   viewPickup: { en: "Order-ahead", zh: "取餐", fr: "Sur commande" },
   emptyPickup: { en: "No order-ahead pickups yet.", zh: "还没有取餐订单。", fr: "Aucune commande à ramasser." },
@@ -553,6 +563,28 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   // Buckets by order type — dine-in goes to the floor plan; togo/delivery/pickup to lists.
   const togoOrders = orders.filter((o) => o.order_type === "togo");
   const deliveryOrders = orders.filter((o) => o.order_type === "delivery");
+  // 新建订单 has two homes (design review 1A): centered as the empty tab's primary
+  // action, docked in the toolbar the moment there are orders to read. Only the
+  // takeout/delivery tabs can be "empty with nothing to do" — the floor plan and
+  // 时价 panel always have content, so they keep the toolbar button.
+  const ctaIsCentered =
+    (view === "togo" && togoOrders.length === 0) ||
+    (view === "delivery" && deliveryOrders.length === 0);
+
+  /** Empty state as a feature: heading, context, one primary action. Replaces the
+   *  bare "No items." card DESIGN-PLATFORM.md explicitly forbids. */
+  const renderEmptyWithCta = (title: string) => (
+    <div className="card flex flex-col items-center px-6 py-16 text-center sm:py-24">
+      <h2 className="text-lg font-bold text-ink">{title}</h2>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">{t(T.emptyHint)}</p>
+      <button
+        onClick={() => setNewOrder(true)}
+        className="btn-primary mt-6 inline-flex min-h-12 items-center gap-2 px-7 text-base"
+      >
+        ＋ {t(T.newOrder)}
+      </button>
+    </div>
+  );
   // Pickup tab works in TARGET-TIME order: what has to be ready soonest, first.
   // ASAP orders target their creation time; scheduled ones their requested time.
   const pickupOrders = orders
@@ -842,9 +874,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             </button>
           ))}
         </div>
-        <button onClick={() => setNewOrder(true)} className="btn-primary inline-flex min-h-11 items-center gap-1.5 px-4 text-sm">
-          ＋ {t(T.newOrder)}
-        </button>
+        {/* Docked when there's live work on screen; the centered empty-state CTA
+            below owns the action when the tab is empty (design review 1A). One
+            home during service, so muscle memory holds mid-rush. */}
+        {!ctaIsCentered && (
+          <button onClick={() => setNewOrder(true)} className="btn-primary inline-flex min-h-11 items-center gap-1.5 px-4 text-sm">
+            ＋ {t(T.newOrder)}
+          </button>
+        )}
       </div>
 
       {view === "dine" && (
@@ -853,7 +890,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
       {view === "togo" && (
         togoOrders.length === 0 ? (
-          <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyTogo)}</div>
+          renderEmptyWithCta(t(T.emptyTogoTitle))
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">{togoOrders.map((o) => renderCard(o))}</div>
         )
@@ -861,7 +898,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
       {view === "delivery" && (
         deliveryOrders.length === 0 ? (
-          <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyDelivery)}</div>
+          renderEmptyWithCta(t(T.emptyDeliveryTitle))
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">{deliveryOrders.map((o) => renderCard(o))}</div>
         )
@@ -879,11 +916,21 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
       {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
 
+      {/* Takeout/delivery order entry runs the SAME customer menu staff already
+          use for table orders (design review D2) — one ordering surface, so what
+          staff see matches what the diner sees. The menu pings us via postMessage
+          when the order lands; we close and refresh. */}
       {newOrder && (
-        <NewOrderModal
+        <StaffOrderPicker
           slug={slug}
+          mode="togo"
           onClose={() => setNewOrder(false)}
-          onCreated={(type) => { setNewOrder(false); setView(type); load(); }}
+          onPlaced={(orderType) => {
+            setNewOrder(false);
+            // Land on the tab the order went to, so staff see what they just made.
+            if (orderType === "togo" || orderType === "delivery") setView(orderType);
+            load();
+          }}
         />
       )}
 
