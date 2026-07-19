@@ -2397,7 +2397,23 @@ function TrendChart({ rows, valueKey, label, isMoney }: { rows: RecordRow[]; val
       if (!d) continue;
       map[d] = (map[d] || 0) + (parseFloat(r[valueKey]) || 0);
     }
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-14);
+    // Last 14 CALENDAR days — not the last 14 dates that happen to carry data.
+    // `.slice(-14)` did the latter, so a chart titled 近14天 silently stretched
+    // back a month whenever business was quiet, dragging in old (and test) rows:
+    // one seeded $11k day from June sat next to real July numbers and flattened
+    // every real day into the baseline.
+    // Days with no sales are filled with 0 rather than skipped, so the x-axis is
+    // evenly spaced and a quiet day reads as quiet instead of vanishing.
+    const key = (d: Date) => d.toLocaleDateString("en-CA"); // YYYY-MM-DD, local
+    const today = new Date();
+    const out: [string, number][] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const k = key(d);
+      out.push([k, map[k] ?? 0]);
+    }
+    return out;
   }, [rows, valueKey]);
 
   if (grouped.length < 2) return null;
