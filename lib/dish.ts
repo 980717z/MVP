@@ -43,8 +43,20 @@ export function isNoCookDish(d: DishLike): boolean {
   return d.category === "酒水饮品" || /^白\s*米?\s*饭$/.test((d.name_zh || "").trim());
 }
 
-/** Unit price for a cart entry: the chosen variant's price, else the base price. */
+/** Unit price for a cart entry: the chosen variant's price, else the base price.
+ *
+ *  时价 (market) dishes are the exception. Their variants are COOKING STYLES
+ *  (清蒸 / 姜葱 / 豉椒), not sizes, so they carry no price of their own — today's
+ *  price lives on the dish and is set each morning from the 时价更新 panel. Without
+ *  the fallback below, a market dish with cooking-style variants read as $0 no
+ *  matter what the owner typed, so it kept showing 时价 on the menu and would have
+ *  been charged as $0 on the bill. */
 export function unitPrice(d: DishLike, vi: number | null): number {
-  if (vi != null && d.variants?.[vi]) return Number(d.variants[vi].price) || 0;
+  if (vi != null && d.variants?.[vi]) {
+    const v = Number(d.variants[vi].price) || 0;
+    if (v > 0) return v;
+    if (d.is_market) return Number(d.price) || 0; // today's market price
+    return 0;
+  }
   return Number(d.price) || 0;
 }

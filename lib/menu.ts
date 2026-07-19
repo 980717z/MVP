@@ -107,7 +107,15 @@ export function catLabel(category: string, lang: "zh" | "en"): string {
 
 /** The price to show on the dish row: the min variant price ("起"), else `price`. */
 export function displayPrice(d: MenuItem): number | null {
-  if (d.variants?.length) return Math.min(...d.variants.map((v) => v.price));
+  if (d.variants?.length) {
+    const min = Math.min(...d.variants.map((v) => Number(v.price) || 0));
+    // 时价 dish whose variants are cooking styles (清蒸/姜葱/豉椒) rather than
+    // sizes: they're priced at 0, so the min is 0 and today's price — which the
+    // owner set on the DISH from 时价更新 — was being ignored. Fall back to it,
+    // or the menu shows 时价 forever no matter what's entered. Mirrors unitPrice.
+    if (min <= 0 && d.is_market) return d.price;
+    return min;
+  }
   return d.price;
 }
 
