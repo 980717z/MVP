@@ -120,6 +120,12 @@ export default function PublicMenu() {
   // authorization to feature it. Purely additive — printed QR params untouched.
   const [embed, setEmbed] = useState(false);
   const [staff, setStaff] = useState(false); // opened from the floor plan (?staff=1): phone optional + ping parent on placement
+  // Staff escape hatch (design review D7): a walk-in ordering takeout at the
+  // counter may have no number to give. Phone stays REQUIRED by default (it's how
+  // the shop calls back to confirm), but staff can mark 无电话 rather than being
+  // pushed into inventing a fake number — which would poison the order log and
+  // the per-phone rate limit.
+  const [noPhone, setNoPhone] = useState(false);
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
   // Desktop/iPad vs phone layout. `viewOverride` = the manual toggle (null = auto).
   // The auto layout is driven by CSS `md:` breakpoints (correct on first paint, no
@@ -316,7 +322,10 @@ export default function PublicMenu() {
   // Phone required for togo/delivery, per-table (每桌一码) scans, and any
   // no-table (food-truck) vendor. Optional only for the whole-store QR of a
   // sit-down shop, and staff-placed orders.
-  const phoneRequired = togoMode || noTables || (!!lockedTable && !staff);
+  const phoneRequired = (togoMode || noTables || (!!lockedTable && !staff)) && !noPhone;
+  // The 无电话 opt-out is a STAFF affordance only — a diner ordering takeout must
+  // still leave a number, since nobody can chase them down otherwise.
+  const canSkipPhone = staff && (togoMode || noTables);
 
   // Secondary (other-language) dish name — shown only when it's actually
   // different. An English-only vendor sets name_zh = name_en, so this returns
@@ -397,7 +406,11 @@ export default function PublicMenu() {
     // codes: 7-12 digits, stored as +<code><digits>.
     let phoneToSave = "";
     const phoneDigits = phone.replace(/\D/g, "");
-    if (!phoneRequired && phoneDigits.length === 0) {
+    if (noPhone) {
+      // Staff marked 无电话 (walk-in with no number): store the N/A sentinel and
+      // skip validation entirely, even if something was half-typed in the field.
+      phoneToSave = "";
+    } else if (!phoneRequired && phoneDigits.length === 0) {
       // Optional (整店一码 or staff-placed): left blank, stored as N/A.
       phoneToSave = "";
     } else if (phoneCode === "1") {
@@ -1407,12 +1420,27 @@ export default function PublicMenu() {
                         placeholder={phoneRequired ? t("phone") : tri("电话号码（可选）", "Phone (optional)", "Téléphone (facultatif)")}
                         value={phone}
                         onChange={(e) => { setPhone(e.target.value); if (phoneErr) setPhoneErr(false); }}
+                        disabled={noPhone}
                       />
                     </div>
                     {phoneErr && (
                       <p className="mt-1 text-xs text-red-600">
                         {phoneCode === "1" ? t("phoneErr") : tri("请填写有效电话号码", "Please enter a valid phone number", "Entrez un numéro de téléphone valide")}
                       </p>
+                    )}
+                    {/* 无电话 escape (design review D7) — staff only. A counter
+                        walk-in may have no number; without a way out staff invent
+                        a fake one, which poisons the log and the rate limit. */}
+                    {canSkipPhone && (
+                      <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-soft">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-jade"
+                          checked={noPhone}
+                          onChange={(e) => { setNoPhone(e.target.checked); if (e.target.checked) setPhoneErr(false); }}
+                        />
+                        {tri("无电话（到店顾客）", "No phone (walk-in)", "Sans téléphone (sur place)")}
+                      </label>
                     )}
                   </div>
                   <input className="input" placeholder={t("note")} value={note} onChange={(e) => setNote(e.target.value)} />
