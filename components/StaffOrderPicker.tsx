@@ -26,12 +26,16 @@ export default function StaffOrderPicker({
   slug,
   tableNo,
   mode = "dine",
+  orderType,
   onClose,
   onPlaced,
 }: {
   slug: string;
   tableNo?: string;
   mode?: "dine" | "togo";
+  /** Preselects 自取 vs 配送 so staff aren't asked a question the tab they came
+   *  from already answered. They can still switch inside the menu. */
+  orderType?: "togo" | "delivery";
   onClose: () => void;
   /** `orderType` is what the menu actually created (togo / delivery / dine_in),
    *  so the caller can jump to the matching tab. Optional — the dine-in caller
@@ -50,7 +54,7 @@ export default function StaffOrderPicker({
 
   const src =
     mode === "togo"
-      ? `/menu/${encodeURIComponent(slug)}?m=togo&staff=1`
+      ? `/menu/${encodeURIComponent(slug)}?m=togo&staff=1${orderType ? `&type=${orderType}` : ""}`
       : `/menu/${encodeURIComponent(slug)}?t=${encodeURIComponent(tableNo ?? "")}&staff=1`;
 
   return (

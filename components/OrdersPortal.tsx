@@ -924,6 +924,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         <StaffOrderPicker
           slug={slug}
           mode="togo"
+          // The tab staff came from already answered 自取 vs 配送; carry it in so
+          // the menu doesn't ask again. Any other tab starts on 自取.
+          orderType={view === "delivery" ? "delivery" : "togo"}
           onClose={() => setNewOrder(false)}
           onPlaced={(orderType) => {
             setNewOrder(false);

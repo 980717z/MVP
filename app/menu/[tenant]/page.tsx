@@ -220,6 +220,12 @@ export default function PublicMenu() {
     if (lp === "zh") setLang("zh");
     else if (lp) setLang("en");
     if (params.get("staff") === "1") setStaff(true);
+    // Preselect 自取/配送 when the caller already knows (design review D4): staff
+    // open this from the 自取 or 外送 tab, so re-asking "怎么取餐?" costs a tap at
+    // the worst moment — the customer is mid-sentence reading out dishes. The
+    // choice stays visible and changeable; this only sets the starting value.
+    const tp = params.get("type");
+    if (tp === "delivery" || tp === "togo") setTogoType(tp);
     // Traction funnel (/admin): how did this menu view arrive? Fire-and-forget.
     track("menu_view", { tenant: slug, src: entrySrc() });
     // Separate query so a pre-migration storefront view (no delivery_fsas
@@ -519,7 +525,17 @@ export default function PublicMenu() {
     }
     track("order_placed", { tenant: slug, src: entrySrc(), meta: { type: togoMode ? togoType : "dine_in" } });
 
-    if (togoMode && PAYMENTS_LIVE && res.id) {
+    // STAFF ORDERS NEVER PAY FIRST (design review D3). A staff member is taking
+    // this order over the phone or at the counter — the person tapping is not the
+    // person paying, and there's no card to present. Worse, this branch returns
+    // BEFORE the postMessage below, so a staff order would leave the picker hung
+    // open over a card form nobody can complete. Staff orders settle at handover,
+    // exactly like dine-in.
+    // Note: in a pay_first tenant such an order stays unpaid, so the DB payment
+    // gate (supabase/payment-gate-order-only.sql) would hold it out of the
+    // kitchen. That shop needs a staff-settle path before it turns payments on;
+    // order_only tenants (富来, campus trucks) are unaffected.
+    if (togoMode && PAYMENTS_LIVE && !staff && res.id) {
       // Pay-first: show the Clover card sheet. On success the server (re-prices +)
       // charges and marks the order paid, which releases it to the kitchen/printer.
       setPayingOrder({
