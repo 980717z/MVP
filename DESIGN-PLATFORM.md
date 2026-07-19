@@ -9,6 +9,16 @@ This is a **separate brand** from the customer-facing restaurant menu. The menu
 Chinese-first, General Sans + Noto serif). Do not mix the two. When in doubt:
 diner sees jade/paper; owner sees emerald/app-grey.
 
+**One deliberate exception — the shared ordering surface.** Staff order entry
+(`StaffOrderPicker`, opened from the floor plan and from 新建订单) embeds the REAL
+customer menu via `/menu/[tenant]?staff=1`. That surface keeps the **diner** brand
+wherever it appears, including inside the back-office. This is on purpose: staff
+must see exactly what the customer sees, and a second, emerald-themed copy of the
+menu would drift from the real one. The exception is scoped to that embedded menu
+only — the shell around it (header, buttons, empty states, toolbar) stays platform
+emerald. Do not extend jade into any other back-office surface, and do not "fix"
+the picker to match the platform brand.
+
 ## Product Context
 - **What this is:** the back-office a small-merchant owner uses to run the shop —
   glance at today's numbers, handle live orders, manage menu/stock, close the day.
@@ -149,6 +159,8 @@ diner sees jade/paper; owner sees emerald/app-grey.
 | 2026-06-19 | Dashboard leads with one "today at a glance" number, not a $0 card grid | Owner glances 3s mid-shift; one real number + next action beats a wall of zeros and sidebar-duplicating cards |
 | 2026-06-19 | Mobile nav is required (drawer or bottom tabs) | Current `hidden md:flex` sidebar leaves phones with zero navigation; owners are on phones |
 | 2026-07-16 | Platform-internal admin surfaces (`/admin`) are EN-only | /plan-design-review 5-1A: trilingual rule scoped to merchant/customer-facing UI; internal allowlist-gated tools skip the 3× string tax. Merchant + diner surfaces remain EN/FR/中 |
+| 2026-07-18 | Staff order entry reuses the diner menu; the embedded menu keeps the diner brand | /plan-design-review D2/5A: `StaffOrderPicker` already embedded `/menu/[tenant]?staff=1` for dine-in, so the two-brand rule was being violated in shipped code with no record of why. Writing the exception down beats a rule everyone quietly breaks. One ordering surface means staff see what the diner sees and there is no second picker to drift. `NewOrderModal` (a parallel, weaker composer) was deleted rather than restyled |
+| 2026-07-18 | Empty tabs own the primary action; it docks to the toolbar once populated | /plan-design-review 1A: `还没有自取订单。` in a bare card was the exact "No items." pattern this doc forbids (States section). Centered CTA when there is nothing to do; toolbar button during service so its position is stable mid-rush |
 
 ## Reference
 Approved visual board: `~/.gstack/projects/980717z-MVP/designs/platform-system-20260619/design-board.html`

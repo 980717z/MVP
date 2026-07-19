@@ -74,13 +74,26 @@ export default function StaffOrderPicker({
     return () => window.removeEventListener("message", onMsg);
   }, [onPlaced]);
 
-  // Esc closes, and focus starts on the close button so keyboard users aren't
-  // dropped straight into the iframe with no way out.
+  // Keyboard + focus handling (design review D6). Focus starts on Close so a
+  // keyboard user isn't dropped straight into the iframe with no visible way
+  // out, Esc closes, and focus RETURNS to whatever opened the picker (the
+  // 新建订单 button or a table) so the tab order doesn't reset to the top of the
+  // page. The background is scroll-locked: on a phone, a full-screen overlay
+  // over a scrollable page otherwise scrolls the page behind it.
+  // NOTE: Tab is not trapped across the iframe boundary — the picker covers the
+  // whole viewport, so there is nothing visible behind it to tab into.
   useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      opener?.focus?.();
+    };
   }, [onClose]);
 
   // A menu that never loads must not look like a menu that's still loading.
