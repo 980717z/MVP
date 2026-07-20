@@ -32,6 +32,8 @@ const T = {
   handle: { en: "Your address", zh: "专属网址", fr: "Votre adresse" },
   handleNote: { en: "Letters and numbers only (pinyin or English recommended). ⚠️ The address can't change once physical signs are made.", zh: "只能用字母、数字(建议用拼音或英文)。⚠️ 做实体牌子后网址不可更改。", fr: "Lettres et chiffres seulement (pinyin ou anglais recommandé). ⚠️ L'adresse ne peut changer une fois les enseignes imprimées." },
   shopType: { en: "Shop type", zh: "店铺类型", fr: "Type de boutique" },
+  campusLabel: { en: "Campus vendor", zh: "校园商家", fr: "Vendeur du campus" },
+  campusHint: { en: "Uses BentoOS Campus branding (food trucks / kiosks around campus).", zh: "使用 BentoOS Campus 品牌（校园餐车 / 档口）。", fr: "Utilise la marque BentoOS Campus (camions / kiosques du campus)." },
   creating: { en: "Creating…", zh: "创建中…", fr: "Création…" },
   createCta: { en: "Create my back office →", zh: "创建我的后台 →", fr: "Créer mon arrière-boutique →" },
   signOut: { en: "Sign out", zh: "退出", fr: "Se déconnecter" },
@@ -74,6 +76,7 @@ export default function AppGate() {
 
   const slug = slugify(handleTouched ? handle : name);
   const [shopType, setShopType] = useState(SHOP_TYPES[0].id);
+  const [campus, setCampus] = useState(false); // BentoOS Campus vendor
 
   const create = async () => {
     if (!name.trim()) {
@@ -95,7 +98,7 @@ export default function AppGate() {
     setBusy(true);
     setErr(null);
     const enabled = SHOP_TYPES.find((t) => t.id === shopType)?.modules ?? [];
-    const res = await createTenant({ name: name.trim(), slug, enabled });
+    const res = await createTenant({ name: name.trim(), slug, enabled, campus });
     if (res.slug) {
       router.replace(`/${res.slug}`);
     } else {
@@ -166,6 +169,19 @@ export default function AppGate() {
               </button>
             ))}
           </div>
+
+          <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 hover:border-slate-300">
+            <input
+              type="checkbox"
+              checked={campus}
+              onChange={(e) => setCampus(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-none accent-brand"
+            />
+            <span>
+              <span className="text-sm font-semibold text-ink">{t(T.campusLabel)}</span>
+              <span className="mt-0.5 block text-[11px] leading-tight text-ink-faint">{t(T.campusHint)}</span>
+            </span>
+          </label>
 
           {err && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 

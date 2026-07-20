@@ -126,6 +126,7 @@ export async function createTenant(input: {
   slug?: string;
   address?: string;
   enabled?: string[];
+  campus?: boolean; // campus-only merchant → BentoOS Campus branding/flows
 }): Promise<{ slug?: string; error?: string }> {
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth.user?.id;
@@ -138,6 +139,7 @@ export async function createTenant(input: {
     industry: "restaurant",
     address: input.address ?? "",
     enabled: orderEnabled(input.enabled ?? []),
+    campus: !!input.campus,
     owner_id: uid,
   });
   if (error) {
