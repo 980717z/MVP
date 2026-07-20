@@ -16,6 +16,15 @@ const T: Record<string, Dict> = {
   tabTables: { en: "🪑 One code per table (dine-in)", zh: "🪑 每桌一码（堂食）", fr: "🪑 Un code par table (sur place)" },
   tabTogo: { en: "🛵 Takeout / pickup code", zh: "🛵 外卖 / 自取码", fr: "🛵 Code à emporter / à récupérer" },
   tabSingle: { en: "🏪 One code for whole store", zh: "🏪 整店一码", fr: "🏪 Un code pour tout le magasin" },
+  customize: { en: "Customize", zh: "自定义", fr: "Personnaliser" },
+  doneEdit: { en: "Done", zh: "完成", fr: "Terminé" },
+  customizeHint: {
+    en: "Show only the code types this shop uses (e.g. a food truck has no dine-in tables). This only hides tabs here — it never changes any printed QR code.",
+    zh: "只显示这家店用得到的码（例如餐车没有堂食桌码）。仅隐藏这里的选项卡，不会改变任何已印二维码。",
+    fr: "N'affichez que les types de code utilisés (un camion n'a pas de tables). Cela masque seulement les onglets ici — aucun code QR imprimé n'est modifié.",
+  },
+  modeShown: { en: "Shown", zh: "显示中", fr: "Affiché" },
+  modeHidden: { en: "Hidden", zh: "已隐藏", fr: "Masqué" },
   qrMenuAlt: { en: "Menu QR code", zh: "菜单二维码", fr: "Code QR du menu" },
   scanToSeeMenu: { en: "Customers scan to view the menu", zh: "顾客扫码即看菜单", fr: "Les clients scannent pour voir le menu" },
   tableChosenAtOrder: { en: "Table number is entered by the customer when ordering", zh: "桌号由顾客下单时选填", fr: "Le numéro de table est saisi par le client à la commande" },
@@ -114,6 +123,15 @@ const qrSrc = (url: string, size = 300) =>
 
 type Mode = "single" | "tables" | "togo";
 
+// Ordered mode tabs. `qr_hidden_modes` (tenant setting) hides any of these from
+// the back-office QR page — purely a display filter, never touches QR URLs.
+const MODE_TABS: { key: Mode; label: "tabTables" | "tabTogo" | "tabSingle" }[] = [
+  { key: "tables", label: "tabTables" },
+  { key: "togo", label: "tabTogo" },
+  { key: "single", label: "tabSingle" },
+];
+const isMode = (x: unknown): x is Mode => x === "single" || x === "tables" || x === "togo";
+
 // 富来小厨's default physical tables; overridden by tenants.tables when set.
 const FALLBACK_TABLES = ["1", "2", "2A", "3", "4", "5", "6", "7", "8", "8A", "8B", "10", "11", "12"];
 
@@ -128,6 +146,10 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
   // 永久 QR 合约锁（supabase/qr-lock.sql）：锁定后 slug/桌号由 DB 触发器保护
   const [lockedAt, setLockedAt] = useState<string | null>(null);
   const [locking, setLocking] = useState(false);
+  // Which mode tabs to hide (tenants.qr_hidden_modes) + edit-mode toggle. Display
+  // filter only — hiding a tab never changes any QR URL.
+  const [hidden, setHidden] = useState<Mode[]>([]);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -135,15 +157,34 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
     // Named table list lives on the tenant row (supabase/orders-payment.sql)
     supabase
       .from("tenants")
-      .select("tables, qr_locked_at")
+      .select("tables, qr_locked_at, qr_hidden_modes")
       .eq("slug", slug)
       .maybeSingle()
       .then(({ data }) => {
         const t = data?.tables;
         if (Array.isArray(t) && t.length > 0) setTables(t.map(String));
         setLockedAt((data as any)?.qr_locked_at ?? null);
+        const hm = (data as any)?.qr_hidden_modes;
+        if (Array.isArray(hm)) setHidden(hm.filter(isMode));
       });
   }, [slug]);
+
+  // If the active tab got hidden, jump to the first still-visible one.
+  useEffect(() => {
+    if (hidden.includes(mode)) {
+      const firstVisible = MODE_TABS.map((m) => m.key).find((k) => !hidden.includes(k));
+      if (firstVisible) setMode(firstVisible);
+    }
+  }, [hidden, mode]);
+
+  // Toggle a mode's visibility, persisted to the tenant. Always keep ≥1 visible.
+  const toggleMode = async (m: Mode) => {
+    const next = hidden.includes(m) ? hidden.filter((x) => x !== m) : [...hidden, m];
+    if (next.length >= MODE_TABS.length) return; // never hide all three
+    setHidden(next);
+    const { error } = await supabase.from("tenants").update({ qr_hidden_modes: next }).eq("slug", slug);
+    if (error) setHidden(hidden); // revert on failure
+  };
 
   // 锁定是一次有意识的决定；解锁只能在 Supabase SQL 编辑器（DB 触发器强制）。
   const lockNow = async () => {
@@ -234,27 +275,53 @@ export default function QrMenuPortal({ slug, mod }: { slug: string; mod: ModuleD
         <p className="mt-1 max-w-xl text-sm text-ink-soft">{mod.pain.zh}</p>
       </header>
 
-      {/* mode switch */}
-      <div className="mb-6 inline-flex rounded-lg bg-slate-100 p-1 text-sm">
+      {/* mode switch (hidden modes filtered out) + customize toggle */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm">
+          {MODE_TABS.filter((m) => !hidden.includes(m.key)).map((m) => (
+            <button
+              key={m.key}
+              className={`rounded-md px-4 py-1.5 ${mode === m.key ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
+              onClick={() => setMode(m.key)}
+            >
+              {t(T[m.label])}
+            </button>
+          ))}
+        </div>
         <button
-          className={`rounded-md px-4 py-1.5 ${mode === "tables" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
-          onClick={() => setMode("tables")}
+          onClick={() => setEditing((e) => !e)}
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${editing ? "bg-brand-wash text-brand-ink" : "text-ink-faint hover:text-brand"}`}
         >
-          {t(T.tabTables)}
-        </button>
-        <button
-          className={`rounded-md px-4 py-1.5 ${mode === "togo" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
-          onClick={() => setMode("togo")}
-        >
-          {t(T.tabTogo)}
-        </button>
-        <button
-          className={`rounded-md px-4 py-1.5 ${mode === "single" ? "bg-white font-medium shadow-sm" : "text-ink-faint"}`}
-          onClick={() => setMode("single")}
-        >
-          {t(T.tabSingle)}
+          {editing ? `✓ ${t(T.doneEdit)}` : `✏️ ${t(T.customize)}`}
         </button>
       </div>
+
+      {editing && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="mb-3 text-xs text-ink-soft">{t(T.customizeHint)}</p>
+          <div className="flex flex-col gap-1.5">
+            {MODE_TABS.map((m) => {
+              const shown = !hidden.includes(m.key);
+              return (
+                <div key={m.key} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                  <span className={`text-sm ${shown ? "text-ink" : "text-ink-faint line-through"}`}>{t(T[m.label])}</span>
+                  <button
+                    onClick={() => toggleMode(m.key)}
+                    role="switch"
+                    aria-checked={shown}
+                    className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition ${shown ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-300 text-ink-faint hover:bg-slate-50"}`}
+                  >
+                    <span className={`inline-flex h-4 w-7 flex-none items-center rounded-full px-0.5 transition ${shown ? "justify-end bg-brand" : "justify-start bg-slate-300"}`}>
+                      <span className="h-3 w-3 rounded-full bg-white shadow" />
+                    </span>
+                    {shown ? t(T.modeShown) : t(T.modeHidden)}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {mode === "single" && (
         <div className="grid gap-6 lg:grid-cols-2">
