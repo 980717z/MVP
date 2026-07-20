@@ -182,8 +182,8 @@ export default function UofTLanding() {
               {t(T.joinCta)}
             </button>
             <a href="#backoffice" className="hidden text-sm font-semibold text-brand-ink hover:text-brand sm:inline">{t(T.merchantDemo)}</a>
-            <a href="/campus/login" className="text-sm font-semibold text-brand-ink hover:text-brand">{t(T.signIn)}</a>
             <a href="https://bentoos.io" className="hidden text-sm font-medium text-ink-soft transition hover:text-ink sm:inline">{t(T.forBusiness)}</a>
+            <a href="/campus/login" className="inline-flex items-center rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-wash">{t(T.signIn)}</a>
             <LangToggle />
           </div>
         </div>
