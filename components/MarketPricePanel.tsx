@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listMenuItems, updateMenuItem, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
@@ -25,23 +25,63 @@ export default function MarketPricePanel({ slug }: { slug: string }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
 
-  const load = () =>
-    listMenuItems(slug)
-      .then((all) => {
-        const mkt = all.filter((m) => m.is_market);
-        setItems(mkt);
-        setDraft(Object.fromEntries(mkt.map((m) => [m.id, m.price != null && m.price > 0 ? String(m.price) : ""])));
-      })
-      .catch(() => {});
+  // Last value persisted per dish. Blur-save compares against this so tabbing
+  // through a row you didn't touch doesn't fire a pointless write, and so a
+  // background refresh can tell "clean" fields from ones being typed into.
+  const persisted = useRef<Record<string, string>>({});
 
-  useEffect(() => { load(); }, [slug]);
+  // The list is is_market-filtered on every load, so a dish newly marked 时价 in
+  // 菜单设置 shows up here on its own — there is no second list to maintain.
+  const load = useCallback(
+    () =>
+      listMenuItems(slug)
+        .then((all) => {
+          const mkt = all.filter((m) => m.is_market);
+          const fresh = Object.fromEntries(
+            mkt.map((m) => [m.id, m.price != null && m.price > 0 ? String(m.price) : ""]),
+          );
+          setItems(mkt);
+          setDraft((prev) => {
+            // Never clobber a field someone is mid-way through typing: keep any
+            // draft that diverges from what we last persisted, take the server's
+            // value for everything else.
+            const next = { ...fresh };
+            for (const [id, val] of Object.entries(prev)) {
+              if (val !== (persisted.current[id] ?? "")) next[id] = val;
+            }
+            return next;
+          });
+          persisted.current = fresh;
+        })
+        .catch(() => {}),
+    [slug],
+  );
+
+  useEffect(() => { load(); }, [load]);
+
+  // Prices get set at open, often from a phone, while this tab sits open on the
+  // till. Without this the till shows a stale list — a dish marked 时价 an hour
+  // ago simply isn't there until someone reloads the page.
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") load(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [load]);
 
   const save = async (m: MenuItem) => {
     const raw = (draft[m.id] ?? "").trim();
+    // Nothing changed since the last write — blur fires on every field you tab
+    // through, so bail before hitting the network.
+    if (raw === (persisted.current[m.id] ?? "")) return;
     const price = raw === "" ? null : Math.round(parseFloat(raw) * 100) / 100;
     if (raw !== "" && !(Number(price) >= 0)) return;
     setSavingId(m.id);
     await updateMenuItem(m.id, { price });
+    persisted.current = { ...persisted.current, [m.id]: raw };
     setSavingId(null);
     setSavedId(m.id);
     setTimeout(() => setSavedId((s) => (s === m.id ? null : s)), 1500);
@@ -67,6 +107,10 @@ export default function MarketPricePanel({ slug }: { slug: string }) {
                   inputMode="decimal"
                   value={draft[m.id] ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [m.id]: e.target.value }))}
+                  // Blur-saves, so opening prices can be typed straight down the
+                  // list on the keyboard without reaching for 保存 each time.
+                  // The button stays for anyone who expects to press it.
+                  onBlur={() => save(m)}
                   onKeyDown={(e) => e.key === "Enter" && save(m)}
                   placeholder={t(T.today)}
                   className="input min-h-11 w-28"

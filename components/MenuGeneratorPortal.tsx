@@ -30,9 +30,6 @@ const T = {
   remove: { en: "Remove", zh: "移除", fr: "Retirer" },
   saving: { en: "Saving…", zh: "保存中…", fr: "Enregistrement…" },
   addToMenu: { en: "+ Add to menu", zh: "+ 添加到菜单", fr: "+ Ajouter au menu" },
-  marketUpdate: { en: "💰 Market-price update", zh: "💰 时价更新", fr: "💰 Prix du jour" },
-  marketHint: { en: "The customer menu shows “Market price” instead of a number; the price here is the default when staff close the order, updated daily.", zh: "顾客菜单只显示「时价」不显示数字;这里的价格作为完成订单时的默认价,每天更新", fr: "Le menu client affiche « Prix du jour » sans chiffre; ce prix sert de valeur par défaut à la clôture, mis à jour chaque jour." },
-  todayPrice: { en: "Today's price", zh: "今日价", fr: "Prix du jour" },
   allDishes: { en: "All dishes (tap any field to edit)", zh: "全部菜品(点任意字段直接修改)", fr: "Tous les plats (touchez un champ pour modifier)" },
   countSuffix: { en: "", zh: "道", fr: "" },
   searchPh: { en: "Search dishes (Chinese or English)", zh: "搜索菜名(中文或英文)", fr: "Rechercher un plat (chinois ou anglais)" },
@@ -374,38 +371,12 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 </button>
               </div>
 
-              {/* 今日时价 — update market-priced dishes daily; used as the default
-                  when staff confirm the actual price at order completion */}
-              {dishes.some((d) => d.is_market) && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-sm font-semibold text-ink">{t(T.marketUpdate)}</span>
-                    <span className="text-xs text-ink-faint">{t(T.marketHint)}</span>
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {dishes.filter((d) => d.is_market).map((d) => (
-                      <div key={d.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-ink">{d.name_zh}</div>
-                          {d.name_en && <div className="truncate text-[11px] text-ink-faint">{d.name_en}</div>}
-                        </div>
-                        <div className="flex w-24 flex-none items-center rounded-lg border border-amber-300 bg-amber-50/50 px-2">
-                          <span className="text-sm text-amber-700">$</span>
-                          <input
-                            className="w-full bg-transparent py-1.5 text-sm font-semibold outline-none"
-                            type="number"
-                            step="0.01"
-                            value={d.price ?? ""}
-                            placeholder={t(T.todayPrice)}
-                            onChange={(e) => patchLocal(d.id, { price: e.target.value })}
-                            onBlur={(e) => saveField(d.id, { price: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* 今日时价 lived here too, listing the same is_market dishes with the
+                  same price inputs as 在线点餐订单 →「时价」. Two places to do one job,
+                  and no rule about which one was authoritative. Removed 2026-07-20;
+                  the 时价 tab is the single home for daily prices (it sits where staff
+                  already are during service, and it blur-saves the same way this did).
+                  The 时价 CHECKBOX below stays — that is how a dish becomes 时价. */}
 
               {/* dish list — inline editable */}
               <div className="mt-4 flex items-center justify-between px-1">
