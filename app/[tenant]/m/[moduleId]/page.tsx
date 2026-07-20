@@ -2320,8 +2320,74 @@ function DishSalesRanking({
       <div className="border-b border-slate-100 px-5 py-3 text-[13px] font-bold text-ink">
         {t(T.salesRanking)}
       </div>
-      <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
-        <table className="w-full min-w-[560px] text-sm [font-variant-numeric:tabular-nums]">
+      {/* Phone (<640px): stacked rows, NOT a sideways-scrolling table. A 5-column
+          table pushes 销售额 off-screen, and that is the number the owner opens
+          this tab to see. Each row reads as two lines:
+
+            ┌──────────────────────────────────┐
+            │ 1  红烧蟹肉翅          $61,728.00│
+            │    $48.00 · 1,286      修改 删除 │
+            └──────────────────────────────────┘
+          (design review 2026-07-20 D6) */}
+      <div className="divide-y divide-slate-100 sm:hidden">
+        {ranked.map((d, i) => {
+          const r = d.row;
+          const unsold = d.sold <= 0;
+          const isTop = topRev > 0 && d.revenue === topRev;
+          if (edit.editingId === r.id) {
+            return (
+              <div key={r.id} className="space-y-2 px-4 py-3">
+                {fields.map((f) => (
+                  <label key={f.key} className="block">
+                    <span className="mb-1 block text-xs text-ink-faint">{biLabel(f.label, lang)}</span>
+                    <EditCellInput
+                      field={f}
+                      value={edit.editForm[f.key] ?? ""}
+                      onChange={(v) => edit.setEditForm((prev) => ({ ...prev, [f.key]: v }))}
+                    />
+                  </label>
+                ))}
+                <div className="flex gap-3 pt-1">
+                  <button onClick={edit.saveEdit} className="min-h-[44px] text-sm font-semibold text-brand">{t(T.save)}</button>
+                  <button onClick={edit.cancelEdit} className="min-h-[44px] text-sm text-ink-faint">{t(T.cancel)}</button>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={r.id} className="px-4 py-3 [font-variant-numeric:tabular-nums]">
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="flex min-w-0 items-baseline gap-2.5">
+                  <span className={`text-sm ${unsold ? "text-ink-faint" : "font-semibold text-ink"}`}>{i + 1}</span>
+                  <span className={`truncate text-sm ${unsold ? "text-ink-faint" : "text-ink"}`}>{r.dish || "—"}</span>
+                </div>
+                <span className={`shrink-0 text-sm ${isTop ? "font-semibold text-brand" : unsold ? "text-ink-faint" : "font-medium text-ink"}`}>
+                  {money(d.revenue)}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-3 pl-[1.6rem]">
+                <span className="truncate text-xs text-ink-faint">
+                  {money(Number(r.price) || 0)} · {unsold ? t(T.notSold) : d.sold}
+                </span>
+                {/* 44px targets — this is the one place the owner taps mid-shift. */}
+                <span className="flex shrink-0 items-center gap-3">
+                  <button onClick={() => edit.startEdit(r)} className="min-h-[44px] px-1 text-xs text-brand">{t(T.edit)}</button>
+                  <button
+                    onClick={async () => { if (confirm(t(T.confirmDelete))) await edit.remove(r.id); }}
+                    className="min-h-[44px] px-1 text-xs text-ink-faint"
+                  >
+                    {t(T.del)}
+                  </button>
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop: the full ranked table. */}
+      <div className="hidden sm:block">
+        <table className="w-full text-sm [font-variant-numeric:tabular-nums]">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
               <th className="w-14 px-4 py-2.5 font-medium">{t(T.rank)}</th>
