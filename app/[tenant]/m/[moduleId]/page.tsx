@@ -156,21 +156,27 @@ const T: Record<string, Dict> = {
   // review topics
   topicStats: { en: "Issue category breakdown", zh: "问题类别统计", fr: "Répartition par catégorie" },
   countSuffix: { en: "{n}", zh: "{n} 条", fr: "{n}" },
+  // alerts (dashboard banners). Severity is carried by a TEXT label, not by the
+  // wash colour alone, and the emoji that used to lead each line are gone — they
+  // were the meaning for sighted users and nothing at all for a screen reader
+  // (design review 2026-07-20, Pass 4 + Pass 6).
+  alertWarnLabel: { en: "Attention", zh: "注意", fr: "Attention" },
+  alertInfoLabel: { en: "Note", zh: "提示", fr: "Info" },
   // alerts (dashboard banners)
-  alertZeroStock: { en: "⚠️ Out of stock: {items}", zh: "⚠️ 零库存：{items}", fr: "⚠️ Rupture de stock : {items}" },
-  alertLowStock: { en: "📉 Low stock (≤5): {items}", zh: "📉 低库存（≤5）：{items}", fr: "📉 Stock faible (≤5) : {items}" },
-  alertHighScrap: { en: "🗑️ High scrap rate (≥10%): {items}", zh: "🗑️ 报废率偏高（≥10%）：{items}", fr: "🗑️ Taux de rebut élevé (≥10 %) : {items}" },
-  alertUpcomingBookings: { en: "📅 {n} bookings in the next 3 days: {list}", zh: "📅 近3天有 {n} 个预订：{list}", fr: "📅 {n} réservations dans les 3 prochains jours : {list}" },
+  alertZeroStock: { en: "Out of stock: {items}", zh: "零库存：{items}", fr: "Rupture de stock : {items}" },
+  alertLowStock: { en: "Low stock (≤5): {items}", zh: "低库存（≤5）：{items}", fr: "Stock faible (≤5) : {items}" },
+  alertHighScrap: { en: "High scrap rate (≥10%): {items}", zh: "报废率偏高（≥10%）：{items}", fr: "Taux de rebut élevé (≥10 %) : {items}" },
+  alertUpcomingBookings: { en: "{n} bookings in the next 3 days: {list}", zh: "近3天有 {n} 个预订：{list}", fr: "{n} réservations dans les 3 prochains jours : {list}" },
   alertGuestsSuffix: { en: "{name}({n} guests)", zh: "{name}({n}人)", fr: "{name}({n} pers.)" },
-  alertOpenIssues: { en: "🔧 {n} equipment issues pending: {list}", zh: "🔧 {n} 个设备问题待处理：{list}", fr: "🔧 {n} problèmes d'équipement en attente : {list}" },
-  alertServiceDue: { en: "🛠️ {n} equipment due for service{overdue}: {list}", zh: "🛠️ {n} 台设备保养到期{overdue}：{list}", fr: "🛠️ {n} équipements à entretenir{overdue} : {list}" },
+  alertOpenIssues: { en: "{n} equipment issues pending: {list}", zh: "{n} 个设备问题待处理：{list}", fr: "{n} problèmes d'équipement en attente : {list}" },
+  alertServiceDue: { en: "{n} equipment due for service{overdue}: {list}", zh: "{n} 台设备保养到期{overdue}：{list}", fr: "{n} équipements à entretenir{overdue} : {list}" },
   alertServiceOverdue: { en: " ({n} overdue)", zh: "（{n} 台已过期）", fr: " ({n} en retard)" },
-  alertUnrepliedReviews: { en: "💬 {n} low-rating reviews unanswered", zh: "💬 {n} 条低分评价未回复", fr: "💬 {n} avis à faible note sans réponse" },
-  alertPendingPosts: { en: "📣 {n} posts pending publication", zh: "📣 {n} 条内容待发布", fr: "📣 {n} publications en attente" },
-  alertBirthdays: { en: "🎂 {n} member birthdays in the next 7 days: {list}", zh: "🎂 近7天 {n} 位会员生日：{list}", fr: "🎂 {n} anniversaires de membres dans les 7 prochains jours : {list}" },
-  alertSoldOut: { en: "🔥 Sold out {n} times: {items} (possibly under-prepped)", zh: "🔥 卖断 {n} 次：{items}（可能少备了）", fr: "🔥 Rupture {n} fois : {items} (peut-être pas assez préparé)" },
-  alertWaste: { en: "♻️ {n} leftover/scrapped in total", zh: "♻️ 累计剩余/报废 {n} 份", fr: "♻️ {n} restes/rebuts au total" },
-  alertPrepSuggest: { en: "📋 Tomorrow's prep suggestion (last 7d avg ×1.1): {list}", zh: "📋 明日备货建议（近7天均销×1.1）：{list}", fr: "📋 Suggestion de préparation pour demain (moy. 7j ×1,1) : {list}" },
+  alertUnrepliedReviews: { en: "{n} low-rating reviews unanswered", zh: "{n} 条低分评价未回复", fr: "{n} avis à faible note sans réponse" },
+  alertPendingPosts: { en: "{n} posts pending publication", zh: "{n} 条内容待发布", fr: "{n} publications en attente" },
+  alertBirthdays: { en: "{n} member birthdays in the next 7 days: {list}", zh: "近7天 {n} 位会员生日：{list}", fr: "{n} anniversaires de membres dans les 7 prochains jours : {list}" },
+  alertSoldOut: { en: "Sold out {n} times: {items} (possibly under-prepped)", zh: "卖断 {n} 次：{items}（可能少备了）", fr: "Rupture {n} fois : {items} (peut-être pas assez préparé)" },
+  alertWaste: { en: "{n} leftover/scrapped in total", zh: "累计剩余/报废 {n} 份", fr: "{n} restes/rebuts au total" },
+  alertPrepSuggest: { en: "Tomorrow's prep suggestion (last 7d avg ×1.1): {list}", zh: "明日备货建议（近7天均销×1.1）：{list}", fr: "Suggestion de préparation pour demain (moy. 7j ×1,1) : {list}" },
   alertPrepPortions: { en: "{dish} {n}", zh: "{dish} {n}份", fr: "{dish} {n}" },
   // equipment suggest-input placeholders
   phEquipment: { en: "e.g. Fridge", zh: "例：冰箱", fr: "ex : Réfrigérateur" },
@@ -1409,19 +1415,24 @@ export default function ModulePage() {
         </div>
       </section>
 
-      {/* alerts */}
+      {/* alerts — live region: stock/booking/equipment warnings appear while the
+          owner is already on the page, so they must be announced, not just
+          painted. Severity is a text label, never colour alone. */}
       {alerts.length > 0 && (
-        <div className="mb-6 space-y-2">
+        <div className="mb-6 space-y-2" role="status" aria-live="polite">
           {alerts.map((a, i) => (
             <div
               key={i}
-              className={`rounded-lg px-4 py-2.5 text-sm ${
+              className={`flex gap-2.5 rounded-lg px-4 py-2.5 text-sm ${
                 a.type === "warn"
-                  ? "border border-amber-200 bg-amber-50 text-amber-800"
-                  : "border border-blue-200 bg-blue-50 text-blue-800"
+                  ? "border border-warn/25 bg-warn-wash text-warn"
+                  : "border border-info/25 bg-info-wash text-info"
               }`}
             >
-              {a.text}
+              <span className="shrink-0 font-bold">
+                {a.type === "warn" ? t(T.alertWarnLabel) : t(T.alertInfoLabel)}
+              </span>
+              <span className="min-w-0 text-ink-soft">{a.text}</span>
             </div>
           ))}
         </div>

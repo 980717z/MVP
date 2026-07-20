@@ -22,6 +22,13 @@ const config: Config = {
           wash: "#E9F6F0", // active surface / secondary button
           ink: "#0A6A49", // emerald text on wash / links
         },
+        // Semantic status (DESIGN-PLATFORM.md "Color"). These were documented
+        // but never defined, so status surfaces reached for raw Tailwind
+        // amber-*/blue-* — and blue is the LEGACY brand emerald replaced.
+        // Success is the emerald brand above; there is no separate success token.
+        warn: { DEFAULT: "#C77A12", wash: "#FBF1DE" },
+        danger: { DEFAULT: "#D14343", wash: "#FBE9E9" },
+        info: { DEFAULT: "#3B7FA6", wash: "#E8F1F6" },
         // Sang's Seafood customer-menu palette (see DESIGN.md)
         paper: "#FAF7F2",
         jade: {
