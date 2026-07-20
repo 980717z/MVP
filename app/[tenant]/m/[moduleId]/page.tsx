@@ -25,6 +25,7 @@ import {
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
 import { rankDishes, topRevenue } from "@/lib/dishSales";
+import { uploadEquipmentPhoto, deleteEquipmentPhoto } from "@/lib/equipmentPhoto";
 import { useLang, type Dict } from "@/app/i18n";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
@@ -171,6 +172,26 @@ const T: Record<string, Dict> = {
   alertOpenIssues: { en: "{n} equipment issues pending: {list}", zh: "{n} 个设备问题待处理：{list}", fr: "{n} problèmes d'équipement en attente : {list}" },
   alertServiceDue: { en: "{n} equipment due for service{overdue}: {list}", zh: "{n} 台设备保养到期{overdue}：{list}", fr: "{n} équipements à entretenir{overdue} : {list}" },
   alertServiceOverdue: { en: " ({n} overdue)", zh: "（{n} 台已过期）", fr: " ({n} en retard)" },
+  // Equipment photo + roster (intern feature, ported)
+  eqPhotoLabel: { en: "Photo (optional)", zh: "照片（可选）", fr: "Photo (facultatif)" },
+  eqPhotoRemove: { en: "Remove", zh: "移除", fr: "Retirer" },
+  eqPhotoUploading: { en: "Uploading…", zh: "上传中…", fr: "Téléversement…" },
+  eqPhotoFailed: { en: "Photo upload failed: ", zh: "照片上传失败：", fr: "Échec du téléversement : " },
+  eqPhotoAlt: { en: "Equipment photo", zh: "设备照片", fr: "Photo de l'équipement" },
+  eqPhotoView: { en: "View photo", zh: "查看照片", fr: "Voir la photo" },
+  eqUrgent: { en: "Urgent", zh: "紧急", fr: "Urgent" },
+  eqRosterTitle: { en: "Equipment overview", zh: "设备总览", fr: "Aperçu des équipements" },
+  eqRosterHint: {
+    en: "Sorted by cumulative repair cost — the priciest kit may be due for replacement.",
+    zh: "按累计维修费用从高到低排——花费最多的设备可能该考虑换新的了",
+    fr: "Trié par coût de réparation cumulé — l'équipement le plus coûteux mérite peut-être un remplacement.",
+  },
+  eqRosterEquip: { en: "Equipment", zh: "设备", fr: "Équipement" },
+  eqRosterStatus: { en: "Current status", zh: "当前状态", fr: "Statut actuel" },
+  eqRosterNext: { en: "Next service", zh: "下次保养", fr: "Prochain entretien" },
+  eqRosterCost: { en: "Cumulative repair cost", zh: "累计维修费用", fr: "Coût de réparation cumulé" },
+  eqRosterPending: { en: "{n} pending", zh: "{n} 个待处理", fr: "{n} en attente" },
+  eqRetired: { en: "Retired", zh: "已停用", fr: "Retiré" },
   alertUnrepliedReviews: { en: "{n} low-rating reviews unanswered", zh: "{n} 条低分评价未回复", fr: "{n} avis à faible note sans réponse" },
   alertPendingPosts: { en: "{n} posts pending publication", zh: "{n} 条内容待发布", fr: "{n} publications en attente" },
   alertBirthdays: { en: "{n} member birthdays in the next 7 days: {list}", zh: "近7天 {n} 位会员生日：{list}", fr: "{n} anniversaires de membres dans les 7 prochains jours : {list}" },
@@ -536,6 +557,9 @@ function GroupedRows({
               </td>
             ))}
             <td className="px-4 py-2.5 text-right whitespace-nowrap">
+              {r.photo_url && (
+                <a href={r.photo_url} target="_blank" rel="noreferrer" className="text-xs text-ink-faint hover:text-brand mr-2" title={t(T.eqPhotoView)}>📷</a>
+              )}
               <button onClick={() => startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
               <button
                 onClick={async () => { if (confirm(t(T.confirmDelete))) await doDelete(r.id); }}
@@ -584,6 +608,7 @@ export default function ModulePage() {
   const [customStatsFrom, setCustomStatsFrom] = useState("");
   const [customStatsTo, setCustomStatsTo] = useState("");
   const [importing, setImporting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false); // equipment photo upload in-flight
   const [autoFilling, setAutoFilling] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
@@ -1021,12 +1046,16 @@ export default function ModulePage() {
       if (upcoming.length) list.push({ type: "info", text: t(T.alertUpcomingBookings).replace("{n}", String(upcoming.length)).replace("{list}", upcoming.map((r) => `${r.date} ` + t(T.alertGuestsSuffix).replace("{name}", r.customer || "").replace("{n}", String(r.guests || "?"))).join("、")) });
     }
     if (moduleId === "equipment") {
-      const open = rows.filter((r) => r.status === "待处理" || r.status === "处理中");
-      if (open.length) list.push({ type: "warn", text: t(T.alertOpenIssues).replace("{n}", String(open.length)).replace("{list}", open.map((r) => `${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")) });
-      // 保养到期提醒：下次保养日期已过期或在近7天内
+      // urgent (紧急) issues float to the front of the open list
+      const open = rows
+        .filter((r) => r.status === "待处理" || r.status === "处理中")
+        .sort((a, b) => (a.priority === "紧急" ? -1 : 0) - (b.priority === "紧急" ? -1 : 0));
+      if (open.length) list.push({ type: "warn", text: t(T.alertOpenIssues).replace("{n}", String(open.length)).replace("{list}", open.map((r) => `${r.priority === "紧急" ? "⚠️" : ""}${r.equipment || ""}${r.issue ? "-" + r.issue : ""}`).join("、")) });
+      // 保养到期提醒：下次保养日期已过期或在近7天内。跳过已停用，以及已确认处理过
+      // 该次保养的记录(servicedThrough===nextService)——否则会永远重复提醒。
       const today = localYmd(new Date());
       const soon = addDays(today, 7);
-      const due = rows.filter((r) => r.nextService && r.nextService <= soon);
+      const due = rows.filter((r) => r.nextService && r.nextService <= soon && r.status !== "停用" && r.servicedThrough !== r.nextService);
       if (due.length) {
         const overdue = due.filter((r) => r.nextService < today);
         list.push({
@@ -1167,11 +1196,18 @@ export default function ModulePage() {
   const updateForm = useCallback(
     (key: string, value: string) => {
       setForm((prev) => {
-        const next = { ...prev, [key]: value };
+        let next = { ...prev, [key]: value };
+        // Equipment: filling in the service interval (with no manual next-service
+        // date yet) auto-computes a next-service date from the record date (or
+        // today). Shown in the field so it can still be overridden.
+        if (moduleId === "equipment" && key === "intervalDays" && !prev.nextService) {
+          const days = parseInt(value, 10);
+          if (days > 0) next = { ...next, nextService: addDays(prev.date || localYmd(new Date()), days) };
+        }
         return applyComputed(next, mod?.computed);
       });
     },
-    [mod]
+    [mod, moduleId]
   );
 
   if (!mod) {
@@ -1204,6 +1240,18 @@ export default function ModulePage() {
   }
 
   const enabled = tenant.enabled.includes(moduleId);
+
+  // Equipment photo: upload to storage, keep only the URL on the draft record.
+  // Re-picking replaces (and cleans up) any earlier upload for this draft.
+  const handleEquipmentPhotoUpload = async (file: File | null) => {
+    if (!file) return;
+    setUploadingPhoto(true);
+    if (form.photo_url) await deleteEquipmentPhoto(form.photo_url);
+    const up = await uploadEquipmentPhoto(slug, file);
+    setUploadingPhoto(false);
+    if (up.error) { alert(t(T.eqPhotoFailed) + up.error); return; }
+    updateForm("photo_url", up.url ?? "");
+  };
 
   const submit = async () => {
     const missing = mod.fields.filter((f) => f.required && !form[f.key]?.trim());
@@ -1584,9 +1632,41 @@ export default function ModulePage() {
               </div>
             ))}
           </div>
+          {moduleId === "equipment" && (
+            <div className="mt-3">
+              <label className="label">{t(T.eqPhotoLabel)}</label>
+              {form.photo_url ? (
+                <div className="flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={form.photo_url} alt={t(T.eqPhotoAlt)} className="h-16 w-16 rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    className="text-xs text-ink-faint hover:text-red-600"
+                    onClick={async () => { await deleteEquipmentPhoto(form.photo_url); updateForm("photo_url", ""); }}
+                  >
+                    {t(T.eqPhotoRemove)}
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploadingPhoto}
+                  className="input !py-1.5 text-xs"
+                  onChange={(e) => handleEquipmentPhotoUpload(e.target.files?.[0] ?? null)}
+                />
+              )}
+              {uploadingPhoto && <p className="mt-1 text-xs text-ink-faint">{t(T.eqPhotoUploading)}</p>}
+            </div>
+          )}
           <div className="mt-4 flex gap-2">
             <button className="btn-primary" onClick={submit}>{t(T.save)}</button>
-            <button className="btn-ghost" onClick={() => { setForm({}); setShiftPreset("custom"); setOpen(false); }}>{t(T.cancel)}</button>
+            <button
+              className="btn-ghost"
+              onClick={() => { if (form.photo_url) deleteEquipmentPhoto(form.photo_url); setForm({}); setShiftPreset("custom"); setOpen(false); }}
+            >
+              {t(T.cancel)}
+            </button>
           </div>
         </section>
       )}
@@ -1819,7 +1899,14 @@ export default function ModulePage() {
                   startEdit={startEdit}
                   saveEdit={saveEdit}
                   cancelEdit={cancelEdit}
-                  deleteRecord={async (id) => { await deleteRecord(id); setTick((t) => t + 1); }}
+                  deleteRecord={async (id) => {
+                    if (groupByEquipment) {
+                      const photoUrl = pagedRows.find((r) => r.id === id)?.photo_url;
+                      if (photoUrl) await deleteEquipmentPhoto(photoUrl);
+                    }
+                    await deleteRecord(id);
+                    setTick((t) => t + 1);
+                  }}
                 />
               ) : groupByStaff
                 ? staffGroups.map((g) => {
@@ -2084,8 +2171,72 @@ function ModuleInsights({
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
   if (moduleId === "members") return <TierSettings slug={slug} />;
-  if (moduleId === "equipment") return <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />;
+  if (moduleId === "equipment") return (
+    <>
+      <EquipmentMonthlyChecklist rows={rows} slug={slug} refresh={refresh} />
+      <EquipmentRoster rows={rows} />
+    </>
+  );
   return null;
+}
+
+/** Equipment overview: per-machine current status, next service, and cumulative
+ *  repair cost — sorted by cost so the priciest kit (a replacement candidate)
+ *  stands out. Hidden until there are at least 2 distinct machines. */
+function EquipmentRoster({ rows }: { rows: RecordRow[] }) {
+  const { t } = useLang();
+  const roster = useMemo(() => {
+    const byEquipment = new Map<string, RecordRow[]>();
+    for (const r of rows) {
+      const name = (r.equipment || "").trim();
+      if (!name) continue;
+      (byEquipment.get(name) ?? byEquipment.set(name, []).get(name)!).push(r);
+    }
+    return Array.from(byEquipment.entries())
+      .map(([name, recs]) => {
+        const latest = [...recs].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
+        const totalCost = recs.reduce((s, r) => s + (parseFloat(r.cost) || 0), 0);
+        const openCount = recs.filter((r) => r.status === "待处理" || r.status === "处理中").length;
+        return { name, latest, totalCost, openCount };
+      })
+      .sort((a, b) => b.totalCost - a.totalCost);
+  }, [rows]);
+
+  if (roster.length < 2) return null;
+
+  return (
+    <section className="card mb-6 p-5">
+      <div className="mb-1 text-sm font-semibold text-ink">{t(T.eqRosterTitle)}</div>
+      <p className="mb-3 text-xs text-ink-faint">{t(T.eqRosterHint)}</p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
+              <th className="px-3 py-2 font-medium">{t(T.eqRosterEquip)}</th>
+              <th className="px-3 py-2 font-medium">{t(T.eqRosterStatus)}</th>
+              <th className="px-3 py-2 font-medium">{t(T.eqRosterNext)}</th>
+              <th className="px-3 py-2 font-medium text-right">{t(T.eqRosterCost)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roster.map((e) => (
+              <tr key={e.name} className="border-b border-slate-100 last:border-0">
+                <td className="px-3 py-2 font-medium text-ink">
+                  {e.name}
+                  {e.openCount > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-700">{t(T.eqRosterPending).replace("{n}", String(e.openCount))}</span>}
+                </td>
+                <td className="px-3 py-2 text-ink-soft">
+                  {e.latest?.status === "停用" ? <span className="text-ink-faint">{t(T.eqRetired)}</span> : (e.latest?.status || "—")}
+                </td>
+                <td className="px-3 py-2 text-ink-soft">{e.latest?.nextService || "—"}</td>
+                <td className="px-3 py-2 text-right font-medium tabular-nums text-ink">{money(e.totalCost)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 /** 本月到期保养清单：把「下次保养日期」落在本月及之前（含逾期）的设备列出来，做成
@@ -2109,7 +2260,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       // once it matches the current nextService, this cycle's reminder is done.
       // (We never touch nextService itself, so the date stays visible in the
       // history table instead of getting wiped out.)
-      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService)
+      .filter((r) => r.nextService && r.nextService <= monthEnd && r.servicedThrough !== r.nextService && r.status !== "停用")
       .map((r) => ({ ...r, overdue: r.nextService < todayStr }) as RecordRow & { overdue: boolean })
       .sort((a, b) => (a.equipment || "").localeCompare(b.equipment || "") || (a.nextService || "").localeCompare(b.nextService || ""));
   }, [rows]);
@@ -2167,6 +2318,7 @@ function EquipmentMonthlyChecklist({ rows, slug, refresh }: { rows: RecordRow[];
       <div className="space-y-1.5">
         {due.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-sm">
+            {r.priority === "紧急" && <span className="text-red-600" title={t(T.eqUrgent)}>⚠️</span>}
             <span className="font-medium text-ink">{r.equipment || t(T.equipmentFallback)}</span>
             {r.issue && <span className="text-ink-soft">{r.issue}</span>}
             <span className={`ml-auto text-xs font-medium tabular-nums ${r.overdue ? "text-red-600" : "text-ink-faint"}`}>

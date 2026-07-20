@@ -79,7 +79,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 
       {/* desktop sidebar */}
       <aside className="hidden w-60 flex-none border-r border-[#EBEAE5] bg-white md:flex md:flex-col">
-        <SidebarHead />
+        <SidebarHead campus={!!tenant?.campus} />
         <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
         <div className="border-t border-[#F3F2EE] px-2.5 py-3">
           <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`} icon="⚙️">
@@ -100,7 +100,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/30" onClick={() => setNavOpen(false)} />
           <div className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col bg-white shadow-xl">
-            <SidebarHead onClose={() => setNavOpen(false)} />
+            <SidebarHead campus={!!tenant?.campus} onClose={() => setNavOpen(false)} />
             <nav className="flex-1 overflow-y-auto px-2.5 py-3">{nav}</nav>
             <div className="border-t border-[#F3F2EE] px-2.5 py-3">
               <NavLink href={`/${slug}/settings`} active={pathname === `/${slug}/settings`}>
@@ -162,16 +162,24 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   );
 }
 
-function SidebarHead({ onClose }: { onClose?: () => void }) {
+function SidebarHead({ onClose, campus = false }: { onClose?: () => void; campus?: boolean }) {
   // Product brand owns the rail: one clean BentoOS lockup with room to breathe
   // (the warm bento mark carries the friendliness so the wordmark can stay
   // simple, not a heavy slab). The shop identity lives in the top bar instead,
   // so nothing competes here. → the BentoOS landing (bentoos.io).
+  // campus-only merchants (tenants.campus) get the "BentoOS Campus" wordmark.
   return (
     <div className="flex items-center justify-between gap-2 border-b border-[#F3F2EE] px-4 py-4">
-      <Link href="/" onClick={onClose} className="flex items-center gap-2.5" title="BentoOS">
+      <Link href="/" onClick={onClose} className="flex items-center gap-2.5" title={campus ? "BentoOS Campus" : "BentoOS"}>
         <BentoMark className="h-7 w-7 flex-none" />
-        <span className="text-[16px] font-bold tracking-[-0.01em] text-ink">BentoOS</span>
+        {campus ? (
+          <span className="text-[16px] tracking-[-0.01em]">
+            <span className="font-bold text-ink">BentoOS</span>
+            <span className="ml-1 font-semibold text-brand-ink/70">Campus</span>
+          </span>
+        ) : (
+          <span className="text-[16px] font-bold tracking-[-0.01em] text-ink">BentoOS</span>
+        )}
       </Link>
       {onClose && (
         <button onClick={onClose} className="flex-none text-lg leading-none text-ink-faint" aria-label="close navigation">✕</button>

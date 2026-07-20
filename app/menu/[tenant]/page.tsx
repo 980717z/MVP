@@ -52,13 +52,13 @@ const ORDER = [
 type Lang = "zh" | "en" | "fr";
 
 const T = {
-  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…", sendOrder: "送出订单", sentCallback: "订单已送出 🎉 富来会致电与您确认", callbackHint: "无需在线支付 · 富来会致电确认订单与地址", estNote: "预计金额 · 以电话确认为准",
+  zh: { menu: "扫码菜单", search: "搜索菜品", noResults: "没有找到相关菜品", add: "加入", cart: "查看订单", submit: "提交订单", table: "桌号（可选）", phone: "电话号码（必填）", phoneErr: "请填写 10 位电话号码", note: "备注（可选）", empty: "还没选菜", items: "份", total: "合计", subtotal: "小计", prevOrdered: "已点", thisRound: "本次新增", grand: "累计合计", placed: "已下单，厨房马上处理 🎉", another: "再点一单", market: "时价", submitting: "提交中…", sendOrder: "送出订单", sentCallback: "订单已送出 🎉 {shop}会致电与您确认", callbackHint: "无需在线支付 · {shop}会致电确认订单与地址", estNote: "预计金额 · 以电话确认为准",
     togoBadge: "外卖 · 自取", pickup: "自取", delivery: "配送", street: "街道地址（必填）", unit: "单元/门牌（可选）", postal: "邮编（必填）", postalBad: "请填写有效邮编（如 M5T 2E7）", zoneBad: "超出配送范围", minShort: "满 $30 起送，还差", hst: "税 HST 13%", tipLine: "配送小费 10%", email: "邮箱（可选，接收订单通知）", payFirst: "外卖/配送需在线支付，付款后厨房开始备餐", paySoon: "在线支付即将开通，敬请期待", goPay: "去支付",
     chooseMode: "怎么取餐？", pickupHint: "到店自取 · 无额外费用", deliveryHint: "满 $30 起送 · 10% 配送小费", addrTitle: "配送地址", postalHint: "先填邮编，马上告诉你能不能送", canDeliver: "可以配送到", noDeliver: "暂不配送到", switchPickup: "改为自取 →", zoneList: "查看全部配送范围", city: "Toronto, ON", deliverTo: "配送到", addrMissing: "请填写完整配送地址" },
-  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…", sendOrder: "Send order", sentCallback: "Order sent 🎉 Fulai will call to confirm", callbackHint: "No online payment — Fulai will call to confirm your order & address", estNote: "Estimate — confirmed by phone",
+  en: { menu: "Digital Menu", search: "Search dishes", noResults: "No dishes found", add: "Add", cart: "View order", submit: "Place order", table: "Table # (optional)", phone: "Phone (required)", phoneErr: "Please enter a 10-digit phone number", note: "Note (optional)", empty: "No items yet", items: "items", total: "Total", subtotal: "Subtotal", prevOrdered: "Already ordered", thisRound: "This round", grand: "Running total", placed: "Order placed — kitchen is on it 🎉", another: "Order again", market: "Market", submitting: "Submitting…", sendOrder: "Send order", sentCallback: "Order sent 🎉 {shop} will call to confirm", callbackHint: "No online payment — {shop} will call to confirm your order & address", estNote: "Estimate — confirmed by phone",
     togoBadge: "Takeout · Delivery", pickup: "Pickup", delivery: "Delivery", street: "Street address (required)", unit: "Unit (optional)", postal: "Postal code (required)", postalBad: "Enter a valid postal code (e.g. M5T 2E7)", zoneBad: "Outside our delivery zone", minShort: "$30 minimum for delivery — add", hst: "HST 13%", tipLine: "Delivery tip 10%", email: "Email (optional, for order updates)", payFirst: "Takeout & delivery are paid online; the kitchen starts after payment", paySoon: "Online payment coming soon", goPay: "Pay now",
     chooseMode: "How would you like your order?", pickupHint: "Pick up at the restaurant · no fees", deliveryHint: "$30 minimum · 10% delivery tip", addrTitle: "Delivery address", postalHint: "Postal code first — we'll check your area instantly", canDeliver: "We deliver to", noDeliver: "We don't deliver to", switchPickup: "Switch to pickup →", zoneList: "See all delivery areas", city: "Toronto, ON", deliverTo: "Deliver to", addrMissing: "Please complete the delivery address" },
-  fr: { menu: "Menu numérique", search: "Rechercher un plat", noResults: "Aucun plat trouvé", add: "Ajouter", cart: "Voir la commande", submit: "Commander", table: "N° de table (facultatif)", phone: "Téléphone (requis)", phoneErr: "Entrez un numéro à 10 chiffres", note: "Note (facultatif)", empty: "Aucun article", items: "articles", total: "Total", subtotal: "Sous-total", prevOrdered: "Déjà commandé", thisRound: "Cette fois", grand: "Total cumulé", placed: "Commande passée — la cuisine s'en occupe 🎉", another: "Commander encore", market: "Prix du jour", submitting: "Envoi…", sendOrder: "Envoyer la commande", sentCallback: "Commande envoyée 🎉 Fulai vous appellera pour confirmer", callbackHint: "Aucun paiement en ligne — Fulai vous appellera pour confirmer la commande et l'adresse", estNote: "Estimation — confirmée par téléphone",
+  fr: { menu: "Menu numérique", search: "Rechercher un plat", noResults: "Aucun plat trouvé", add: "Ajouter", cart: "Voir la commande", submit: "Commander", table: "N° de table (facultatif)", phone: "Téléphone (requis)", phoneErr: "Entrez un numéro à 10 chiffres", note: "Note (facultatif)", empty: "Aucun article", items: "articles", total: "Total", subtotal: "Sous-total", prevOrdered: "Déjà commandé", thisRound: "Cette fois", grand: "Total cumulé", placed: "Commande passée — la cuisine s'en occupe 🎉", another: "Commander encore", market: "Prix du jour", submitting: "Envoi…", sendOrder: "Envoyer la commande", sentCallback: "Commande envoyée 🎉 {shop} vous appellera pour confirmer", callbackHint: "Aucun paiement en ligne — {shop} vous appellera pour confirmer la commande et l'adresse", estNote: "Estimation — confirmée par téléphone",
     togoBadge: "À emporter · Livraison", pickup: "À emporter", delivery: "Livraison", street: "Adresse (requise)", unit: "Unité (facultatif)", postal: "Code postal (requis)", postalBad: "Code postal invalide (ex. M5T 2E7)", zoneBad: "Hors de notre zone de livraison", minShort: "Minimum 30 $ — ajoutez", hst: "TVH 13 %", tipLine: "Pourboire livraison 10 %", email: "Courriel (facultatif, pour le suivi)", payFirst: "À emporter et livraison payés en ligne; la cuisine commence après le paiement", paySoon: "Paiement en ligne bientôt disponible", goPay: "Payer",
     chooseMode: "Comment souhaitez-vous commander ?", pickupHint: "Au restaurant · sans frais", deliveryHint: "Minimum 30 $ · pourboire 10 %", addrTitle: "Adresse de livraison", postalHint: "Le code postal d'abord — on vérifie votre secteur", canDeliver: "Nous livrons à", noDeliver: "Nous ne livrons pas à", switchPickup: "Passer à emporter →", zoneList: "Voir toutes les zones", city: "Toronto, ON", deliverTo: "Livrer à", addrMissing: "Veuillez compléter l'adresse de livraison" },
 };
@@ -343,6 +343,10 @@ export default function PublicMenu() {
   // Secondary (other-language) dish name — shown only when it's actually
   // different. An English-only vendor sets name_zh = name_en, so this returns
   // "" and no Chinese subtitle renders.
+  // Shop display name for callback copy ({shop} placeholder) — real name, not the
+  // old hardcoded "富来/Fulai". Falls back to the other language, then the handle.
+  const shopName = (lang === "zh" ? name?.zh : name?.en || name?.zh) || name?.zh || slug;
+
   const secondaryName = (d: MenuItem): string => {
     const primary = (lang === "zh" ? d.name_zh : d.name_en || d.name_zh) || "";
     const secondary = (lang === "zh" ? d.name_en || "" : d.name_zh) || "";
@@ -881,7 +885,7 @@ export default function PublicMenu() {
       )}
       {togoMode && !pickupMode && (
         <div className="bg-jade-wash py-2 text-center text-sm font-medium text-jade">
-          🛵 {t("togoBadge")} · {PAYMENTS_LIVE ? t("payFirst") : t("callbackHint")}
+          🛵 {t("togoBadge")} · {PAYMENTS_LIVE ? t("payFirst") : t("callbackHint").replace("{shop}", shopName)}
         </div>
       )}
       {pickupMode && (
@@ -1498,7 +1502,7 @@ export default function PublicMenu() {
                   {/* callbackHint copy is fulai-specific (togo/delivery callback flow);
                       pickup gets its own truck-appropriate line instead */}
                   {togoMode && !pickupMode && !PAYMENTS_LIVE && (
-                    <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">📞 {t("callbackHint")}</p>
+                    <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">📞 {t("callbackHint").replace("{shop}", shopName)}</p>
                   )}
                   {pickupMode && (
                     <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">
@@ -1553,7 +1557,7 @@ export default function PublicMenu() {
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 px-6" onClick={() => { setPlaced(false); setOpen(false); }}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="text-4xl">✅</div>
-            <p className="mt-3 font-medium text-ink">{togoMode && !PAYMENTS_LIVE ? t("sentCallback") : t("placed")}</p>
+            <p className="mt-3 font-medium text-ink">{togoMode && !PAYMENTS_LIVE ? t("sentCallback").replace("{shop}", shopName) : t("placed")}</p>
             <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>
