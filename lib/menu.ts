@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "./supabase";
-import { unitPrice } from "./dish";
+import { unitPrice, normVariants, normDish } from "./dish";
 
 /** A size/portion option for a dish (多规格): 全/半, 位/小/中/大/特大, etc. */
 export interface Variant {
@@ -33,19 +33,11 @@ export interface MenuItem {
   sold_out?: boolean;
 }
 
-/** Read/display: keep complete sizes (label + positive price). For 时价 dishes
- *  pass allowPriceless=true — their variants are cooking-style/brand CHOICES
- *  (清蒸/姜葱/豉椒) with no fixed price; keep any labelled row. */
-export function normVariants(raw: any, allowPriceless = false): Variant[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((v) => ({
-      label_zh: String(v?.label_zh ?? "").trim(),
-      label_en: String(v?.label_en ?? "").trim() || undefined,
-      price: Number(v?.price) || 0,
-    }))
-    .filter((v) => v.label_zh && (allowPriceless || v.price > 0));
-}
+// normVariants moved to ./dish (zero-import) so the server-side pickup route
+// applies the SAME filter before resolving a client variant index. Keeping two
+// copies is how the client and server drifted apart in the first place.
+// Imported above and re-exported here so existing @/lib/menu callers are unaffected.
+export { normVariants, normDish };
 
 /** Write: keep every row (even half-typed) so the editor doesn't lose them
  *  mid-edit; coerce price to a number. Empty rows are filtered on read. */

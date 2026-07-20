@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { pickupGate, type Hours } from "@/lib/hours";
-import { lineName, isNoCookDish, unitPrice, type DishLike } from "@/lib/dish";
+import { lineName, isNoCookDish, unitPrice, normDish, type DishLike } from "@/lib/dish";
 
 export const runtime = "nodejs";
 
@@ -100,7 +100,16 @@ export async function POST(req: Request) {
     console.error("[pickup/create] menu read", menuErr.message);
     return NextResponse.json({ ok: false, error: RETRY_LATER }, { status: 503 });
   }
-  const byId = new Map<string, MenuRow>(((menuRows ?? []) as MenuRow[]).map((d) => [d.id, d]));
+  // normDish applies the SAME variant filter the diner's menu applied
+  // (listMenuItems → normVariants). A cart's `vi` indexes the FILTERED array, so
+  // resolving it against the raw column picks the wrong size: the menu editor
+  // deliberately keeps half-typed rows, and dropping one shifts every index
+  // after it. Left unnormalized this either blocks the dish outright (a $0 size
+  // fails the price check → "菜单已更新") or prints 生猛龙虾（） with no cooking
+  // style on the kitchen ticket. See lib/dish.ts normVariants.
+  const byId = new Map<string, MenuRow>(
+    ((menuRows ?? []) as MenuRow[]).map((d) => [d.id, normDish(d)]),
+  );
 
   const items: Record<string, unknown>[] = [];
   for (const it of rawItems) {
@@ -175,8 +184,14 @@ export async function POST(req: Request) {
     // 53400 = the orders_rate_limit trigger tripped: the caller should slow
     // down, it is not a server fault. Surface it as 429 with the trigger's own
     // bilingual message instead of a generic 500.
+    // Only the rate-limit trigger's own bilingual message is safe to echo — it
+    // is written for the student. Every other DB error is internal (column
+    // names, constraint names, RLS policy names) and must not reach the client.
     const isRateLimit = (error as { code?: string }).code === "53400";
-    return NextResponse.json({ ok: false, error: error.message }, { status: isRateLimit ? 429 : 500 });
+    return NextResponse.json(
+      { ok: false, error: isRateLimit ? error.message : RETRY_LATER },
+      { status: isRateLimit ? 429 : 500 },
+    );
   }
 
   return NextResponse.json({ ok: true, id, tracking_token, pickup_code });
