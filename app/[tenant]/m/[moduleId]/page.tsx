@@ -24,6 +24,7 @@ import {
 } from "@/lib/store";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
+import { rankDishes, topRevenue } from "@/lib/dishSales";
 import { useLang, type Dict } from "@/app/i18n";
 import MenuGeneratorPortal from "@/components/MenuGeneratorPortal";
 import QrMenuPortal from "@/components/QrMenuPortal";
@@ -135,16 +136,19 @@ const T: Record<string, Dict> = {
   saveAndApply: { en: "Save & apply", zh: "保存并应用", fr: "Enregistrer et appliquer" },
   savedTiersUpdated: { en: "Saved, {n} members' tiers updated", zh: "已保存，{n} 位会员等级已更新", fr: "Enregistré, niveaux de {n} membres mis à jour" },
   saved: { en: "Saved", zh: "已保存", fr: "Enregistré" },
-  // dish sales ranking
+  // dish sales ranking (design review 2026-07-20 — variant C: ranked table, no
+  // emoji, no colour-wash boxes, zero-sellers visible rather than filtered out).
+  // Column headers come from the module's own field labels, not from here, so
+  // there is one source of truth for 菜名/售价/月销量/销售额.
   salesRanking: { en: "Sales ranking", zh: "销量排行", fr: "Classement des ventes" },
-  mostPopular: { en: "⭐ Most popular", zh: "⭐ 最受欢迎", fr: "⭐ Les plus populaires" },
-  lowestSales: { en: "🐢 Lowest sales", zh: "🐢 销量最低", fr: "🐢 Ventes les plus faibles" },
-  portionsRevenue: { en: "{n} sold · {rev}", zh: "{n} 份 · {rev}", fr: "{n} vendus · {rev}" },
-  tooFewDishes: { en: "Too few dishes, none yet", zh: "菜品太少，暂无", fr: "Trop peu de plats, aucun" },
-  dishName: { en: "Dish", zh: "菜名", fr: "Plat" },
-  price: { en: "Price", zh: "售价", fr: "Prix" },
-  monthlySales: { en: "Monthly", zh: "月销", fr: "Mensuel" },
-  revenue: { en: "Revenue", zh: "销售额", fr: "Chiffre d'affaires" },
+  rank: { en: "Rank", zh: "排名", fr: "Rang" },
+  notSold: { en: "Not sold", zh: "未售出", fr: "Non vendu" },
+  emptyRankTitle: { en: "No sales data yet", zh: "还没有销量数据", fr: "Aucune donnée de vente" },
+  emptyRankHint: {
+    en: "Dishes sync here from your menu. Enter a monthly quantity and the ranking appears.",
+    zh: "菜单里的菜品会自动同步到这里，录入月销量后就能看到排行。",
+    fr: "Les plats se synchronisent depuis votre menu. Saisissez une quantité mensuelle pour voir le classement.",
+  },
   // supplier compare
   supplierCompare: { en: "Supplier price comparison", zh: "供应商比价", fr: "Comparaison des fournisseurs" },
   supplierCompareHint: { en: "Average unit price per supplier for the same item; green is the lowest", zh: "同一品项各供应商的平均单价，绿色为最低价", fr: "Prix unitaire moyen par fournisseur pour le même article ; le vert est le plus bas" },
@@ -906,6 +910,11 @@ export default function ModulePage() {
   // Equipment groups the history by device — one row per device (the latest
   // service), with an arrow to expand the rest of its maintenance history.
   const groupByEquipment = moduleId === "equipment";
+  // 菜品销量 renders ONE table: the ranked one in ModuleInsights, which carries
+  // the same edit/delete actions the generic table would. Showing both listed
+  // every dish twice — ranked, then again unranked — with nothing saying why
+  // (design review 2026-07-20 D4).
+  const rankedTableReplacesGeneric = moduleId === "dish-margin";
   const staffGroups = useMemo(() => {
     const map = new Map<string, RecordRow[]>();
     for (const r of filteredRows) {
@@ -1419,7 +1428,27 @@ export default function ModulePage() {
       )}
 
       {/* module-specific analytics (毛利排行 / 供应商比价 / 评价类别 / 本月保养清单…) */}
-      <ModuleInsights moduleId={moduleId} rows={rows} slug={slug} refresh={() => setTick((t) => t + 1)} />
+      <ModuleInsights
+        moduleId={moduleId}
+        rows={rows}
+        slug={slug}
+        refresh={() => setTick((t) => t + 1)}
+        fields={displayFields}
+        edit={{
+          editingId,
+          editForm,
+          setEditForm,
+          startEdit,
+          saveEdit,
+          cancelEdit,
+          remove: async (id: string) => {
+            await deleteRecord(id);
+            setTick((tk) => tk + 1);
+          },
+        }}
+        onAddRecord={() => setOpen(true)}
+        enabled={enabled}
+      />
 
       {/* trend chart */}
       {mod.amountKey && rows.length >= 2 && (
@@ -1643,7 +1672,10 @@ export default function ModulePage() {
       {moduleId === "scheduling" && <AttendanceAnomalies rows={filteredRows} />}
 
       {/* records table — dense grid; scrolls within the card on mobile (contained,
-          never breaks the page). Card-ify is a separate larger effort (T2). */}
+          never breaks the page). Card-ify is a separate larger effort (T2).
+          Suppressed for 菜品销量, whose ranked table above already lists every
+          record with the same actions. */}
+      {!rankedTableReplacesGeneric && (
       <section className="card overflow-hidden">
         <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-ink-faint sm:hidden">{t(T.swipeHint)}</div>
         <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
@@ -1887,6 +1919,7 @@ export default function ModulePage() {
           </div>
         )}
       </section>
+      )}
     </main>
   );
 }
@@ -2010,9 +2043,33 @@ function AttendanceAnomalies({ rows }: { rows: RecordRow[] }) {
   );
 }
 
+/** Inline edit/delete plumbing owned by ModulePage, handed to insight blocks
+ *  that render their own table (菜品销量) instead of the generic one. */
+export interface EditHandlers {
+  editingId: string | null;
+  editForm: Record<string, string>;
+  setEditForm: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  startEdit: (r: RecordRow) => void;
+  saveEdit: () => void;
+  cancelEdit: () => void;
+  remove: (id: string) => Promise<void>;
+}
+
 /** Per-module analytics blocks that the generic stats/alerts can't express. */
-function ModuleInsights({ moduleId, rows, slug, refresh }: { moduleId: string; rows: RecordRow[]; slug: string; refresh: () => void }) {
-  if (moduleId === "dish-margin") return <DishSalesRanking rows={rows} />;
+function ModuleInsights({
+  moduleId, rows, slug, refresh, fields, edit, onAddRecord, enabled,
+}: {
+  moduleId: string;
+  rows: RecordRow[];
+  slug: string;
+  refresh: () => void;
+  fields: Field[];
+  edit: EditHandlers;
+  onAddRecord: () => void;
+  enabled: boolean;
+}) {
+  if (moduleId === "dish-margin")
+    return <DishSalesRanking rows={rows} fields={fields} edit={edit} onAddRecord={onAddRecord} enabled={enabled} />;
   if (moduleId === "purchasing") return <SupplierCompare rows={rows} />;
   if (moduleId === "reviews") return <ReviewTopics rows={rows} />;
   if (moduleId === "members") return <TierSettings slug={slug} />;
@@ -2206,66 +2263,143 @@ function TierSettings({ slug }: { slug: string }) {
   );
 }
 
-function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
-  const { t } = useLang();
-  const ranked = useMemo(() => {
-    return rows
-      .map((r) => {
-        const price = parseFloat(r.price) || 0;
-        const sold = parseFloat(r.soldMonth) || 0;
-        const revenue = price * sold;
-        return { dish: r.dish || "—", price, sold, revenue };
-      })
-      .filter((d) => d.sold > 0)
-      .sort((a, b) => b.sold - a.sold);
-  }, [rows]);
+/** 菜品销量 — the ONE table this module renders (the generic records table is
+ *  suppressed for dish-margin; see rankedTableReplacesGeneric).
+ *
+ *  Design review 2026-07-20, approved variant C:
+ *   · Ranked leaderboard. The numbers are the visual interest — no colour-wash
+ *     summary boxes, no emoji, no per-row accent bar.
+ *   · Dishes that sold ZERO are ranked LAST, not filtered out. The module's own
+ *     stated pain is 「不知道哪些菜卖得好、哪些卖不动」; the old `.filter(sold > 0)`
+ *     removed exactly the dishes the owner wants to find.
+ *   · Emerald marks ONE thing — the top revenue figure. An accent on every row
+ *     marks nothing.
+ *   · Body ≥14px with tabular-nums so money columns line up and don't jitter.
+ *
+ *      rank  dish            price     sold      revenue
+ *      ────  ─────────────  ───────  ───────  ──────────
+ *       1    红烧蟹肉翅       $48.00     1,286   $61,728.00  ← emerald (top)
+ *       2    白灼虾           $36.00     1,102   $39,672.00
+ *       …
+ *       9    避风塘炒蟹       $88.00         0        $0.00  ← muted + 未售出
+ */
+function DishSalesRanking({
+  rows, fields, edit, onAddRecord, enabled,
+}: {
+  rows: RecordRow[];
+  fields: Field[];
+  edit: EditHandlers;
+  onAddRecord: () => void;
+  enabled: boolean;
+}) {
+  const { t, lang } = useLang();
 
-  if (ranked.length < 2) return null;
-  const top = ranked.slice(0, 3);
-  const bottom = ranked.slice(-3).reverse().filter((d) => !top.includes(d));
+  // Ordering rules live in lib/dishSales (pure, unit-tested) — the zero-seller
+  // behaviour is the point of this panel and deserves a test, not a comment.
+  const ranked = useMemo(() => rankDishes(rows), [rows]);
+  const topRev = useMemo(() => topRevenue(ranked), [ranked]);
+
+  // Empty is a feature (DESIGN-PLATFORM.md States). The old code returned null
+  // here, so a new merchant saw blank space and couldn't tell broken from empty.
+  if (ranked.length === 0) {
+    return (
+      <section className="card mb-6 p-8 text-center">
+        <div className="text-sm font-semibold text-ink">{t(T.emptyRankTitle)}</div>
+        <p className="mx-auto mt-1.5 max-w-md text-sm text-ink-soft">{t(T.emptyRankHint)}</p>
+        {enabled && (
+          <button className="btn-primary mt-4" onClick={onAddRecord}>
+            {t(T.addRecord)}
+          </button>
+        )}
+      </section>
+    );
+  }
 
   return (
-    <section className="card mb-6 p-5">
-      <div className="mb-3 text-sm font-semibold text-ink">{t(T.salesRanking)}</div>
-      <div className="mb-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-700">{t(T.mostPopular)}</div>
-          {top.map((d) => (
-            <div key={d.dish} className="flex justify-between text-xs text-emerald-900">
-              <span>{d.dish}</span>
-              <span className="font-medium">{t(T.portionsRevenue).replace("{n}", String(d.sold)).replace("{rev}", money(d.revenue))}</span>
-            </div>
-          ))}
-        </div>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-700">{t(T.lowestSales)}</div>
-          {bottom.length ? bottom.map((d) => (
-            <div key={d.dish} className="flex justify-between text-xs text-amber-900">
-              <span>{d.dish}</span>
-              <span className="font-medium">{t(T.portionsRevenue).replace("{n}", String(d.sold)).replace("{rev}", money(d.revenue))}</span>
-            </div>
-          )) : <div className="text-xs text-amber-700/60">{t(T.tooFewDishes)}</div>}
-        </div>
+    <section className="card mb-6 overflow-hidden">
+      <div className="border-b border-slate-100 px-5 py-3 text-[13px] font-bold text-ink">
+        {t(T.salesRanking)}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[320px] text-xs">
+      <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+        <table className="w-full min-w-[560px] text-sm [font-variant-numeric:tabular-nums]">
           <thead>
-            <tr className="border-b border-slate-200 text-left text-ink-faint">
-              <th className="py-1.5 pr-3 font-medium">{t(T.dishName)}</th>
-              <th className="py-1.5 px-3 font-medium text-right">{t(T.price)}</th>
-              <th className="py-1.5 px-3 font-medium text-right">{t(T.monthlySales)}</th>
-              <th className="py-1.5 pl-3 font-medium text-right">{t(T.revenue)}</th>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-ink-faint">
+              <th className="w-14 px-4 py-2.5 font-medium">{t(T.rank)}</th>
+              {fields.map((f) => (
+                <th
+                  key={f.key}
+                  className={`px-4 py-2.5 font-medium ${f.type === "money" || f.type === "number" ? "text-right" : ""}`}
+                >
+                  {biLabel(f.label, lang)}
+                </th>
+              ))}
+              <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody>
-            {ranked.map((d) => (
-              <tr key={d.dish} className="border-b border-slate-100 last:border-0">
-                <td className="py-1.5 pr-3 text-ink">{d.dish}</td>
-                <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.price)}</td>
-                <td className="py-1.5 px-3 text-right text-ink-soft">{d.sold}</td>
-                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.revenue)}</td>
-              </tr>
-            ))}
+            {ranked.map((d, i) => {
+              const r = d.row;
+              const isEditing = edit.editingId === r.id;
+              const unsold = d.sold <= 0;
+              if (isEditing) {
+                return (
+                  <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-1.5 text-ink-faint">{i + 1}</td>
+                    {fields.map((f) => (
+                      <td key={f.key} className="px-2 py-1.5">
+                        <EditCellInput
+                          field={f}
+                          value={edit.editForm[f.key] ?? ""}
+                          onChange={(v) => edit.setEditForm((prev) => ({ ...prev, [f.key]: v }))}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-4 py-1.5 text-right whitespace-nowrap">
+                      <button onClick={edit.saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.save)}</button>
+                      <button onClick={edit.cancelEdit} className="text-xs text-ink-faint hover:text-ink">{t(T.cancel)}</button>
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                  <td className={`px-4 py-3 ${unsold ? "text-ink-faint" : "font-semibold text-ink"}`}>{i + 1}</td>
+                  {fields.map((f) => {
+                    const numeric = f.type === "money" || f.type === "number";
+                    // The single highest revenue figure is the one emerald in
+                    // this panel. Guard on > 0 so an all-zero month doesn't
+                    // decorate a $0 row as if it were the winner.
+                    const isTopRevenue = f.key === "revenue" && topRev > 0 && d.revenue === topRev;
+                    return (
+                      <td
+                        key={f.key}
+                        className={[
+                          "px-4 py-3",
+                          numeric ? "text-right" : "",
+                          isTopRevenue ? "font-semibold text-brand" : unsold ? "text-ink-faint" : "text-ink-soft",
+                        ].join(" ")}
+                      >
+                        {renderCell(f, r[f.key])}
+                        {/* Text label, not colour alone — a11y + it names the
+                            thing the owner is looking for. */}
+                        {f.key === "soldMonth" && unsold && (
+                          <span className="ml-2 text-xs text-ink-faint">{t(T.notSold)}</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button onClick={() => edit.startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
+                    <button
+                      onClick={async () => { if (confirm(t(T.confirmDelete))) await edit.remove(r.id); }}
+                      className="text-xs text-ink-faint hover:text-red-600"
+                    >
+                      {t(T.del)}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
