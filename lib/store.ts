@@ -48,6 +48,7 @@ export interface Tenant {
   tableLayout: TableSpot[]; // floor-plan positions (additive; keyed by label)
   trackPayments: boolean; // record cash/EMT/card at checkout + show method stats; off → everything is plain sales
   dayStartHour: number; // business-day start hour (Toronto), 0 = midnight; after-midnight sales before this hour count to the previous day
+  campus: boolean; // campus-only merchant (e.g. Pita Express) → campus branding/flows
   users: User[];
   records: Record<string, RecordRow[]>;
 }
@@ -69,6 +70,7 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     tableLayout: Array.isArray(row.table_layout) ? row.table_layout : [],
     trackPayments: row.track_payments ?? true, // default ON (method tracking)
     dayStartHour: typeof row.day_start_hour === "number" ? row.day_start_hour : 0,
+    campus: !!row.campus,
     users,
     records,
   };
