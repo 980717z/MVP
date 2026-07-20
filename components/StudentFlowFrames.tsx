@@ -11,6 +11,7 @@
 //  (DESIGN.md), framed in phone mocks. No real shop shown (fulai anonymized).
 // ─────────────────────────────────────────────────────────────────────────
 
+import Link from "next/link";
 import { useLang, type Dict, type Lang } from "@/app/i18n";
 
 const JADE = "#117A65";
@@ -28,6 +29,7 @@ const T = {
     en: "Browse every campus truck in one place, order from your phone, get a ping when it's ready, show your pickup code and go. No lineup.",
     fr: "Parcourez tous les camions du campus, commandez depuis votre téléphone, recevez une alerte quand c'est prêt, montrez votre code et repartez.",
   },
+  viewLive: { zh: "去看看真实页面 →", en: "See it live →", fr: "Voir en direct →" },
   cap1: { zh: "① 一处浏览全部餐车", en: "① Browse every truck in one place", fr: "① Parcourez tous les camions" },
   cap2: { zh: "② 点开一家看菜单", en: "② Tap a truck, see the menu", fr: "② Ouvrez un camion, voyez le menu" },
   cap3: { zh: "③ 提前下单,做好通知你", en: "③ Order ahead, get notified", fr: "③ Commandez à l'avance, soyez averti" },
@@ -97,6 +99,14 @@ export default function StudentFlowFrames() {
         <div className="rise text-xs font-bold uppercase tracking-[0.15em] text-brand-ink">{t(T.eyebrow)}</div>
         <h2 className="rise mt-2 text-balance text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" style={{ animationDelay: "60ms" }}>{t(T.title)}</h2>
         <p className="rise mx-auto mt-3 max-w-xl text-balance text-ink-soft" style={{ animationDelay: "120ms" }}>{t(T.sub)}</p>
+        <div className="rise mt-6" style={{ animationDelay: "180ms" }}>
+          <Link
+            href="/eat"
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90"
+          >
+            {t(T.viewLive)}
+          </Link>
+        </div>
       </div>
 
       <div className="mt-12 grid gap-8 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
