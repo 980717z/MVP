@@ -1546,11 +1546,20 @@ export default function PublicMenu() {
                   {togoMode && !pickupMode && !PAYMENTS_LIVE && (
                     <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">📞 {t("callbackHint").replace("{shop}", shopName)}</p>
                   )}
-                  {pickupMode && (
+                  {pickupMode && truckHours && !truckHours.open && !truckHours.unconfigured ? (
+                    // Truck is closed and submit is disabled — say WHY, right at the
+                    // button. The ⏸ banner up top has long scrolled away by the time
+                    // a student has a full cart open (design review, campus HIGH).
+                    <p className="mb-2 rounded-lg bg-[#FBF1DE] px-3 py-2 text-center text-xs font-semibold text-[#C77A12]">
+                      {truckHours.opensAt
+                        ? tri(`现在打烊，${truckHours.opensAt} 开门后可下单`, `Closed now · ordering opens at ${truckHours.opensAt}`, `Fermé · commandes dès ${truckHours.opensAt}`)
+                        : tri("现在打烊，暂不接单", "Closed right now · not taking orders", "Fermé · pas de commandes")}
+                    </p>
+                  ) : pickupMode ? (
                     <p className="mb-2 rounded-lg bg-jade-wash px-3 py-2 text-center text-xs font-medium text-jade">
                       💵 {tri("到餐车出示取餐号，取餐时付款", "Show your code at the truck · pay when you pick up", "Montrez votre code au camion · payez au retrait")}
                     </p>
-                  )}
+                  ) : null}
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
                   )}

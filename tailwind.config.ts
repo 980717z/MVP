@@ -9,10 +9,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Warm neutrals per DESIGN-PLATFORM.md (and DESIGN.md's #1C1B19 diner
+        // ink — imperceptibly close, so one token serves both brands). These
+        // were cool slate (#0f172a/#334155/#64748b), which matched neither
+        // design system; every `text-ink*` across 33 files rendered cool-grey.
         ink: {
-          DEFAULT: "#0f172a",
-          soft: "#334155",
-          faint: "#64748b",
+          DEFAULT: "#1A1D1B",
+          soft: "#5B635E",
+          faint: "#8E948F",
         },
         // BentoOS platform brand — emerald (see DESIGN-PLATFORM.md).
         // Replaces legacy blue #2563eb; unifies back-office with the landing.
