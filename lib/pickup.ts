@@ -37,6 +37,10 @@ export async function createPickupOrder(input: {
   slug: string;
   items: OrderItem[];
   phone?: string;
+  /** Customer name + email — required for campus pickup (no-show accountability);
+   *  the server re-validates and stores them. */
+  name?: string;
+  email?: string;
   note?: string;
   /** ISO timestamp of the student's chosen pickup time; omit for ASAP. */
   pickup_at?: string | null;

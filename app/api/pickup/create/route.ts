@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { pickupGate, type Hours } from "@/lib/hours";
 import { lineName, isNoCookDish, unitPrice, normDish, type DishLike } from "@/lib/dish";
+import { isValidEmail, cleanEmail, cleanName } from "@/lib/contact";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,7 @@ const RETRY_LATER = "暂时无法下单，请稍后再试 / Can't take orders ri
 const MENU_CHANGED = "菜单已更新，请刷新后重试 / The menu changed — please refresh and try again";
 
 export async function POST(req: Request) {
-  let body: { slug?: string; items?: InItem[]; phone?: string; note?: string; pickup_at?: string | null };
+  let body: { slug?: string; items?: InItem[]; phone?: string; name?: string; email?: string; note?: string; pickup_at?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -60,6 +61,17 @@ export async function POST(req: Request) {
   }
 
   const slug = (body.slug || "").trim();
+
+  // Name + email: server re-validates and stores them (client requires both for
+  // customer pickup; a crafted request must not slip a malformed email or a
+  // paragraph-length name past). Reject a malformed email if one was sent;
+  // store cleaned values. Empty is tolerated here (staff-placed orders legitimately
+  // lack them) — the required-for-customers rule is enforced on the client.
+  const custName = cleanName(body.name);
+  const custEmail = cleanEmail(body.email);
+  if (custEmail && !isValidEmail(custEmail)) {
+    return NextResponse.json({ ok: false, error: "邮箱格式不对 / That email doesn't look right" }, { status: 400 });
+  }
   const rawItems = Array.isArray(body.items) ? body.items.filter((it) => it && typeof it.id === "string" && it.id) : [];
   if (!slug || rawItems.length === 0) {
     return NextResponse.json({ ok: false, error: "missing slug or items" }, { status: 400 });
@@ -175,6 +187,12 @@ export async function POST(req: Request) {
     order_type: "pickup",
     pickup_code,
     tracking_token,
+    // Contact for no-show follow-up. REQUIRES supabase/order-contact-fields.sql
+    // to have run — customer orders always carry these, so a pre-migration DB
+    // would reject the insert. Spread-when-set only spares staff-placed orders
+    // that legitimately omit them.
+    ...(custName ? { customer_name: custName } : {}),
+    ...(custEmail ? { email: custEmail } : {}),
     // Spread-when-set: ASAP orders never reference the column, so the pickup
     // flow keeps working even if pickup-time.sql hasn't been run yet.
     ...(requested_pickup_at ? { requested_pickup_at } : {}),

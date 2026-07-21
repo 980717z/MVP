@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
+import { isValidEmail, hasName } from "@/lib/contact";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -147,6 +148,11 @@ export default function PublicMenu() {
   const [postal, setPostal] = useState("");
   const [addrErr, setAddrErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  const [emailErr, setEmailErr] = useState(false);
+  // Customer name — required for campus pickup (no-show accountability), so the
+  // truck can call out a name and follow up on a ghosted order.
+  const [custName, setCustName] = useState("");
+  const [nameErr, setNameErr] = useState(false);
   // Shop's delivery zone (postal-FSA whitelist) from the public storefront
   // view; falls back to the downtown default until delivery-zone.sql runs.
   const [zoneFsas, setZoneFsas] = useState<string[]>(DT_FSAS);
@@ -368,6 +374,9 @@ export default function PublicMenu() {
   // no-table (food-truck) vendor. Optional only for the whole-store QR of a
   // sit-down shop, and staff-placed orders.
   const phoneRequired = (togoMode || noTables || (!!lockedTable && !staff)) && !noPhone;
+  // Campus pickup requires name + email + phone (no-show accountability). Staff
+  // placing an order at the window for a walk-in are exempt, like phone.
+  const contactRequired = pickupMode && !staff;
   // The 无电话 opt-out is a STAFF affordance only — a diner ordering takeout must
   // still leave a number, since nobody can chase them down otherwise.
   const canSkipPhone = staff && (togoMode || noTables);
@@ -552,6 +561,11 @@ export default function PublicMenu() {
     // pickup_code), then hand off to the anonymous /order/[id] tracking screen.
     // Order-only — no online charge; staff settle at the truck.
     if (pickupMode) {
+      // Name + email required for campus pickup (no-show accountability). Check
+      // before resolving time so the student sees which field to fix.
+      if (contactRequired && !hasName(custName)) { setSubmitting(false); setNameErr(true); return; }
+      if (contactRequired && !isValidEmail(email)) { setSubmitting(false); setEmailErr(true); return; }
+      setNameErr(false); setEmailErr(false);
       // Scheduled pickup: resolve the chip/time choice; a past custom time
       // (e.g. a tab left open across noon) must re-pick, not cook stale.
       const when = resolvePickupAt(pickupWhen);
@@ -560,7 +574,7 @@ export default function PublicMenu() {
         setPickupErr(tri("这个时间已经过了，请重新选择", "That time has already passed — pick a new one", "Cette heure est déjà passée, choisissez-en une autre"));
         return;
       }
-      const pu = await createPickupOrder({ slug, items, phone: phoneToSave, note, pickup_at: when.iso });
+      const pu = await createPickupOrder({ slug, items, phone: phoneToSave, name: custName, email, note, pickup_at: when.iso });
       setSubmitting(false);
       if ("error" in pu) {
         // Server messages (hours gate, time window) are written for customers —
@@ -1465,7 +1479,33 @@ export default function PublicMenu() {
                         {pickupErr && <p className="mt-1 text-xs text-red-600">{pickupErr}</p>}
                       </div>
                     )}
-                    <input className="input" type="email" inputMode="email" placeholder={t("email")} value={email} onChange={(e) => setEmail(e.target.value)} />
+                    {/* Campus pickup: name + email required alongside phone so the
+                        truck can reach a student about a ready/ghosted order. */}
+                    {contactRequired && (
+                      <div>
+                        <input
+                          className={`input w-full ${nameErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
+                          type="text"
+                          autoComplete="name"
+                          placeholder={tri("姓名（必填）", "Name (required)", "Nom (requis)")}
+                          value={custName}
+                          onChange={(e) => { setCustName(e.target.value); if (nameErr) setNameErr(false); }}
+                        />
+                        {nameErr && <p className="mt-1 text-xs text-[#C0392B]">{tri("请填写姓名", "Please enter your name", "Veuillez saisir votre nom")}</p>}
+                      </div>
+                    )}
+                    <div>
+                      <input
+                        className={`input w-full ${emailErr ? "border-red-400 ring-2 ring-red-200" : ""}`}
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        placeholder={contactRequired ? tri("邮箱（必填）", "Email (required)", "Courriel (requis)") : t("email")}
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(false); }}
+                      />
+                      {emailErr && <p className="mt-1 text-xs text-[#C0392B]">{tri("请填写有效邮箱", "Please enter a valid email", "Veuillez saisir un courriel valide")}</p>}
+                    </div>
                   </div>
                 )}
 
