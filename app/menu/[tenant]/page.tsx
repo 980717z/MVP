@@ -779,18 +779,18 @@ export default function PublicMenu() {
                   setStaffEditKey(d.id);
                 }}
                 title={tri("备注 / 改价", "Note / price", "Note / prix")}
-                className={`grid h-7 w-7 flex-none place-items-center rounded-full border text-sm ${(itemMeta[d.id]?.units ?? []).some((m) => (m?.adjust ?? 0) !== 0 || (m?.note ?? "").trim() !== "") ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
+                className={`grid h-11 w-11 flex-none place-items-center rounded-full border text-sm ${(itemMeta[d.id]?.units ?? []).some((m) => (m?.adjust ?? 0) !== 0 || (m?.note ?? "").trim() !== "") ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
               >
                 ✎
               </button>
             )}
             {qty === 0 ? (
-              <button onClick={() => inc(d.id, 1)} className="rounded-full bg-jade px-3 py-1.5 text-sm font-medium text-white">＋</button>
+              <button onClick={() => inc(d.id, 1)} className="grid h-11 w-11 place-items-center rounded-full bg-jade text-lg text-white">＋</button>
             ) : (
               <div className="flex items-center gap-2">
-                <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                <button onClick={() => inc(d.id, -1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300 text-ink">－</button>
                 <span className="w-5 text-center font-semibold text-ink">{qty}</span>
-                <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                <button onClick={() => inc(d.id, 1)} className="grid h-11 w-11 place-items-center rounded-full bg-jade text-white">＋</button>
               </div>
             )}
           </div>
@@ -837,9 +837,9 @@ export default function PublicMenu() {
                     </div>
                   </div>
                   <div className="flex flex-none items-center gap-1.5">
-                    <button onClick={() => inc(x.key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                    <button onClick={() => inc(x.key, -1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300">－</button>
                     <span className="w-5 text-center font-semibold">{x.qty}</span>
-                    <button onClick={() => inc(x.key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                    <button onClick={() => inc(x.key, 1)} className="grid h-11 w-11 place-items-center rounded-full bg-jade text-white">＋</button>
                   </div>
                 </div>
               ))}
@@ -1183,12 +1183,12 @@ export default function PublicMenu() {
                           {q > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-[16px] place-items-center rounded-full bg-jade px-0.5 text-[10px] font-bold text-white">{q}</span>}
                         </button>
                       ) : q === 0 ? (
-                        <button onClick={() => inc(d.id, 1)} className="grid h-8 w-8 flex-none place-items-center rounded-full bg-jade text-lg font-bold text-white">＋</button>
+                        <button onClick={() => inc(d.id, 1)} className="grid h-11 w-11 flex-none place-items-center rounded-full bg-jade text-lg font-bold text-white">＋</button>
                       ) : (
                         <div className="flex flex-none items-center gap-1">
-                          <button onClick={() => inc(d.id, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                          <button onClick={() => inc(d.id, -1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300 text-ink">－</button>
                           <span className="w-4 text-center text-sm font-semibold text-ink">{q}</span>
-                          <button onClick={() => inc(d.id, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                          <button onClick={() => inc(d.id, 1)} className="grid h-11 w-11 place-items-center rounded-full bg-jade text-white">＋</button>
                         </div>
                       )}
                     </div>
@@ -1223,9 +1223,9 @@ export default function PublicMenu() {
                 <div className="min-w-0 truncate text-lg font-bold text-ink">{lang === "zh" ? d.name_zh : d.name_en || d.name_zh}</div>
                 <div className="flex flex-none items-center gap-2">
                   <span className="text-xs text-ink-faint">{tri("份数", "Qty", "Qté")}</span>
-                  <button onClick={() => setN(n - 1)} className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-ink">－</button>
+                  <button onClick={() => setN(n - 1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300 text-ink">－</button>
                   <span className="w-5 text-center text-base font-bold text-ink">{n}</span>
-                  <button onClick={() => setN(n + 1)} className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-ink">＋</button>
+                  <button onClick={() => setN(n + 1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300 text-ink">＋</button>
                 </div>
               </div>
               <div className="flex-1 space-y-2.5 overflow-y-auto p-5">
@@ -1317,12 +1317,12 @@ export default function PublicMenu() {
                     </div>
                     <span className={`font-bold tabular-nums ${sheetDish.is_market ? "text-gold" : "text-jade"}`}>{sheetDish.is_market ? t("market") : fmtPrice(v.price)}</span>
                     {q === 0 ? (
-                      <button onClick={() => inc(key, 1)} className="grid h-8 w-8 flex-none place-items-center rounded-full bg-jade text-lg text-white">＋</button>
+                      <button onClick={() => inc(key, 1)} className="grid h-11 w-11 flex-none place-items-center rounded-full bg-jade text-lg text-white">＋</button>
                     ) : (
                       <div className="flex flex-none items-center gap-2">
-                        <button onClick={() => inc(key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                        <button onClick={() => inc(key, -1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300">－</button>
                         <span className="w-5 text-center font-semibold">{q}</span>
-                        <button onClick={() => inc(key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                        <button onClick={() => inc(key, 1)} className="grid h-11 w-11 place-items-center rounded-full bg-jade text-white">＋</button>
                       </div>
                     )}
                   </div>
@@ -1378,9 +1378,9 @@ export default function PublicMenu() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => inc(x.key, -1)} className="grid h-7 w-7 place-items-center rounded-full border border-slate-300">－</button>
+                        <button onClick={() => inc(x.key, -1)} className="grid h-11 w-11 place-items-center rounded-full border border-slate-300">－</button>
                         <span className="w-5 text-center font-semibold">{x.qty}</span>
-                        <button onClick={() => inc(x.key, 1)} className="grid h-7 w-7 place-items-center rounded-full bg-jade text-white">＋</button>
+                        <button onClick={() => inc(x.key, 1)} className="grid h-11 w-11 place-items-center rounded-full bg-jade text-white">＋</button>
                       </div>
                     </div>
                   ))}

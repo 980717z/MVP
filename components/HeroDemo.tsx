@@ -312,7 +312,9 @@ function Body({ tab }: { tab: string }) {
         </Section>
         <Section title={t({ zh: "套餐", en: "Plan", fr: "Forfait" })}>
           <div className="mt-1 flex items-center justify-between text-[11px]">
-            <span className="font-semibold text-slate-800">{t({ zh: "标准版", en: "Standard", fr: "Standard" })} · $49/mo</span>
+            {/* No public price — pricing is bespoke/contact-for-quote (see the
+                pricing page). A concrete $/mo here contradicted that strategy. */}
+            <span className="font-semibold text-slate-800">{t({ zh: "定制方案", en: "Custom plan", fr: "Forfait sur mesure" })}</span>
             <Tag tone="green">{t({ zh: "使用中", en: "Active", fr: "Actif" })}</Tag>
           </div>
         </Section>
