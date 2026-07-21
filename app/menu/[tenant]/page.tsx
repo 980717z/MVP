@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
+import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
@@ -79,6 +80,11 @@ export default function PublicMenu() {
   // header over blank paper forever — the first screen after the QR scan.
   const [loadErr, setLoadErr] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  // Languages this shop's menu offers (tenants.menu_langs, ordered, first =
+  // default). null = not loaded / column absent → fall back to bilingual zh/en
+  // so the menu never breaks before the migration runs. A non-Chinese vendor
+  // (e.g. Pita Express) is ['en']: no toggle, no Chinese subtitles.
+  const [menuLangs, setMenuLangs] = useState<Lang[] | null>(null);
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const [open, setOpen] = useState(false);
@@ -153,6 +159,16 @@ export default function PublicMenu() {
   // For helpers/data with only zh/en (category & postal-zone names, Clover sheet):
   // French shows English (no French data exists for those).
   const lang2: "zh" | "en" = lang === "zh" ? "zh" : "en";
+
+  // Languages this menu offers (tenants.menu_langs → resolveOfferedLangs, which
+  // falls back to bilingual zh/en pre-migration). See lib/menuLangs for rules.
+  const offeredLangs = useMemo(() => resolveOfferedLangs(menuLangs), [menuLangs]);
+  const bilingual = isBilingual(offeredLangs);
+  // Clamp the active language into what the shop offers: a stored/URL "zh" on an
+  // English-only vendor must not strand the diner on a language with no toggle.
+  useEffect(() => {
+    setLang((cur) => clampLang(cur === "fr" ? "en" : cur, offeredLangs));
+  }, [offeredLangs]);
 
   // Layout view: read the saved manual choice + track viewport width. Layout itself
   // is CSS-driven (md: breakpoints + the [data-view] override in globals.css); this
@@ -262,6 +278,11 @@ export default function PublicMenu() {
     // no `tables` column errors quietly here instead of breaking the whole menu.
     supabase.from("storefront").select("tables").eq("slug", slug).maybeSingle()
       .then(({ data }) => { const tb = (data as { tables?: unknown } | null)?.tables; if (Array.isArray(tb)) setTables(tb as string[]); });
+    // Same defensive pattern: a pre-migration view without menu_langs errors
+    // quietly and the menu falls back to bilingual, so this is safe to deploy
+    // before the SQL runs.
+    supabase.from("storefront").select("menu_langs").eq("slug", slug).maybeSingle()
+      .then(({ data }) => { const ml = (data as { menu_langs?: unknown } | null)?.menu_langs; if (Array.isArray(ml) && ml.length) setMenuLangs(ml as Lang[]); });
     let alive = true;
     setLoadErr(false);
     Promise.all([
@@ -359,6 +380,9 @@ export default function PublicMenu() {
   const shopName = (lang === "zh" ? name?.zh : name?.en || name?.zh) || name?.zh || slug;
 
   const secondaryName = (d: MenuItem): string => {
+    // Single-language vendor: never show the other-language name as a subtitle
+    // (this is what drops 牛肉沙威玛卷 from under an English-only Pita dish).
+    if (!bilingual) return "";
     const primary = (lang === "zh" ? d.name_zh : d.name_en || d.name_zh) || "";
     const secondary = (lang === "zh" ? d.name_en || "" : d.name_zh) || "";
     return secondary.trim() && secondary.trim() !== primary.trim() ? secondary : "";
@@ -697,7 +721,7 @@ export default function PublicMenu() {
       <div key={d.id} className={`flex items-center gap-3 ${sold ? "opacity-45" : ""}`}>
         {d.image_url && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={d.image_url} alt={d.name_zh} className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`} />
+          <img src={d.image_url} alt={lang === "zh" ? d.name_zh : d.name_en || d.name_zh} className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`} />
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[17px] font-semibold leading-snug text-ink">
@@ -857,9 +881,11 @@ export default function PublicMenu() {
         <div className="mv-shell mx-auto flex w-full max-w-[440px] items-center gap-3 px-5 py-4 md:max-w-[1440px]">
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
-              {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? name.zh : "…"}
+              {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? (lang === "zh" ? name.zh : name.en || name.zh) : "…"}
             </div>
-            {!embed && name?.en && name.en !== name.zh && (
+            {/* Romanized subtitle only under the Chinese title — redundant when the
+                title is already English (single-language / EN vendor). */}
+            {!embed && lang === "zh" && name?.en && name.en !== name.zh && (
               <div className="text-[11px] uppercase tracking-[0.15em] text-ink-faint">{name.en}</div>
             )}
           </div>
@@ -878,14 +904,17 @@ export default function PublicMenu() {
               className={`grid h-7 w-8 place-items-center rounded-full text-sm transition ${effectiveView === "desktop" ? "bg-jade text-white" : "text-ink-faint hover:bg-slate-50"}`}
             >🖥️</button>
           </div>
-          <button
-            // FR omitted from the diner menu for now (menu content is zh/en only;
-            // French fell back to English anyway). Landing keeps EN/FR/中.
-            onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
-            className="flex-none rounded-full border border-slate-200 px-3 py-1 text-xs text-ink-soft"
-          >
-            {lang === "zh" ? "EN" : "中"}
-          </button>
+          {/* Language toggle only when the shop offers more than one language.
+              A single-language vendor (menu_langs=['en']) gets no dead toggle.
+              FR omitted from the diner menu — dish content is zh/en only. */}
+          {bilingual && (
+            <button
+              onClick={() => setLang((l) => (l === "zh" ? "en" : "zh"))}
+              className="flex-none rounded-full border border-slate-200 px-3 py-1 text-xs text-ink-soft"
+            >
+              {lang === "zh" ? "EN" : "中"}
+            </button>
+          )}
         </div>
       </header>
 
