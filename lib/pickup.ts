@@ -96,11 +96,21 @@ export async function subscribePickupPush(orderId: string, token: string): Promi
   }
 }
 
-export async function getTracking(orderId: string, token: string): Promise<Tracking | null> {
+/** Distinguishes a transient fetch failure from a genuinely-missing order.
+ *  The tracker polls this every 8s on campus wifi: a dropped request must NOT
+ *  read the same as a real 404, or one blip flips a live order to "not found"
+ *  and kills the poll (design review, order-tracker CRITICAL). */
+export type TrackingResult =
+  | { ok: true; track: Tracking }
+  | { ok: false; reason: "notfound" }
+  | { ok: false; reason: "error" };
+
+export async function getTracking(orderId: string, token: string): Promise<TrackingResult> {
   const { data, error } = await supabase.rpc("get_order_tracking", { p_order_id: orderId, p_token: token });
   if (error) {
     console.error("getTracking", error.message);
-    return null;
+    return { ok: false, reason: "error" }; // transient — caller keeps last-good + keeps polling
   }
-  return (Array.isArray(data) ? data[0] : data) ?? null;
+  const row = (Array.isArray(data) ? data[0] : data) ?? null;
+  return row ? { ok: true, track: row } : { ok: false, reason: "notfound" };
 }

@@ -31,6 +31,9 @@ export default function PickupTracking() {
   const [state, setState] = useState<"loading" | "ok" | "notfound">("loading");
   const [push, setPush] = useState<PickupPushState | "idle" | "asking">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Once we've shown a real order, never flip back to "not found" on a later
+  // blip — an order can't un-exist. notfound is reachable only on first load.
+  const everLoaded = useRef(false);
 
   const enableNotify = async () => {
     setPush("asking");
@@ -42,13 +45,21 @@ export default function PickupTracking() {
     let alive = true;
 
     const poll = async () => {
-      const t = await getTracking(id, token);
+      const res = await getTracking(id, token);
       if (!alive) return;
-      if (!t) { setState("notfound"); return; }
-      setTrack(t);
-      setState("ok");
-      // Stop once picked up or cancelled; pause while the tab is hidden.
-      if (t.picked_up_at || t.status === "cancelled") return;
+      if (res.ok) {
+        everLoaded.current = true;
+        setTrack(res.track);
+        setState("ok");
+        // Stop once picked up or cancelled; pause while the tab is hidden.
+        if (res.track.picked_up_at || res.track.status === "cancelled") return;
+      } else if (res.reason === "notfound" && !everLoaded.current) {
+        // Genuine bad/expired link on first load — the ONLY path to notfound.
+        setState("notfound");
+        return;
+      }
+      // Transient error, or a "notfound" after we've already shown the order:
+      // keep whatever is on screen and keep polling so the tracker self-heals.
       const delay = document.visibilityState === "hidden" ? 30_000 : 8_000;
       timer.current = setTimeout(poll, delay);
     };

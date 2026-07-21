@@ -75,6 +75,10 @@ export default function PublicMenu() {
   const [dishes, setDishes] = useState<MenuItem[]>([]);
   const [catOrder, setCatOrder] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Menu fetch failed (bad wifi at the truck). Without this the student sees a
+  // header over blank paper forever — the first screen after the QR scan.
+  const [loadErr, setLoadErr] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const [open, setOpen] = useState(false);
@@ -258,18 +262,25 @@ export default function PublicMenu() {
     // no `tables` column errors quietly here instead of breaking the whole menu.
     supabase.from("storefront").select("tables").eq("slug", slug).maybeSingle()
       .then(({ data }) => { const tb = (data as { tables?: unknown } | null)?.tables; if (Array.isArray(tb)) setTables(tb as string[]); });
+    let alive = true;
+    setLoadErr(false);
     Promise.all([
       supabase.from("storefront").select("name, cat_order").eq("slug", slug).maybeSingle(),
       listMenuItems(slug),
     ]).then(([shop, items]) => {
+      if (!alive) return;
+      // A storefront read error (not just an empty row) must not read as "menu
+      // ready but empty" — that hides the retry. Treat it as a load failure.
+      if (shop.error) { setLoadErr(true); return; }
       const n = shop.data?.name;
       setName(typeof n === "string" ? { zh: n, en: n } : n ?? { zh: slug, en: slug });
       const co = (shop.data as any)?.cat_order;
       setCatOrder(Array.isArray(co) ? co : []);
       setDishes(items);
       setLoaded(true);
-    });
-  }, [slug]);
+    }).catch(() => { if (alive) setLoadErr(true); });
+    return () => { alive = false; };
+  }, [slug, reloadTick]);
 
   const byId = useMemo(() => Object.fromEntries(dishes.map((d) => [d.id, d])), [dishes]);
   const inc = (key: string, delta: number) =>
@@ -904,6 +915,37 @@ export default function PublicMenu() {
       )}
 
       <div className="mv-shell mx-auto w-full max-w-[440px] px-5 py-6 md:max-w-[1440px]">
+        {/* Load failed (bad wifi at the truck): keep the student in the flow with
+            a reason + retry, never a silent blank page. */}
+        {loadErr && (
+          <div className="py-16 text-center">
+            <p className="font-semibold text-ink">{tri("菜单没加载出来", "Couldn't load the menu", "Le menu n'a pas pu se charger")}</p>
+            <p className="mx-auto mt-1 max-w-[300px] text-sm text-ink-faint">{tri("网络好像不太稳，点下面重试。", "The connection looks shaky — tap to retry.", "La connexion semble instable — touchez pour réessayer.")}</p>
+            <button
+              onClick={() => { setLoaded(false); setLoadErr(false); setReloadTick((n) => n + 1); }}
+              className="mt-4 inline-flex min-h-11 items-center rounded-full bg-jade px-5 text-sm font-semibold text-white"
+            >
+              {tri("重试", "Retry", "Réessayer")}
+            </button>
+          </div>
+        )}
+
+        {/* Loading: skeleton dish rows matching the final layout, not blank paper. */}
+        {!loaded && !loadErr && (
+          <div className="animate-pulse space-y-3" aria-hidden="true">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-2xl border border-[#ECE7DF] bg-white p-4">
+                <div className="h-16 w-16 flex-none rounded-xl bg-[#F2EDE4]" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="h-4 w-1/2 rounded bg-[#F2EDE4]" />
+                  <div className="h-3 w-1/3 rounded bg-[#F2EDE4]" />
+                </div>
+                <div className="h-8 w-12 flex-none rounded-full bg-[#F2EDE4]" />
+              </div>
+            ))}
+          </div>
+        )}
+
         {loaded && dishes.length === 0 && (
           <p className="py-20 text-center text-sm text-ink-faint">{tri("菜单还没准备好。", "The menu isn't ready yet.", "Le menu n'est pas encore prêt.")}</p>
         )}
