@@ -226,6 +226,15 @@ export async function getCatOrder(slug: string): Promise<string[]> {
   return Array.isArray(v) ? v : [];
 }
 
+/** Read a tenant's menu languages (public-safe via storefront). Empty when
+ *  unset or on a pre-migration view — callers fall back to bilingual. Drives
+ *  the authoring form's primary-language field (English-first for a truck). */
+export async function getMenuLangs(slug: string): Promise<string[]> {
+  const { data } = await supabase.from("storefront").select("menu_langs").eq("slug", slug).maybeSingle();
+  const v = (data as any)?.menu_langs;
+  return Array.isArray(v) ? v : [];
+}
+
 export async function saveCatOrder(slug: string, order: string[]): Promise<void> {
   const { error } = await supabase.from("tenants").update({ cat_order: order }).eq("slug", slug);
   if (error) console.error("saveCatOrder", error);

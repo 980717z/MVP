@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
-import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, getMenuLangs, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
+import { resolveOfferedLangs } from "@/lib/menuLangs";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -20,6 +21,15 @@ const T = {
   tabPhoto: { en: "📷 Upload a menu photo", zh: "📷 上传整张菜单", fr: "📷 Importer une photo du menu" },
   nameZh: { en: "Dish name (Chinese) *", zh: "菜名(中文)*", fr: "Nom du plat (chinois) *" },
   nameZhPh: { en: "e.g. 汽锅鸡", zh: "如:汽锅鸡", fr: "ex. 汽锅鸡" },
+  // English-first authoring (VT2): the PRIMARY field follows the shop's first
+  // menu language. English-operating vendors see English as the required field;
+  // the other language is opt-in (data only — enabling it for customers is a
+  // Settings toggle, per design-review D3=B).
+  nameEnReq: { en: "Dish name (English) *", zh: "菜名(English)*", fr: "Nom du plat (anglais) *" },
+  namePrimaryHint: { en: "This is the name shown to customers.", zh: "顾客菜单上显示的名称。", fr: "Nom affiché aux clients." },
+  addChinese: { en: "+ Add Chinese name", zh: "+ 加中文名", fr: "+ Ajouter le nom chinois" },
+  addEnglish: { en: "+ Add English name", zh: "+ 加英文名", fr: "+ Ajouter le nom anglais" },
+  removeTranslation: { en: "Remove", zh: "移除", fr: "Retirer" },
   nameEn: { en: "Dish name (English)", zh: "菜名(English)", fr: "Nom du plat (anglais)" },
   nameEnPh: { en: "Steam Pot Chicken", zh: "Steam Pot Chicken", fr: "Steam Pot Chicken" },
   price: { en: "Price", zh: "价格", fr: "Prix" },
@@ -110,9 +120,21 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [imagePreview, setImagePreview] = useState<string>("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Which languages this shop authors in. First = primary (required) field.
+  // Dish data is zh/en only, so this resolves to one of those as the primary.
+  const [menuLangs, setMenuLangs] = useState<string[] | null>(null);
+  const primaryLang: "zh" | "en" = resolveOfferedLangs(menuLangs)[0] === "en" ? "en" : "zh";
+  const secondaryLang: "zh" | "en" = primaryLang === "zh" ? "en" : "zh";
+  const secondaryOffered = resolveOfferedLangs(menuLangs).includes(secondaryLang);
+  // Reveal the secondary-language field. Shown by default for a bilingual shop;
+  // collapsed behind "+ Add …" for a single-language (e.g. English-only) vendor.
+  const [showSecondary, setShowSecondary] = useState(false);
+  useEffect(() => { setShowSecondary(secondaryOffered); }, [secondaryOffered]);
+
   useEffect(() => {
     listMenuItemsRaw(slug).then(setDishes);
     getCatOrder(slug).then(setCatOrder);
+    getMenuLangs(slug).then(setMenuLangs).catch(() => setMenuLangs([]));
   }, [slug, tick]);
 
   const pickImage = (f: File | null) => {
@@ -129,7 +151,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   };
 
   const add = async () => {
-    if (!zh.trim()) {
+    // Require the PRIMARY-language name (English for an English-first vendor),
+    // not Chinese specifically.
+    const primaryName = (primaryLang === "en" ? en : zh).trim();
+    if (!primaryName) {
       alert(t(T.errNoName));
       return;
     }
@@ -144,7 +169,11 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
       }
       image_url = up.url ?? "";
     }
-    const { error } = await addMenuItem(slug, { name_zh: zh.trim(), name_en: en.trim(), price, category, image_url });
+    // name_zh is the kitchen-ticket / receipt primary (lineName reads it), so an
+    // English-only vendor who left Chinese blank still gets a real ticket name:
+    // fall back name_zh to the English name. name_en stays as typed.
+    const name_zh = zh.trim() || (primaryLang === "en" ? en.trim() : "");
+    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category, image_url });
     setBusy(false);
     if (error) {
       alert(t(T.errAdd) + error);
@@ -319,15 +348,53 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
           {tab === "manual" ? (
             <>
               <div className="card p-5">
+                {/* Primary dish name (required, the shop's first menu language) +
+                    an opt-in secondary. English-first vendors never see a forced
+                    Chinese field (VT2 / design review). */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between">
+                    <label className="label">{primaryLang === "en" ? t(T.nameEnReq) : t(T.nameZh)}</label>
+                    {!secondaryOffered && !showSecondary && (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                        onClick={() => setShowSecondary(true)}
+                      >
+                        {secondaryLang === "zh" ? t(T.addChinese) : t(T.addEnglish)}
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    className="input"
+                    value={primaryLang === "en" ? en : zh}
+                    onChange={(e) => (primaryLang === "en" ? setEn : setZh)(e.target.value)}
+                    placeholder={primaryLang === "en" ? t(T.nameEnPh) : t(T.nameZhPh)}
+                  />
+                  <p className="mt-1 text-xs text-ink-faint">{t(T.namePrimaryHint)}</p>
+                  {showSecondary && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between">
+                        <label className="label">{secondaryLang === "zh" ? t(T.nameZhInline) : t(T.nameEn)}</label>
+                        {!secondaryOffered && (
+                          <button
+                            type="button"
+                            className="text-xs text-ink-faint hover:text-ink"
+                            onClick={() => { setShowSecondary(false); (secondaryLang === "zh" ? setZh : setEn)(""); }}
+                          >
+                            {t(T.removeTranslation)}
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        className="input"
+                        value={secondaryLang === "zh" ? zh : en}
+                        onChange={(e) => (secondaryLang === "zh" ? setZh : setEn)(e.target.value)}
+                        placeholder={secondaryLang === "zh" ? t(T.nameZhPh) : t(T.nameEnPh)}
+                      />
+                    </div>
+                  )}
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="label">{t(T.nameZh)}</label>
-                    <input className="input" value={zh} onChange={(e) => setZh(e.target.value)} placeholder={t(T.nameZhPh)} />
-                  </div>
-                  <div>
-                    <label className="label">{t(T.nameEn)}</label>
-                    <input className="input" value={en} onChange={(e) => setEn(e.target.value)} placeholder={t(T.nameEnPh)} />
-                  </div>
                   <div>
                     <label className="label">{t(T.price)}</label>
                     <input className="input" type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="42" />
@@ -603,12 +670,24 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                         <div className="flex min-w-0 items-center gap-2">
                           {d.image_url && (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={d.image_url} alt={d.name_zh} className="h-8 w-8 flex-none rounded object-cover" />
+                            <img src={d.image_url} alt={primaryLang === "en" ? d.name_en || d.name_zh : d.name_zh} className="h-8 w-8 flex-none rounded object-cover" />
                           )}
-                          <div className="min-w-0">
-                            <div className="font-medium text-ink">{d.name_zh}</div>
-                            {d.name_en && <div className="text-xs text-ink-faint">{d.name_en}</div>}
-                          </div>
+                          {/* Preview mirrors the customer menu: primary-language
+                              name, and a second-language line only when the shop
+                              actually offers two languages (else an English-only
+                              vendor would see its English name printed twice). */}
+                          {(() => {
+                            const pName = (primaryLang === "en" ? d.name_en || d.name_zh : d.name_zh) || "";
+                            const sName = (secondaryLang === "en" ? d.name_en : d.name_zh) || "";
+                            return (
+                              <div className="min-w-0">
+                                <div className="font-medium text-ink">{pName}</div>
+                                {secondaryOffered && sName && sName.trim() !== pName.trim() && (
+                                  <div className="text-xs text-ink-faint">{sName}</div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="flex-none font-semibold text-ink">
                           {normVariants(d.variants).length > 0 ? `${t(T.fromPrice)} ${fmtPrice(displayPrice({ ...d, variants: normVariants(d.variants) }))}` : fmtPrice(d.price)}
