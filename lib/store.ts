@@ -50,6 +50,7 @@ export interface Tenant {
   trackPayments: boolean; // record cash/EMT/card at checkout + show method stats; off → everything is plain sales
   dayStartHour: number; // business-day start hour (Toronto), 0 = midnight; after-midnight sales before this hour count to the previous day
   campus: boolean; // campus-only merchant (e.g. Pita Express) → campus branding/flows
+  menuLangs: string[]; // customer-menu languages offered (ordered; first = primary). [] = unset → bilingual
   orderModes: OrderMode[]; // which ordering flows this vendor offers; campus truck = ['pickup']
   users: User[];
   records: Record<string, RecordRow[]>;
@@ -73,6 +74,7 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     trackPayments: row.track_payments ?? true, // default ON (method tracking)
     dayStartHour: typeof row.day_start_hour === "number" ? row.day_start_hour : 0,
     campus: !!row.campus,
+    menuLangs: Array.isArray(row.menu_langs) ? row.menu_langs : [],
     orderModes: resolveOrderModes(row.order_modes),
     users,
     records,
@@ -183,6 +185,29 @@ export async function setTrackPayments(slug: string, on: boolean): Promise<void>
 export async function getTrackPayments(slug: string): Promise<boolean> {
   const { data } = await supabase.from("tenants").select("track_payments").eq("slug", slug).maybeSingle();
   return (data as { track_payments?: boolean } | null)?.track_payments ?? true;
+}
+
+/** Set the customer-menu languages a tenant offers (ordered; first = primary).
+ *  Enabling Chinese/French here is what actually shows those languages to diners
+ *  — adding a translation in Menu Settings only stores data (design review D3=B). */
+export async function setMenuLangs(slug: string, langs: string[]): Promise<void> {
+  const clean = langs.filter((l) => l === "en" || l === "zh" || l === "fr");
+  const { error } = await supabase.from("tenants").update({ menu_langs: clean }).eq("slug", slug);
+  if (error) console.error("setMenuLangs", error);
+}
+
+/** Set the order modes a tenant offers (dine/togo/delivery/pickup/market). */
+export async function setOrderModes(slug: string, modes: OrderMode[]): Promise<void> {
+  const clean = resolveOrderModesFromSetting(modes);
+  const { error } = await supabase.from("tenants").update({ order_modes: clean }).eq("slug", slug);
+  if (error) console.error("setOrderModes", error);
+}
+
+/** Keep the order in the canonical mode order; drop unknowns. Unlike the read
+ *  resolver, an empty result is stored as-is (the UI enforces "at least one"). */
+function resolveOrderModesFromSetting(modes: OrderMode[]): OrderMode[] {
+  const set = new Set(modes);
+  return (["dine", "togo", "delivery", "pickup", "market"] as OrderMode[]).filter((m) => set.has(m));
 }
 
 /** Set the business-day start hour (0–23, Toronto) for a tenant. */

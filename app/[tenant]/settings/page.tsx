@@ -10,9 +10,12 @@ import {
   setEnabled,
   setDayStartHour,
   setTrackPayments,
+  setMenuLangs,
+  setOrderModes,
   type Role,
   type Tenant,
 } from "@/lib/store";
+import type { OrderMode } from "@/lib/orderModes";
 import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategoriesInDomain, readyDomains } from "@/lib/catalog";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/useAuth";
@@ -92,6 +95,20 @@ const T: Record<string, Dict> = {
   generate: { en: "Generate back office →", zh: "生成后台 →", fr: "Générer l'arrière-guichet →" },
 
   // Operations
+  // VT4 — menu languages + order types
+  mcTitle: { en: "Menu & ordering", zh: "菜单与点餐", fr: "Menu et commande" },
+  mcBlurb: { en: "Which languages your menu shows, and which ways customers can order.", zh: "菜单显示哪些语言,以及顾客能用哪些方式点餐。", fr: "Les langues du menu et les modes de commande." },
+  langsLabel: { en: "Menu languages", zh: "菜单语言", fr: "Langues du menu" },
+  langsHint: { en: "Turn a language on to show it on your customer menu. The first one on is the default. Keep at least one.", zh: "打开某种语言即在顾客菜单上显示;第一个打开的为默认语言。至少保留一种。", fr: "Activez une langue pour l'afficher; la première activée est la langue par défaut. Gardez-en au moins une." },
+  langFrNote: { en: "French menu isn't available yet (menu shows English/Chinese).", zh: "暂不支持法语菜单(菜单显示中/英)。", fr: "Le menu en français n'est pas encore disponible (menu en anglais/chinois)." },
+  modesLabel: { en: "Order types", zh: "点餐方式", fr: "Types de commande" },
+  modesHint: { en: "Which ways customers can order. A food truck usually keeps just pickup. Keep at least one.", zh: "顾客能用哪些方式点餐。餐车通常只留「取餐」。至少保留一种。", fr: "Les modes de commande. Un camion garde souvent le ramassage. Gardez-en au moins un." },
+  modeDine: { en: "Dine-in (tables)", zh: "堂食(桌位)", fr: "Sur place (tables)" },
+  modeTogo: { en: "Takeout", zh: "外带自取", fr: "À emporter" },
+  modeDelivery: { en: "Delivery", zh: "外送", fr: "Livraison" },
+  modePickup: { en: "Order-ahead pickup", zh: "预约取餐", fr: "Ramassage sur commande" },
+  modeMarket: { en: "Market price (时价)", zh: "时价", fr: "Prix du jour" },
+  keepOne: { en: "Keep at least one on.", zh: "至少保留一项。", fr: "Gardez-en au moins un." },
   opsTitle: { en: "Operations", zh: "运营设置", fr: "Exploitation" },
   opsBlurb: { en: "How the day is counted and whether payment methods are recorded.", zh: "如何划分营业日,以及是否记录付款方式。", fr: "Comment compter la journée et si les modes de paiement sont enregistrés." },
   dayStartLabel: { en: "New business day starts at", zh: "新营业日开始于", fr: "La nouvelle journée commence à" },
@@ -242,6 +259,8 @@ export default function Settings() {
       <AccountLogin />
 
       {/* ── Operations (business-day cutoff + payment tracking) ── */}
+      <MenuConfigSettings slug={slug} tenant={tenant} />
+
       <OpsSettings slug={slug} tenant={tenant} />
 
       {/* ── Users ─────────────────────────────────────────── */}
@@ -404,6 +423,96 @@ export default function Settings() {
         </div>
       </section>
     </main>
+  );
+}
+
+/** Menu languages + order types — the one place a merchant turns customer-facing
+ *  languages and ordering flows on/off (VT4). Enabling a language here is what
+ *  actually shows it to diners (adding a translation in Menu Settings only stores
+ *  data — design review D3=B). */
+function MenuConfigSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
+  const { t } = useLang();
+  const [langs, setLangs] = useState<string[]>(["en"]);
+  const [modes, setModes] = useState<OrderMode[]>(["dine", "togo", "delivery", "pickup", "market"]);
+  const [savedTag, setSavedTag] = useState(false);
+  useEffect(() => {
+    if (!tenant) return;
+    // Show the effective set: an unset menu_langs means the bilingual fallback.
+    setLangs(tenant.menuLangs.length ? tenant.menuLangs : ["zh", "en"]);
+    setModes(tenant.orderModes);
+  }, [tenant]);
+  const flash = () => { setSavedTag(true); setTimeout(() => setSavedTag(false), 1600); };
+
+  // Toggle a language, PRESERVING order so the primary (first entry) stays put —
+  // turning English on for a Chinese-first shop must not demote Chinese. New
+  // languages append to the end; at least one must stay on. (French menu isn't
+  // wired for dish names yet.)
+  const toggleLang = (l: string) => {
+    const next = langs.includes(l) ? langs.filter((x) => x !== l) : [...langs, l];
+    if (next.length === 0) return; // keep at least one
+    setLangs(next);
+    setMenuLangs(slug, next);
+    flash();
+  };
+
+  const MODE_ORDER: { key: OrderMode; label: string }[] = [
+    { key: "dine", label: t(T.modeDine) },
+    { key: "togo", label: t(T.modeTogo) },
+    { key: "delivery", label: t(T.modeDelivery) },
+    { key: "pickup", label: t(T.modePickup) },
+    { key: "market", label: t(T.modeMarket) },
+  ];
+  const toggleMode = (m: OrderMode) => {
+    const next = MODE_ORDER.map((x) => x.key).filter((k) => (k === m ? !modes.includes(m) : modes.includes(k)));
+    if (next.length === 0) return; // keep at least one
+    setModes(next);
+    setOrderModes(slug, next);
+    flash();
+  };
+
+  const Toggle = ({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) => (
+    <div className="flex items-center justify-between gap-4 py-2">
+      <span className="text-sm text-ink">{label}</span>
+      <button
+        onClick={onClick}
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        className={`relative h-6 w-11 flex-none rounded-full transition ${on ? "bg-brand" : "bg-slate-300"}`}
+      >
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-[22px]" : "left-0.5"}`} />
+      </button>
+    </div>
+  );
+
+  return (
+    <section className="card mb-8 p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-ink">{t(T.mcTitle)}</h2>
+        {savedTag && <span className="rounded-full bg-brand-wash px-2 py-0.5 text-xs font-semibold text-brand-ink">{t(T.saved)}</span>}
+      </div>
+      <p className="mb-5 text-sm text-ink-soft">{t(T.mcBlurb)}</p>
+
+      <div className="mb-5">
+        <div className="text-sm font-semibold text-ink">{t(T.langsLabel)}</div>
+        <p className="mt-1 mb-1.5 text-xs text-ink-faint">{t(T.langsHint)}</p>
+        <div className="divide-y divide-[#F3F2EE]">
+          <Toggle on={langs.includes("en")} onClick={() => toggleLang("en")} label="English" />
+          <Toggle on={langs.includes("zh")} onClick={() => toggleLang("zh")} label="中文" />
+        </div>
+        <p className="mt-1.5 text-xs text-ink-faint">{t(T.langFrNote)}</p>
+      </div>
+
+      <div className="border-t border-[#F3F2EE] pt-4">
+        <div className="text-sm font-semibold text-ink">{t(T.modesLabel)}</div>
+        <p className="mt-1 mb-1.5 text-xs text-ink-faint">{t(T.modesHint)}</p>
+        <div className="divide-y divide-[#F3F2EE]">
+          {MODE_ORDER.map((m) => (
+            <Toggle key={m.key} on={modes.includes(m.key)} onClick={() => toggleMode(m.key)} label={m.label} />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
