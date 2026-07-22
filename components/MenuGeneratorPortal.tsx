@@ -717,19 +717,22 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
             <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t(T.menuPreview)}</div>
             <button disabled className="text-xs text-ink-faint opacity-50">{t(T.exportPdf)}</button>
           </div>
-          <div className="card overflow-hidden">
-            <div className="bg-ink px-5 py-4 text-center text-white">
-              <div className="text-lg font-bold tracking-wide">{t(T.menuHeader)}</div>
+          {/* The preview mirrors the customer menu, so it wears the DINER brand
+              (DESIGN.md: warm paper, jade, serif) — not the platform emerald.
+              The form around it stays platform. */}
+          <div className="card overflow-hidden bg-paper" style={{ fontFamily: '"Noto Serif SC", "General Sans", serif' }}>
+            <div className="border-b border-[#ECE7DF] px-5 py-4 text-center">
+              <div className="text-lg font-bold tracking-[0.2em] text-jade">{t(T.menuHeader)}</div>
             </div>
             <div className="p-5">
               {grouped.length === 0 ? (
-                <div className="py-10 text-center text-sm text-ink-faint">{t(T.previewEmpty)}</div>
+                <div className="py-10 text-center text-sm" style={{ color: "#8A857C" }}>{t(T.previewEmpty)}</div>
               ) : (
                 grouped.map((g) => (
                   <div key={g.category} className="mb-4 last:mb-0">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand">{g.category}</div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-jade">{g.category}</div>
                     {g.items.map((d) => (
-                      <div key={d.id} className="flex items-center justify-between gap-3 border-b border-dashed border-slate-200 pb-2 pt-1 last:border-0">
+                      <div key={d.id} className="flex items-center justify-between gap-3 border-b border-dashed border-[#ECE7DF] pb-2 pt-1 last:border-0">
                         <div className="flex min-w-0 items-center gap-2">
                           {d.image_url && (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -744,15 +747,15 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                             const sName = (secondaryLang === "en" ? d.name_en : d.name_zh) || "";
                             return (
                               <div className="min-w-0">
-                                <div className="font-medium text-ink">{pName}</div>
+                                <div className="font-medium" style={{ color: "#1C1B19" }}>{pName}</div>
                                 {secondaryOffered && sName && sName.trim() !== pName.trim() && (
-                                  <div className="text-xs text-ink-faint">{sName}</div>
+                                  <div className="text-xs" style={{ color: "#8A857C" }}>{sName}</div>
                                 )}
                               </div>
                             );
                           })()}
                         </div>
-                        <div className="flex-none font-semibold text-ink">
+                        <div className="flex-none font-semibold text-jade [font-variant-numeric:tabular-nums]">
                           {normVariants(d.variants).length > 0 ? `${t(T.fromPrice)} ${fmtPrice(displayPrice({ ...d, variants: normVariants(d.variants) }))}` : fmtPrice(d.price)}
                         </div>
                       </div>
