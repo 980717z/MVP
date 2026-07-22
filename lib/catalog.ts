@@ -202,17 +202,14 @@ export const MODULES: ModuleDef[] = [
       { key: "dish", label: { zh: "菜名", en: "Dish", fr: "Plat" }, type: "text", half: true, required: true },
       { key: "price", label: { zh: "售价", en: "Price", fr: "Prix" }, type: "money", half: true, unit: true },
       { key: "cost", label: { zh: "成本价", en: "Cost", fr: "Coût" }, type: "money", half: true, unit: true },
-      { key: "margin", label: { zh: "毛利", en: "Margin", fr: "Marge" }, type: "money", half: true, unit: true },
-      { key: "costRate", label: { zh: "成本率", en: "Cost rate", fr: "Taux de coût" }, type: "number", suffix: "%", half: true, unit: true },
-      { key: "marginRate", label: { zh: "毛利率", en: "Margin rate", fr: "Taux de marge" }, type: "number", suffix: "%", half: true, unit: true },
       { key: "soldMonth", label: { zh: "月销量", en: "Sold / month", fr: "Vendu / mois" }, type: "number", suffix: { zh: "份", en: "servings", fr: "portions" }, half: true },
       { key: "revenue", label: { zh: "销售额", en: "Sales", fr: "Ventes" }, type: "money", half: true },
     ],
-    computed: [
-      { target: "margin", formula: "subtract", fields: ["price", "-cost"] },
-      { target: "costRate", formula: "percent", fields: ["cost", "price"] },
-      { target: "marginRate", formula: "percent", fields: ["margin", "price"] },
-    ],
+    // margin/成本率 are computed in DishSalesRanking (lib/dishSales-style hasCost
+    // gating), not stored fields — the shared applyComputed() formula engine
+    // treats a 0 result as "blank" (result ? ... : ""), which would hide a
+    // genuine $0 margin same as "cost not entered yet". Computing it directly
+    // in the ranking view avoids that conflation.
     outputs: [
       { zh: "销量排行：哪些菜最受欢迎", en: "Sales ranking: most popular dishes", fr: "Classement des ventes : les plats les plus populaires" },
       { zh: "完成的订单自动累加销量", en: "Completed orders auto-add sales", fr: "Les commandes complétées s'ajoutent automatiquement aux ventes" },

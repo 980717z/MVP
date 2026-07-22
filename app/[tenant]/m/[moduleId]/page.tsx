@@ -153,6 +153,9 @@ const T: Record<string, Dict> = {
   price: { en: "Price", zh: "售价", fr: "Prix" },
   monthlySales: { en: "Monthly", zh: "月销", fr: "Mensuel" },
   revenue: { en: "Revenue", zh: "销售额", fr: "Chiffre d'affaires" },
+  margin: { en: "Margin", zh: "毛利", fr: "Marge" },
+  costRate: { en: "Food cost %", zh: "成本率", fr: "% coût matière" },
+  noCost: { en: "No cost entered", zh: "未填成本", fr: "Coût non saisi" },
   // supplier compare
   supplierCompare: { en: "Supplier price comparison", zh: "供应商比价", fr: "Comparaison des fournisseurs" },
   supplierCompareHint: { en: "Average unit price per supplier for the same item; green is the lowest", zh: "同一品项各供应商的平均单价，绿色为最低价", fr: "Prix unitaire moyen par fournisseur pour le même article ; le vert est le plus bas" },
@@ -2280,7 +2283,13 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
         const price = parseFloat(r.price) || 0;
         const sold = parseFloat(r.soldMonth) || 0;
         const revenue = price * sold;
-        return { dish: r.dish || "—", price, sold, revenue };
+        // 食材成本率: cost is optional hand entry. hasCost gates margin/costRate
+        // so a blank cost shows "—", not a misleading 0%.
+        const cost = parseFloat(r.cost) || 0;
+        const hasCost = cost > 0;
+        const margin = price - cost;
+        const costRate = hasCost && price > 0 ? cost / price : null;
+        return { dish: r.dish || "—", price, sold, revenue, cost, hasCost, margin, costRate };
       })
       .filter((d) => d.sold > 0)
       .sort((a, b) => b.sold - a.sold);
@@ -2320,7 +2329,9 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
               <th className="py-1.5 pr-3 font-medium">{t(T.dishName)}</th>
               <th className="py-1.5 px-3 font-medium text-right">{t(T.price)}</th>
               <th className="py-1.5 px-3 font-medium text-right">{t(T.monthlySales)}</th>
-              <th className="py-1.5 pl-3 font-medium text-right">{t(T.revenue)}</th>
+              <th className="py-1.5 px-3 font-medium text-right">{t(T.revenue)}</th>
+              <th className="py-1.5 px-3 font-medium text-right">{t(T.margin)}</th>
+              <th className="py-1.5 pl-3 font-medium text-right">{t(T.costRate)}</th>
             </tr>
           </thead>
           <tbody>
@@ -2329,7 +2340,9 @@ function DishSalesRanking({ rows }: { rows: RecordRow[] }) {
                 <td className="py-1.5 pr-3 text-ink">{d.dish}</td>
                 <td className="py-1.5 px-3 text-right text-ink-soft">{money(d.price)}</td>
                 <td className="py-1.5 px-3 text-right text-ink-soft">{d.sold}</td>
-                <td className="py-1.5 pl-3 text-right font-medium text-ink">{money(d.revenue)}</td>
+                <td className="py-1.5 px-3 text-right font-medium text-ink">{money(d.revenue)}</td>
+                <td className={`py-1.5 px-3 text-right ${d.hasCost ? "text-ink-soft" : "text-slate-300"}`}>{d.hasCost ? money(d.margin) : "—"}</td>
+                <td className={`py-1.5 pl-3 text-right ${d.hasCost ? "text-ink-soft" : "text-slate-300"}`}>{d.hasCost ? `${Math.round((d.costRate ?? 0) * 100)}%` : t(T.noCost)}</td>
               </tr>
             ))}
           </tbody>
