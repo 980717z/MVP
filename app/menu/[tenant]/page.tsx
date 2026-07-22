@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
+import { resolveOrderModes, type OrderMode } from "@/lib/orderModes";
 import { isValidEmail, hasName } from "@/lib/contact";
 import { createOrder, type OrderItem } from "@/lib/orders";
 import { createPickupOrder } from "@/lib/pickup";
@@ -86,6 +87,10 @@ export default function PublicMenu() {
   // so the menu never breaks before the migration runs. A non-Chinese vendor
   // (e.g. Pita Express) is ['en']: no toggle, no Chinese subtitles.
   const [menuLangs, setMenuLangs] = useState<Lang[] | null>(null);
+  // Order modes the shop offers (tenants.order_modes). null = not loaded → all
+  // modes (back-compat). A campus truck is pickup-only: any entry lands in the
+  // pickup flow, so a bare /menu/<slug> link still shows time + contact fields.
+  const [menuOrderModes, setMenuOrderModes] = useState<OrderMode[] | null>(null);
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const [open, setOpen] = useState(false);
@@ -175,6 +180,21 @@ export default function PublicMenu() {
   useEffect(() => {
     setLang((cur) => clampLang(cur === "fr" ? "en" : cur, offeredLangs));
   }, [offeredLangs]);
+
+  // Modes the shop offers. Pickup-only vendor (campus truck) → force the pickup
+  // flow no matter how the menu was opened, so a bare /menu/<slug> link (or a
+  // ?m=togo one) still lands a student in pickup with the time + contact fields,
+  // and never in a dine-in / delivery flow the truck doesn't run.
+  const orderModes = useMemo(() => resolveOrderModes(menuOrderModes), [menuOrderModes]);
+  useEffect(() => {
+    if (menuOrderModes == null) return; // unset → all modes, leave URL logic alone
+    if (!orderModes.includes("dine") && orderModes.includes("pickup")) {
+      setTogoMode(true);
+      setPickupMode(true);
+    }
+    // A delivery choice on a shop that doesn't deliver: fall back to pickup/togo.
+    if (!orderModes.includes("delivery")) setTogoType("togo");
+  }, [orderModes, menuOrderModes]);
 
   // Layout view: read the saved manual choice + track viewport width. Layout itself
   // is CSS-driven (md: breakpoints + the [data-view] override in globals.css); this
@@ -289,6 +309,8 @@ export default function PublicMenu() {
     // before the SQL runs.
     supabase.from("storefront").select("menu_langs").eq("slug", slug).maybeSingle()
       .then(({ data }) => { const ml = (data as { menu_langs?: unknown } | null)?.menu_langs; if (Array.isArray(ml) && ml.length) setMenuLangs(ml as Lang[]); });
+    supabase.from("storefront").select("order_modes").eq("slug", slug).maybeSingle()
+      .then(({ data }) => { const om = (data as { order_modes?: unknown } | null)?.order_modes; if (Array.isArray(om) && om.length) setMenuOrderModes(resolveOrderModes(om)); });
     let alive = true;
     setLoadErr(false);
     Promise.all([

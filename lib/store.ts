@@ -9,6 +9,7 @@ import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
 import { computeTax } from "./tax";
 import { isValidSlug } from "./qrContract";
+import { resolveOrderModes, type OrderMode } from "./orderModes";
 
 export type Role = "owner" | "manager" | "staff";
 
@@ -49,6 +50,7 @@ export interface Tenant {
   trackPayments: boolean; // record cash/EMT/card at checkout + show method stats; off → everything is plain sales
   dayStartHour: number; // business-day start hour (Toronto), 0 = midnight; after-midnight sales before this hour count to the previous day
   campus: boolean; // campus-only merchant (e.g. Pita Express) → campus branding/flows
+  orderModes: OrderMode[]; // which ordering flows this vendor offers; campus truck = ['pickup']
   users: User[];
   records: Record<string, RecordRow[]>;
 }
@@ -71,6 +73,7 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     trackPayments: row.track_payments ?? true, // default ON (method tracking)
     dayStartHour: typeof row.day_start_hour === "number" ? row.day_start_hour : 0,
     campus: !!row.campus,
+    orderModes: resolveOrderModes(row.order_modes),
     users,
     records,
   };
@@ -140,6 +143,10 @@ export async function createTenant(input: {
     address: input.address ?? "",
     enabled: orderEnabled(input.enabled ?? []),
     campus: !!input.campus,
+    // Seed the vendor-type defaults at creation: a campus truck is pickup-only
+    // and English-first. Each is overridable later in Settings. (Requires the
+    // order-modes + menu-langs migrations to have run.)
+    ...(input.campus ? { order_modes: ["pickup"], menu_langs: ["en"] } : {}),
     owner_id: uid,
   });
   if (error) {

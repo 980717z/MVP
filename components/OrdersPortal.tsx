@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupReady, claimPickedUp, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
+import { type OrderMode } from "@/lib/orderModes";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
@@ -259,6 +260,14 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   useEffect(() => {
     try { localStorage.setItem("bento_orders_view", view); } catch { /* ignore */ }
   }, [view]);
+  // Clamp the active tab into what the vendor offers: a stored "dine" (or the
+  // default) on a pickup-only truck would render an empty tab. Snap to the
+  // first offered mode once the tenant loads.
+  useEffect(() => {
+    if (tenant?.orderModes && !tenant.orderModes.includes(view)) {
+      setView(tenant.orderModes[0] as typeof view);
+    }
+  }, [tenant, view]);
 
   const seen = useRef<Set<string>>(new Set()); // order IDs we've already shown
   const inited = useRef(false); // first successful fetch seeds `seen`, no alert
@@ -601,13 +610,18 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     (o) => o.order_type === "dine_in" && o.payment_status === "unpaid" && o.status !== "cancelled" &&
       (o.items ?? []).some((it: any) => it.market && !(Number(it.price) > 0) && !it.cancelled),
   ).length;
-  const VIEWS: { key: "dine" | "togo" | "delivery" | "pickup" | "market"; label: string; icon: string; count: number }[] = [
+  // Only show the tabs for modes this vendor offers. A campus truck is
+  // pickup-only, so it never sees Tables / Delivery / Market price. tenant is
+  // undefined until loaded → show all (unchanged for existing restaurants).
+  const offeredModes = tenant?.orderModes;
+  const ALL_VIEWS: { key: OrderMode; label: string; icon: string; count: number }[] = [
     { key: "dine", label: t(T.viewDine), icon: "🗺️", count: dineUnpaid },
     { key: "togo", label: t(T.viewTogo), icon: "📦", count: togoActive },
     { key: "delivery", label: t(T.viewDelivery), icon: "🚴", count: deliveryActive },
     { key: "pickup", label: t(T.viewPickup), icon: "🚚", count: pickupActive },
     { key: "market", label: t(T.viewMarket), icon: "💰", count: marketPending },
   ];
+  const VIEWS = ALL_VIEWS.filter((v) => !offeredModes || offeredModes.includes(v.key));
 
   // Active dine-in orders grouped by table — for the COMBINED BILL and the
   // "本桌共 N 单" hint. Cards stay PER-ROUND (the kitchen fires per round); only
