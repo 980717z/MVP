@@ -92,7 +92,7 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   const singleDay = f === to2;
   const [closeExp, setCloseExp] = useState("");
   const [closeNote, setCloseNote] = useState("");
-  const [closeCash, setCloseCash] = useState(""); // 实际点验现金 — "" = not yet counted
+  const [countedCash, setCountedCash] = useState(""); // 实点现金 — "" = not yet counted
   const [closeSaved, setCloseSaved] = useState(false);
   useEffect(() => {
     if (!singleDay) return;
@@ -100,19 +100,18 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
     getDailyClose(slug, f).then((c) => {
       setCloseExp(c && c.expenses ? String(c.expenses) : "");
       setCloseNote(c?.note ?? "");
-      setCloseCash(c?.actualCash != null ? String(c.actualCash) : "");
+      setCountedCash(c?.countedCash != null ? String(c.countedCash) : "");
     }).catch(() => {});
   }, [slug, f, singleDay]);
   const closeNet = Math.round((agg.collected - (Number(closeExp) || 0)) * 100) / 100;
-  const expectedCash = agg.byMethod.cash.collected; // 现金理论应有额，来自今天的现金结账合计
-  const cashVariance = closeCash === "" ? null : Math.round((Number(closeCash) - expectedCash) * 100) / 100;
+  const expectedCash = agg.byMethod.cash.collected; // 现金理论应收额，来自今天的现金结账合计
+  const cashVariance = countedCash === "" ? null : Math.round(((Number(countedCash) || 0) - expectedCash) * 100) / 100;
   const saveClose = async () => {
     await saveDailyClose(slug, f, {
       expenses: Number(closeExp) || 0,
       note: closeNote,
       collected: agg.collected,
-      actualCash: closeCash === "" ? null : Number(closeCash),
-      expectedCash,
+      countedCash: countedCash === "" ? null : Number(countedCash) || 0,
     });
     setCloseSaved(true);
     setTimeout(() => setCloseSaved(false), 1600);
@@ -154,44 +153,48 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
   }, [rows, filter, trackPay, sort]);
   type TxnRow = (typeof txnRows)[number];
 
+  // Accountant-facing export: a remittance summary (GST/PST/HST for the selected
+  // period) followed by the raw per-checkout rows, plain numbers (no $/commas)
+  // so the sheet can be summed directly in Excel/Sheets.
   const exportCsv = useCallback(() => {
-    const methodLabel = (m: Method) => METHOD_META[m].label.zh;
+    const num = (n: number) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+    const period = f === to2 ? f : `${f} – ${to2}`;
     const summary = [
-      ["区间", f === to2 ? f : `${f} ~ ${to2}`],
-      ["营业额(税前)", String(agg.sales)],
-      ["笔数", String(agg.txns)],
-      ["客单价", String(agg.avgTicket)],
-      ["小费", String(agg.tips)],
-      ["GST", String(agg.gst)],
-      ["PST", String(agg.pst)],
-      ["HST合计", String(agg.hst)],
-      ["实收(含税+小费)", String(agg.collected)],
+      ["报表期间 / Period", period],
+      ["营业额(税前) / Sales (pre-tax)", num(agg.sales)],
+      ["GST 5%", num(agg.gst)],
+      ["PST 8%", num(agg.pst)],
+      ["HST 合计 应申报 / HST total to remit", num(agg.hst)],
+      ["小费 / Tips", num(agg.tips)],
+      ["实收 / Collected", num(agg.collected)],
     ];
-    const header = ["时间", "桌号", "方式", "分单", "营业额", "税额", "小费", "实收"];
-    const detail = txnRows.map((r) => [
-      fmtTime(r.at),
-      r.table_no ? displayTable(r.table_no) : "",
-      r.methods.map(methodLabel).join("/"),
-      r.split ? "是" : "",
-      String(r.sales),
-      String(r.tax),
-      String(r.tip),
-      String(r.collected),
-    ]);
+    const detailHeader = ["时间 Time", "桌号 Table", "方式 Method", "营业额 Sales", "GST", "PST", "小费 Tip", "实收 Collected"];
+    const detailRows = [...rows]
+      .sort((a, b) => (a.closed_at < b.closed_at ? -1 : 1))
+      .map((r) => [
+        r.closed_at,
+        r.table_no || "",
+        r.payment_method,
+        num(r.subtotal),
+        num(r.gst),
+        num(r.pst),
+        num(r.tip ?? 0),
+        num((Number(r.total) || 0) + (Number(r.tip) || 0)),
+      ]);
     const csv = [
       "﻿" + summary.map((row) => row.map(escapeCsv).join(",")).join("\n"),
       "",
-      header.map(escapeCsv).join(","),
-      ...detail.map((row) => row.map(escapeCsv).join(",")),
+      detailHeader.map(escapeCsv).join(","),
+      ...detailRows.map((row) => row.map((v) => escapeCsv(String(v))).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `销售统计_${slug}_${f === to2 ? f : `${f}_${to2}`}.csv`;
+    a.download = `sales-tax_${slug}_${f}_${to2}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [agg, txnRows, f, to2, slug, lang]);
+  }, [agg, rows, f, to2, slug]);
 
   const toggleSort = (col: "time" | "table" | "collected") =>
     setSort((s) => (s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: col === "table" ? "asc" : "desc" }));
@@ -259,9 +262,9 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
           </div>
         )}
         <span className="ml-auto text-xs text-ink-faint">{f === to2 ? f : `${f} – ${to2}`}</span>
-        <button onClick={exportCsv} disabled={loading || txnRows.length === 0}
-          className="min-h-9 rounded-full border border-slate-200 px-3.5 text-sm font-medium text-ink-soft transition hover:bg-slate-50 disabled:opacity-40">
-          ⬇️ {t({ zh: "导出 CSV", en: "Export CSV", fr: "Exporter CSV" })}
+        <button onClick={exportCsv} disabled={rows.length === 0}
+          className="min-h-9 rounded-full border border-slate-200 px-3.5 text-sm font-medium text-ink-soft transition hover:bg-slate-50 disabled:opacity-50">
+          {t({ zh: "导出 CSV", en: "Export CSV", fr: "Exporter CSV" })}
         </button>
       </div>
 
@@ -305,22 +308,23 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
           </div>
           <input value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder={t({ zh: "备注(可选)", en: "Note (optional)", fr: "Note (facultatif)" })} className="input mt-3 !py-1.5 text-sm" />
 
-          {/* cash reconciliation — 应有现金(系统算) vs 实际点验(员工数) → 差异 */}
+          {/* cash reconciliation (现金对账) — needs per-method tracking to know
+              what cash SHOULD be in the drawer; hidden otherwise. */}
           {trackPay && (
-            <div className="mt-4 border-t border-slate-100 pt-4">
+            <div className="mt-4 border-t border-slate-100 pt-3">
               <h4 className="mb-2 text-xs font-bold text-ink-soft">{t({ zh: "现金对账", en: "Cash reconciliation", fr: "Rapprochement de caisse" })}</h4>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <div>
-                  <div className="text-xs text-ink-faint">{t({ zh: "应有现金", en: "Expected cash", fr: "Comptant attendu" })}</div>
+                  <div className="text-xs text-ink-faint">{t({ zh: "应收现金", en: "Expected cash", fr: "Espèces attendues" })}</div>
                   <div className="mt-0.5 text-lg font-bold tabular-nums text-ink">{moneyExact(expectedCash)}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-ink-faint">{t({ zh: "实际点验", en: "Actual counted", fr: "Compté réellement" })}</label>
-                  <input value={closeCash} onChange={(e) => setCloseCash(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0.00" className="input mt-0.5 !py-1.5" />
+                  <label className="text-xs text-ink-faint">{t({ zh: "实点现金", en: "Counted cash", fr: "Espèces comptées" })}</label>
+                  <input value={countedCash} onChange={(e) => setCountedCash(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0.00" className="input mt-0.5 !py-1.5" />
                 </div>
                 <div>
                   <div className="text-xs text-ink-faint">{t({ zh: "差异", en: "Variance", fr: "Écart" })}</div>
-                  <div className={`mt-0.5 text-lg font-bold tabular-nums ${cashVariance == null ? "text-ink-faint" : cashVariance === 0 ? "text-jade" : cashVariance < 0 ? "text-red-600" : "text-amber-600"}`}>
+                  <div className={`mt-0.5 text-lg font-bold tabular-nums ${cashVariance == null ? "text-ink-faint" : cashVariance === 0 ? "text-jade" : "text-red-600"}`}>
                     {cashVariance == null ? "—" : signedMoney(cashVariance)}
                   </div>
                 </div>

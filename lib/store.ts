@@ -279,43 +279,32 @@ export async function deleteRecord(id: string): Promise<void> {
 // ── daily close (folded into Sales Stats) ─────────────────────────────────
 // The old daily-close module is retired; its expenses + net now live as a
 // per-date row edited from the Sales Stats screen. Revenue comes from real
-// checkout sessions; only expenses/note are entered by hand.
-// actualCash/cashVariance are null until staff physically counts the drawer —
-// distinct from 0, which would read as "counted, came up $0 short/over".
-export type DailyClose = {
-  id: string; date: string; expenses: number; note: string; collected: number; net: number;
-  actualCash: number | null; expectedCash: number; cashVariance: number | null;
-};
+// checkout sessions; only expenses/note/countedCash are entered by hand.
+export type DailyClose = { id: string; date: string; expenses: number; note: string; collected: number; net: number; countedCash: number | null };
 
 export async function getDailyClose(slug: string, date: string): Promise<DailyClose | null> {
   const { data } = await supabase.from("records").select("id, data").eq("tenant_slug", slug).eq("module_id", "daily-close");
   const row = (data ?? []).find((r: { data?: { date?: string } }) => r.data?.date === date) as { id: string; data: Record<string, unknown> } | undefined;
   if (!row) return null;
-  const actualCashRaw = row.data.actualCash;
-  const actualCash = actualCashRaw === "" || actualCashRaw == null ? null : Number(actualCashRaw);
-  const expectedCash = Number(row.data.expectedCash) || 0;
+  const cc = row.data.countedCash;
   return {
-    id: row.id, date, expenses: Number(row.data.expenses) || 0, note: String(row.data.note ?? ""),
-    collected: Number(row.data.collected) || 0, net: Number(row.data.net) || 0,
-    actualCash, expectedCash,
-    cashVariance: actualCash == null ? null : Math.round((actualCash - expectedCash) * 100) / 100,
+    id: row.id, date,
+    expenses: Number(row.data.expenses) || 0,
+    note: String(row.data.note ?? ""),
+    collected: Number(row.data.collected) || 0,
+    net: Number(row.data.net) || 0,
+    countedCash: cc != null && cc !== "" ? Number(cc) : null,
   };
 }
 
-/** Upsert the daily close for a date. Revenue (collected) and expectedCash (the
- *  cash-method total for the day) are passed in from the real sales aggregate;
- *  net = collected − expenses, cashVariance = actualCash − expectedCash. */
-export async function saveDailyClose(
-  slug: string,
-  date: string,
-  patch: { expenses: number; note?: string; collected: number; actualCash: number | null; expectedCash: number },
-): Promise<void> {
+/** Upsert the daily close for a date. Revenue (collected) is passed in from the
+ *  real sales aggregate; net = collected − expenses. countedCash (实点现金, the
+ *  cash drawer's physical count) is optional hand entry — null until the owner
+ *  counts it, so the reconcile variance can distinguish "not counted yet" from
+ *  "counted, matches exactly". */
+export async function saveDailyClose(slug: string, date: string, patch: { expenses: number; note?: string; collected: number; countedCash?: number | null }): Promise<void> {
   const net = Math.round((patch.collected - patch.expenses) * 100) / 100;
-  const data = {
-    date, expenses: patch.expenses, note: patch.note ?? "", collected: patch.collected, net,
-    actualCash: patch.actualCash == null ? "" : patch.actualCash,
-    expectedCash: patch.expectedCash,
-  };
+  const data = { date, expenses: patch.expenses, note: patch.note ?? "", collected: patch.collected, net, countedCash: patch.countedCash ?? null };
   const existing = await getDailyClose(slug, date);
   if (existing) await updateRecord(existing.id, data);
   else await addRecord(slug, "daily-close", data);
