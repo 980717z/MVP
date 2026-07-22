@@ -7,17 +7,19 @@ import { supabase } from "@/lib/supabase";
 import { getTrackPayments, getDayStartHour, getDailyClose, saveDailyClose } from "@/lib/store";
 import { listSessionsInRange, listSessionOrders, listSessionOrderIds, type SessionItem } from "@/lib/tableSessions";
 import { requestBill } from "@/lib/orders";
-import { aggregateSales, torontoToday, shiftDate, METHODS, type SessionRow, type Method } from "@/lib/salesStats";
+import { aggregateSales, torontoToday, shiftDate, monthStart, quarterStart, METHODS, type SessionRow, type Method } from "@/lib/salesStats";
 import { moneyExact, displayTable } from "@/lib/format";
 import { signedMoney } from "@/lib/billFormat";
 import { useLang, type Dict } from "@/app/i18n";
 
-type RangeKey = "today" | "7" | "30" | "custom";
+type RangeKey = "today" | "7" | "30" | "month" | "quarter" | "custom";
 
 const RANGES: { k: RangeKey; label: Dict }[] = [
   { k: "today", label: { zh: "今日", en: "Today", fr: "Aujourd'hui" } },
   { k: "7", label: { zh: "近 7 天", en: "7 days", fr: "7 jours" } },
   { k: "30", label: { zh: "近 30 天", en: "30 days", fr: "30 jours" } },
+  { k: "month", label: { zh: "本月", en: "This month", fr: "Ce mois-ci" } },
+  { k: "quarter", label: { zh: "本季度", en: "This quarter", fr: "Ce trimestre" } },
   { k: "custom", label: { zh: "自定义", en: "Custom", fr: "Personnalisé" } },
 ];
 
@@ -62,6 +64,8 @@ export default function SalesStatsPortal({ slug }: { slug: string; mod: ModuleDe
     if (rangeKey === "today") return [today, today];
     if (rangeKey === "7") return [shiftDate(today, -6), today];
     if (rangeKey === "30") return [shiftDate(today, -29), today];
+    if (rangeKey === "month") return [monthStart(today), today];
+    if (rangeKey === "quarter") return [quarterStart(today), today];
     return [from <= to ? from : to, from <= to ? to : from]; // custom, normalized
   }, [rangeKey, today, from, to]);
 
