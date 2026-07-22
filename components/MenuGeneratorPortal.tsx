@@ -34,6 +34,12 @@ const T = {
   nameEnPh: { en: "Steam Pot Chicken", zh: "Steam Pot Chicken", fr: "Steam Pot Chicken" },
   price: { en: "Price", zh: "价格", fr: "Prix" },
   category: { en: "Category", zh: "分类", fr: "Catégorie" },
+  // VT3: merchant-defined categories. The dropdown offers the shop's OWN
+  // categories (derived from its dishes), not a hardcoded Chinese-restaurant list.
+  newCategory: { en: "+ New category", zh: "+ 新分类", fr: "+ Nouvelle catégorie" },
+  newCatPh: { en: "New category name", zh: "新分类名称", fr: "Nom de la catégorie" },
+  chooseCategory: { en: "Choose a category", zh: "选择分类", fr: "Choisir une catégorie" },
+  backToList: { en: "‹ pick existing", zh: "‹ 选已有", fr: "‹ existante" },
   photoOpt: { en: "Dish photo (optional)", zh: "菜品图片(可选)", fr: "Photo du plat (facultatif)" },
   choosePhoto: { en: "Choose image", zh: "选择图片", fr: "Choisir une image" },
   preview: { en: "Preview", zh: "预览", fr: "Aperçu" },
@@ -115,7 +121,9 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [zh, setZh] = useState("");
   const [en, setEn] = useState("");
   const [price, setPrice] = useState("");
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState("");
+  // "+ New category" mode: the category field becomes a free text input.
+  const [newCatMode, setNewCatMode] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -158,6 +166,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
       alert(t(T.errNoName));
       return;
     }
+    if (!category.trim()) {
+      alert(t(T.chooseCategory));
+      return;
+    }
     setBusy(true);
     let image_url = "";
     if (imageFile) {
@@ -173,12 +185,17 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     // English-only vendor who left Chinese blank still gets a real ticket name:
     // fall back name_zh to the English name. name_en stays as typed.
     const name_zh = zh.trim() || (primaryLang === "en" ? en.trim() : "");
-    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category, image_url });
+    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url });
     setBusy(false);
     if (error) {
       alert(t(T.errAdd) + error);
       return;
     }
+    // A just-typed new category now has a dish, so it's a "real" category —
+    // leave newCatMode and keep it selected (trimmed, so it matches the stored
+    // option) so the next dish files under it too.
+    setNewCatMode(false);
+    setCategory((c) => c.trim());
     resetForm();
     setTick((t) => t + 1);
   };
@@ -230,12 +247,24 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     saveField(id, { image_url: "" });
   };
 
-  // present categories (have dishes) in the saved custom order
+  // present categories (have dishes) in the saved custom order. This IS the
+  // shop's own category set — the add-dish dropdown offers these, not the
+  // hardcoded CATEGORIES (VT3). CATEGORIES stays only as a last-resort ordering
+  // hint for legacy Chinese-restaurant tenants that never set a custom order.
   const presentCats = orderedCategories(
     Array.from(new Set(dishes.map((d) => d.category).filter(Boolean))),
     catOrder,
     CATEGORIES
   );
+
+  // Default the new-dish category to the shop's first real category once dishes
+  // load. A brand-new shop with no categories yet starts in "+ New category"
+  // mode so the merchant names their first one (never a foreign default).
+  useEffect(() => {
+    if (newCatMode) return;
+    if (!category && presentCats.length > 0) setCategory(presentCats[0]);
+    else if (!category && presentCats.length === 0 && dishes.length === 0) setNewCatMode(true);
+  }, [presentCats, category, newCatMode, dishes.length]);
 
   const grouped = presentCats.map((c) => ({
     category: c,
@@ -401,11 +430,41 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                   </div>
                   <div>
                     <label className="label">{t(T.category)}</label>
-                    <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                    {newCatMode ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="input"
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          placeholder={t(T.newCatPh)}
+                          autoFocus
+                        />
+                        {presentCats.length > 0 && (
+                          <button
+                            type="button"
+                            className="flex-none text-xs text-ink-faint hover:text-ink"
+                            onClick={() => { setNewCatMode(false); setCategory(presentCats[0]); }}
+                          >
+                            {t(T.backToList)}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <select
+                        className="input"
+                        value={category}
+                        onChange={(e) => {
+                          if (e.target.value === "__new__") { setNewCatMode(true); setCategory(""); }
+                          else setCategory(e.target.value);
+                        }}
+                      >
+                        {presentCats.length === 0 && <option value="" disabled>{t(T.chooseCategory)}</option>}
+                        {presentCats.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="__new__">{t(T.newCategory)}</option>
+                      </select>
+                    )}
                   </div>
                 </div>
 
@@ -481,13 +540,17 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                     <div className="flex w-32 flex-none flex-col gap-2">
                       <select
                         className="input !py-1.5 !px-2 text-xs"
-                        value={d.category || CATEGORIES[0]}
+                        value={d.category || ""}
                         onChange={(e) => {
                           patchLocal(d.id, { category: e.target.value });
                           saveField(d.id, { category: e.target.value });
                         }}
                       >
-                        {CATEGORIES.map((c) => (
+                        {/* This shop's own categories. A dish's own category is
+                            always in presentCats (it's derived from the dishes),
+                            so no injection needed; blank shows for uncategorized. */}
+                        {!d.category && <option value="" disabled>{t(T.chooseCategory)}</option>}
+                        {presentCats.map((c) => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
