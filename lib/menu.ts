@@ -31,6 +31,9 @@ export interface MenuItem {
   created_at: string;
   /** Temporarily out of stock (沽清): shown greyed + not orderable on the menu. */
   sold_out?: boolean;
+  /** Pinyin initials of name_zh (菠萝咕噜肉 → "blglr"), for staff search. Computed
+   *  in the admin (lib/pinyin) on save; the customer menu only MATCHES it. */
+  search_initials?: string;
 }
 
 // normVariants moved to ./dish (zero-import) so the server-side pickup route
@@ -177,7 +180,7 @@ export async function listMenuItemsRaw(slug: string): Promise<MenuItem[]> {
 
 export async function addMenuItem(
   slug: string,
-  item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string; variants?: Variant[] }
+  item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string; variants?: Variant[]; search_initials?: string }
 ): Promise<{ error?: string }> {
   const price =
     item.price === "" || item.price === undefined || item.price === null
@@ -191,6 +194,10 @@ export async function addMenuItem(
     variants: coerceVariants(item.variants),
     category: item.category ?? "",
     image_url: item.image_url ?? "",
+    // Precomputed by the admin (lib/pinyin); '' when omitted. Column tolerates
+    // absence on a pre-migration DB via the caller catching the error? No — it's
+    // a defaulted column, so this is safe once menu-search-initials.sql has run.
+    ...(item.search_initials !== undefined ? { search_initials: item.search_initials } : {}),
   });
   if (error) {
     console.error("addMenuItem", error);
@@ -201,7 +208,7 @@ export async function addMenuItem(
 
 export async function updateMenuItem(
   id: string,
-  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market" | "sold_out">>
+  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market" | "sold_out" | "search_initials">>
 ): Promise<{ error?: string }> {
   const clean: Record<string, any> = { ...patch };
   if ("price" in clean) {

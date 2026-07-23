@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, getMenuLangs, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { resolveOfferedLangs } from "@/lib/menuLangs";
+import { pinyinInitials } from "@/lib/pinyin";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -185,7 +186,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     // English-only vendor who left Chinese blank still gets a real ticket name:
     // fall back name_zh to the English name. name_en stays as typed.
     const name_zh = zh.trim() || (primaryLang === "en" ? en.trim() : "");
-    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url });
+    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url, search_initials: pinyinInitials(name_zh) });
     setBusy(false);
     if (error) {
       alert(t(T.errAdd) + error);
@@ -210,7 +211,9 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     setDishes((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
 
   const saveField = (id: string, patch: Record<string, any>) => {
-    updateMenuItem(id, patch);
+    // Keep the pinyin search key in sync whenever the Chinese name changes.
+    const next = "name_zh" in patch ? { ...patch, search_initials: pinyinInitials(patch.name_zh) } : patch;
+    updateMenuItem(id, next);
   };
 
   // ── 多规格 (size variants) editing ──────────────────────────────────────

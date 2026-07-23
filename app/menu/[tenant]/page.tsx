@@ -741,7 +741,12 @@ export default function PublicMenu() {
   const q = deferredQuery.trim().toLowerCase();
   const results = q
     ? dishes.filter(
-        (d) => d.name_zh.toLowerCase().includes(q) || (d.name_en || "").toLowerCase().includes(q),
+        (d) =>
+          d.name_zh.toLowerCase().includes(q) ||
+          (d.name_en || "").toLowerCase().includes(q) ||
+          // Pinyin initials: "blglr" → 菠萝咕噜肉. Precomputed on the dish (no
+          // pinyin code here). Prefix match so each keystroke narrows down.
+          (!!d.search_initials && d.search_initials.startsWith(q)),
       )
     : [];
 
