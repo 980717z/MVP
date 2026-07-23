@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
@@ -116,7 +116,15 @@ export default function PublicMenu() {
   const [staffEditKey, setStaffEditKey] = useState<string | null>(null); // cartKey whose editor sheet is open
   const [editUnits, setEditUnits] = useState<{ note: string; adjust: string }[]>([]);
   const railRef = useRef<HTMLElement>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(""); // the input's live value (updates every keystroke)
+  // Filtering runs off a SEPARATE committed value so a 428-dish filter never
+  // fires mid-IME-composition. On iPad, filtering + re-rendering while the
+  // Chinese IME is composing froze the input ("can't keep typing"); we only
+  // commit on compositionend (Chinese) or directly (Latin / pinyin initials).
+  const [committedQuery, setCommittedQuery] = useState("");
+  const composingRef = useRef(false);
+  // Defer the heavy filter so the input stays responsive while results catch up.
+  const deferredQuery = useDeferredValue(committedQuery);
 
   // 外卖/自取 mode: entered via the separate QR (?m=togo). Dine-in tables use ?t=N.
   const [togoMode, setTogoMode] = useState(false);
@@ -730,7 +738,7 @@ export default function PublicMenu() {
   }, [activeCat, cats]);
 
   // Search across all dishes (zh + en), case-insensitive, flat results.
-  const q = query.trim().toLowerCase();
+  const q = deferredQuery.trim().toLowerCase();
   const results = q
     ? dishes.filter(
         (d) => d.name_zh.toLowerCase().includes(q) || (d.name_en || "").toLowerCase().includes(q),
@@ -1072,14 +1080,23 @@ export default function PublicMenu() {
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setQuery(v);
+                // Latin typing (incl. pinyin initials) commits live; Chinese IME
+                // waits for compositionend so the filter never interrupts it.
+                if (!composingRef.current) setCommittedQuery(v);
+              }}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={(e) => { composingRef.current = false; setCommittedQuery(e.currentTarget.value); }}
               placeholder={t("search")}
               type="search"
+              enterKeyHint="search"
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-9 text-sm outline-none focus:border-jade focus:ring-2 focus:ring-jade/20"
             />
             {query && (
               <button
-                onClick={() => setQuery("")}
+                onClick={() => { setQuery(""); setCommittedQuery(""); }}
                 aria-label="clear"
                 className="absolute right-2.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-ink-faint hover:bg-slate-100"
               >
