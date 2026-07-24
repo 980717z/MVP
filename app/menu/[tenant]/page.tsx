@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
@@ -769,8 +770,16 @@ export default function PublicMenu() {
     return (
       <div key={d.id} className={`flex items-center gap-3 ${sold ? "opacity-45" : ""}`}>
         {d.image_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={d.image_url} alt={lang === "zh" ? d.name_zh : d.name_en || d.name_zh} className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`} />
+          // next/image → Vercel resizes to this 56px thumbnail (WebP) and serves it
+          // from Vercel's CDN, so full-size dish photos stop streaming from Supabase.
+          <Image
+            src={d.image_url}
+            alt={lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
+            width={112}
+            height={112}
+            unoptimized={false}
+            className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`}
+          />
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[17px] font-semibold leading-snug text-ink">

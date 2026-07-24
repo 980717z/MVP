@@ -4,6 +4,15 @@ const nextConfig = {
   // @napi-rs/canvas ships a native .node binary — keep it external so Next
   // doesn't try to webpack-bundle it; Vercel traces it from node_modules.
   serverExternalPackages: ["@napi-rs/canvas", "web-push"],
+  // Customer-menu dish photos live in Supabase Storage. Serving them through
+  // next/image routes them via Vercel's image optimizer + CDN (resized to the
+  // 56px thumbnail, WebP, cached) — moving that bandwidth OFF Supabase's egress
+  // quota and shrinking each download from a full-size photo to a few KB.
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "*.supabase.co", pathname: "/storage/v1/object/public/**" },
+    ],
+  },
   // Ship the CJK font with the Epson print route's serverless function so the
   // Chinese kitchen ticket can be rendered to a bitmap at request time.
   outputFileTracingIncludes: {

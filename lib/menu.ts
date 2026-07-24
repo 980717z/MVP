@@ -268,7 +268,10 @@ export async function uploadMenuImage(slug: string, file: File): Promise<{ url?:
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${slug}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await supabase.storage.from("menu-images").upload(path, file, {
-    cacheControl: "3600",
+    // 1-year cache: the path is unique per upload (immutable content), so diners'
+    // browsers + the CDN can hold it long-term instead of re-downloading every
+    // hour → cuts repeat cached-egress on the customer menu.
+    cacheControl: "31536000",
     upsert: false,
   });
   if (error) {
