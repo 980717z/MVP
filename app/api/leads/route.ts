@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import { rateLimit, clientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
+
+const cap = (s: unknown, n: number) => (typeof s === "string" ? s.trim().slice(0, n) : "");
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 type Lead = {
   business_name?: string;
@@ -18,15 +22,37 @@ function escapeHtml(s: string) {
 }
 
 export async function POST(req: Request) {
-  let d: Lead;
+  // This endpoint is public (prospects aren't logged in) + triggers an email, so
+  // it's a spam/abuse target. Rate-limit per IP (5 / 5 min) and cap every field
+  // so one crafted request can't flood the leads table or the notification inbox.
+  if (!rateLimit(`leads:${clientIp(req)}`, 5, 5 * 60_000)) {
+    return NextResponse.json({ ok: false, error: "too many requests" }, { status: 429 });
+  }
+
+  let raw: Lead;
   try {
-    d = await req.json();
+    raw = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "bad json" }, { status: 400 });
   }
 
-  if (!d.business_name?.trim() || !d.email?.trim()) {
+  // Normalize + cap every field before use (persist, email, HTML).
+  const d: Lead = {
+    business_name: cap(raw.business_name, 120),
+    business_type: cap(raw.business_type, 60),
+    email: cap(raw.email, 200).toLowerCase(),
+    phone: cap(raw.phone, 40),
+    locations: cap(raw.locations, 200),
+    modules: Array.isArray(raw.modules) ? raw.modules.filter((m) => typeof m === "string").slice(0, 20).map((m) => cap(m, 40)) : [],
+    notes: cap(raw.notes, 1000),
+    lang: cap(raw.lang, 8),
+  };
+
+  if (!d.business_name || !d.email) {
     return NextResponse.json({ ok: false, error: "missing business_name or email" }, { status: 400 });
+  }
+  if (!EMAIL_RE.test(d.email!)) {
+    return NextResponse.json({ ok: false, error: "invalid email" }, { status: 400 });
   }
 
   let stored = false;

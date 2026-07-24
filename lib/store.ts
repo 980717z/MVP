@@ -481,9 +481,12 @@ export async function recordOrderSale(
   if ((existing ?? []).some((r) => r.data?.orderId === order.id)) return;
 
   const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
+  // Stamp the sale in the shop's fixed timezone (Toronto), NOT the device's local
+  // time — otherwise a phone/tablet set to another tz files the sale under the
+  // wrong business day and the daily close won't match lib/orders' Toronto window.
   const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); // YYYY-MM-DD
+  const ts = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hour12: false }).format(now); // HH:mm
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
 
   const { error } = await supabase.from("records").insert({
@@ -590,9 +593,12 @@ async function _syncMenuToMarginImpl(slug: string): Promise<{ added: number; upd
     const match = byDish.get(name);
     if (match) {
       const prev = match.data ?? {};
-      const price = d.price != null ? String(d.price) : prev.price ?? "";
-      if (prev.price !== price) {
-        await supabase.from("records").update({ data: { ...prev, price } }).eq("id", match.id);
+      // Only BACKFILL a missing price from the menu — never overwrite a price the
+      // owner set by hand in the margin table (e.g. a promo / true sale price),
+      // which the old unconditional sync clobbered on every menu edit.
+      const hasPrice = prev.price != null && String(prev.price).trim() !== "";
+      if (!hasPrice && d.price != null) {
+        await supabase.from("records").update({ data: { ...prev, price: String(d.price) } }).eq("id", match.id);
         updated++;
       }
     } else {

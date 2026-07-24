@@ -260,8 +260,11 @@ function applyComputed(form: Record<string, string>, rules?: ComputedRule[]): Re
 }
 
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
+  // All-UTC arithmetic: `new Date("YYYY-MM-DD")` parses as UTC midnight, so mixing
+  // it with local getDate()/setDate() drifted by a day near DST / west of UTC.
+  // Parse, add, and format all in UTC so the result never depends on the runtime tz.
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
