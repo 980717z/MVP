@@ -35,8 +35,12 @@ const FONT = "NotoSC";
 // Font sizes in printer dots. Sized big for at-a-glance kitchen legibility;
 // wrapping (below) keeps long 中英 names on the page at these sizes.
 const SHOP = 64, BIG = 60, MID = 50, SM = 40;
+// Order-number title — the biggest element on the kitchen ticket so staff can
+// read it across the pass at a glance (e.g. 06-01 / A01).
+const NO = 104;
 // Line advance per size (≈1.4× the font).
 const LH_SHOP = 88, LH_BIG = 84, LH_MID = 68, LH_SM = 56;
+const LH_NO = 124;
 const GAP = 26;
 
 let fontReady = false;
@@ -211,6 +215,7 @@ function drawTicket(o: Order, shopName: string): { canvas: Canvas; height: numbe
 
   const mc = createCanvas(W, 10).getContext("2d");
   const b = newBuilder(mc);
+  if (o.order_no) b.left(`#${o.order_no}`, NO, true, LH_NO); // 左上角大字订单号
   b.centered(shopName, SHOP, true, LH_SHOP);
   b.rule(true);
   b.left(t.badge, BIG, true, LH_BIG);

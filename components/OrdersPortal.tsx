@@ -755,6 +755,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       <div key={o.id} className="card p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-2">
+            {o.order_no && (
+              <span className="pill bg-ink text-base font-bold tracking-wider text-white">#{o.order_no}</span>
+            )}
             <span className={`pill ${STATUS[o.status].cls}`}>{t(T[STATUS[o.status].key])}</span>
             {o.order_type === "pickup" && o.pickup_code && (
               <span className="pill bg-emerald-50 font-bold tracking-wider text-emerald-700">🎫 {o.pickup_code}</span>

@@ -8,7 +8,7 @@ import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, dis
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
 import { resolveOrderModes, type OrderMode } from "@/lib/orderModes";
 import { isValidEmail, hasName } from "@/lib/contact";
-import { createOrder, type OrderItem } from "@/lib/orders";
+import { createOrder, fetchOrderNo, type OrderItem } from "@/lib/orders";
 import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
@@ -380,7 +380,7 @@ export default function PublicMenu() {
   // Orders already placed this session (each "再点一单" round). Lets a returning
   // diner see what they've ordered plus the running total across rounds.
   type PlacedLine = { name_zh: string; name_en: string; price: number | null; qty: number };
-  const [placedOrders, setPlacedOrders] = useState<{ lines: PlacedLine[]; total: number }[]>([]);
+  const [placedOrders, setPlacedOrders] = useState<{ lines: PlacedLine[]; total: number; orderNo?: string | null }[]>([]);
   const placedTotal = placedOrders.reduce((a, o) => a + o.total, 0);
   const grandTotal = placedTotal + total;
   const placedLines = useMemo(() => {
@@ -679,9 +679,12 @@ export default function PublicMenu() {
         window.location.origin, // same-origin embed; don't broadcast to "*"
       );
     }
+    // DB-assigned order number (best-effort read-back; null on any hiccup so the
+    // confirmation never blocks on it).
+    const orderNo = res.id ? await fetchOrderNo(res.id) : null;
     setPlacedOrders((p) => [
       ...p,
-      { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total },
+      { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total, orderNo },
     ]);
     setCart({});
     setTableNo(lockedTable ?? "");
@@ -1731,6 +1734,12 @@ export default function PublicMenu() {
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="text-4xl">✅</div>
             <p className="mt-3 font-medium text-ink">{togoMode && !PAYMENTS_LIVE ? t("sentCallback").replace("{shop}", shopName) : t("placed")}</p>
+            {placedOrders[placedOrders.length - 1]?.orderNo && (
+              <div className="mt-4">
+                <div className="text-xs text-ink-faint">{tri("订单号", "Your order #", "N° de commande")}</div>
+                <div className="text-4xl font-bold tracking-wider text-jade tabular-nums">#{placedOrders[placedOrders.length - 1]!.orderNo}</div>
+              </div>
+            )}
             <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>

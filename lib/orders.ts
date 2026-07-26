@@ -74,6 +74,11 @@ export interface Order {
   printed_at: string | null; // Epson: kitchen ticket, null = needs printing
   bill_at: string | null; // customer bill requested (queued for the printer)
   bill_printed_at: string | null; // customer bill printed; null while pending
+  // Human order number, assigned by a DB trigger at insert (supabase/order-no.sql):
+  //   dine-in w/ table → "06-01" (table-padded − that table's Nth order today)
+  //   no table         → "A01"   (Nth off-table order today). Resets each business day.
+  order_no: string | null;
+  business_date: string | null; // YYYY-MM-DD in the shop's business-day rule
 }
 
 /** UUID v4 with a fallback for older mobile browsers. */
@@ -129,6 +134,20 @@ export async function createOrder(
     return { error: error.message };
   }
   return { id };
+}
+
+/** Read back the DB-assigned order number for an order the customer just placed.
+ *  Anon can't SELECT the orders table (insert-only), so this goes through a
+ *  SECURITY DEFINER function that returns ONLY order_no for the given id
+ *  (supabase/order-no.sql). Best-effort: returns null on any error/none. */
+export async function fetchOrderNo(id: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.rpc("order_no_for", { p_id: id });
+    if (error) return null;
+    return (typeof data === "string" && data) || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Start-of-today as an ISO timestamp in the shop's fixed timezone (Toronto),
