@@ -1286,7 +1286,7 @@ export default function PublicMenu() {
         const setN = (n: number) => setEditUnits((us) => Array.from({ length: Math.max(1, Math.min(20, n)) }, (_, i) => us[i] ?? { note: "", adjust: "" }));
         const n = editUnits.length;
         return (
-          <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setStaffEditKey(null)}>
+          <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center" onClick={() => setStaffEditKey(null)}>
             <div className="mx-auto flex max-h-[84vh] w-full max-w-[440px] flex-col rounded-t-2xl md:rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
               {/* sticky header: dish name + 份数 stepper */}
               <div className="flex flex-none items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -1386,6 +1386,21 @@ export default function PublicMenu() {
                       </div>
                     </div>
                     <span className={`font-bold tabular-nums ${sheetDish.is_market ? "text-gold" : "text-jade"}`}>{sheetDish.is_market ? t("market") : fmtPrice(v.price)}</span>
+                    {/* staff-only: 备注 / 改价 for THIS size (same editor as single-price dishes, keyed by the size's cartKey) */}
+                    {staff && q > 0 && (
+                      <button
+                        onClick={() => {
+                          const n = Math.max(1, cart[key] ?? 0);
+                          const u = itemMeta[key]?.units ?? [];
+                          setEditUnits(Array.from({ length: n }, (_, i) => ({ note: u[i]?.note ?? "", adjust: u[i]?.adjust != null ? String(u[i]!.adjust) : "" })));
+                          setStaffEditKey(key);
+                        }}
+                        title={tri("备注 / 改价", "Note / price", "Note / prix")}
+                        className={`grid h-11 w-11 flex-none place-items-center rounded-full border text-sm ${(itemMeta[key]?.units ?? []).some((m) => (m?.adjust ?? 0) !== 0 || (m?.note ?? "").trim() !== "") ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
+                      >
+                        ✎
+                      </button>
+                    )}
                     {q === 0 ? (
                       <button onClick={() => inc(key, 1)} className="grid h-11 w-11 flex-none place-items-center rounded-full bg-jade text-lg text-white">＋</button>
                     ) : (

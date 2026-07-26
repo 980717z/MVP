@@ -9,6 +9,7 @@ import { type OrderMode } from "@/lib/orderModes";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
+import OrderEditor from "@/components/OrderEditor";
 import { supabase } from "@/lib/supabase";
 import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
@@ -142,6 +143,7 @@ const T: Record<string, Dict> = {
   printTableBill: { en: "🧾 Print table bill", zh: "🧾 打印整桌账单", fr: "🧾 Imprimer l'addition de table" },
   printBill: { en: "🧾 Print bill", zh: "🧾 打印账单", fr: "🧾 Imprimer l'addition" },
   reprintKitchen: { en: "Reprint kitchen ticket", zh: "重打厨房单", fr: "Réimprimer le ticket cuisine" },
+  editOrder: { en: "✏️ Edit order", zh: "✏️ 编辑订单", fr: "✏️ Modifier" },
   cancelOrder: { en: "Cancel order", zh: "取消订单", fr: "Annuler la commande" },
   deleteOrder: { en: "Delete", zh: "删除", fr: "Supprimer" },
   // Dialogs / alerts
@@ -236,6 +238,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [voiceLang, setVoiceLang] = useState<"off" | "zh" | "en">("off"); // spoken new-order announcement
   const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
   const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
+  const [editOrder, setEditOrder] = useState<Order | null>(null); // order open in the back-office editor
   // starts as the slug, replaced by the tenant's real name once fetched —
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
@@ -821,6 +824,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                   <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />
                   <div className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
                     <MenuItem onClick={() => setPreview(o)}>{t(T.ticketPreview)}</MenuItem>
+                    {o.status !== "cancelled" && o.status !== "done" && (
+                      <MenuItem onClick={() => setEditOrder(o)}>{t(T.editOrder)}</MenuItem>
+                    )}
                     {o.status !== "cancelled" && (
                       <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert(t(T.printBillFailed) + r.error); }}>
                         {multi ? t(T.printTableBill) : t(T.printBill)}
@@ -985,6 +991,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           use for table orders (design review D2) — one ordering surface, so what
           staff see matches what the diner sees. The menu pings us via postMessage
           when the order lands; we close and refresh. */}
+      {editOrder && (
+        <OrderEditor
+          slug={slug}
+          order={editOrder}
+          onClose={() => setEditOrder(null)}
+          onSaved={() => { setEditOrder(null); load(); }}
+        />
+      )}
+
       {newOrder && (
         <StaffOrderPicker
           slug={slug}
