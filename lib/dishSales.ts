@@ -10,6 +10,7 @@ export interface SalesRow {
   id?: string;
   dish?: string;
   price?: string | number | null;
+  cost?: string | number | null;
   soldMonth?: string | number | null;
 }
 
@@ -17,6 +18,11 @@ export interface RankedDish<T> {
   row: T;
   sold: number;
   revenue: number;
+  cost: number;             // per-serving cost; 0 when not entered
+  hasCost: boolean;         // true once a real cost (>0) is entered — gates margin/costPct display
+  margin: number;           // price - cost, per serving
+  marginPct: number | null; // margin / price; null when cost isn't entered or price is 0
+  costPct: number | null;   // cost / price (食材成本率); null when cost isn't entered or price is 0
 }
 
 const n = (v: unknown): number => parseFloat(String(v ?? "")) || 0;
@@ -30,7 +36,15 @@ const n = (v: unknown): number => parseFloat(String(v ?? "")) || 0;
  *  hunting for when they ask what to cut from the menu. */
 export function rankDishes<T extends SalesRow>(rows: T[]): RankedDish<T>[] {
   return rows
-    .map((r) => ({ row: r, sold: n(r.soldMonth), revenue: n(r.price) * n(r.soldMonth) }))
+    .map((r) => {
+      const price = n(r.price);
+      const cost = n(r.cost);
+      const hasCost = cost > 0;
+      const margin = price - cost;
+      const marginPct = hasCost && price > 0 ? margin / price : null;
+      const costPct = hasCost && price > 0 ? cost / price : null;
+      return { row: r, sold: n(r.soldMonth), revenue: price * n(r.soldMonth), cost, hasCost, margin, marginPct, costPct };
+    })
     .sort((a, b) => b.sold - a.sold || b.revenue - a.revenue);
 }
 

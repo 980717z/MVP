@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { aggregateSales, shiftDate, type SessionRow } from "./salesStats";
+import { aggregateSales, shiftDate, monthStart, quarterStart, type SessionRow } from "./salesStats";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -68,5 +68,21 @@ describe("shiftDate (DST-safe day math)", () => {
     expect(shiftDate("2026-11-01", -1)).toBe("2026-10-31"); // fall-back
     expect(shiftDate("2026-07-12", -29)).toBe("2026-06-13");
     expect(shiftDate("2026-01-01", -1)).toBe("2025-12-31"); // year boundary
+  });
+});
+
+describe("monthStart / quarterStart", () => {
+  it("resolves the first day of the containing month", () => {
+    expect(monthStart("2026-07-22")).toBe("2026-07-01");
+    expect(monthStart("2026-01-31")).toBe("2026-01-01");
+    expect(monthStart("2026-12-01")).toBe("2026-12-01");
+  });
+
+  it("resolves the first day of the containing calendar quarter", () => {
+    expect(quarterStart("2026-01-15")).toBe("2026-01-01"); // Q1
+    expect(quarterStart("2026-03-31")).toBe("2026-01-01"); // Q1
+    expect(quarterStart("2026-04-01")).toBe("2026-04-01"); // Q2
+    expect(quarterStart("2026-07-22")).toBe("2026-07-01"); // Q3
+    expect(quarterStart("2026-11-05")).toBe("2026-10-01"); // Q4
   });
 });

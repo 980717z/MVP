@@ -150,6 +150,9 @@ const T: Record<string, Dict> = {
     zh: "菜单里的菜品会自动同步到这里，录入月销量后就能看到排行。",
     fr: "Les plats se synchronisent depuis votre menu. Saisissez une quantité mensuelle pour voir le classement.",
   },
+  margin: { en: "Margin", zh: "毛利", fr: "Marge" },
+  costRate: { en: "Food cost %", zh: "成本率", fr: "% coût matière" },
+  noCost: { en: "No cost entered", zh: "未填成本", fr: "Coût non saisi" },
   // supplier compare
   supplierCompare: { en: "Supplier price comparison", zh: "供应商比价", fr: "Comparaison des fournisseurs" },
   supplierCompareHint: { en: "Average unit price per supplier for the same item; green is the lowest", zh: "同一品项各供应商的平均单价，绿色为最低价", fr: "Prix unitaire moyen par fournisseur pour le même article ; le vert est le plus bas" },
@@ -2565,6 +2568,8 @@ function DishSalesRanking({
                   {biLabel(f.label, lang)}
                 </th>
               ))}
+              <th className="px-4 py-2.5 text-right font-medium">{t(T.margin)}</th>
+              <th className="px-4 py-2.5 text-right font-medium">{t(T.costRate)}</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
@@ -2586,6 +2591,8 @@ function DishSalesRanking({
                         />
                       </td>
                     ))}
+                    <td className="px-4 py-1.5" />
+                    <td className="px-4 py-1.5" />
                     <td className="px-4 py-1.5 text-right whitespace-nowrap">
                       <button onClick={edit.saveEdit} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.save)}</button>
                       <button onClick={edit.cancelEdit} className="text-xs text-ink-faint hover:text-ink">{t(T.cancel)}</button>
@@ -2620,6 +2627,12 @@ function DishSalesRanking({
                       </td>
                     );
                   })}
+                  <td className={`px-4 py-3 text-right ${d.hasCost ? "text-ink-soft" : "text-slate-300"}`}>
+                    {d.hasCost ? money(d.margin) : "—"}
+                  </td>
+                  <td className={`px-4 py-3 text-right ${d.hasCost ? "text-ink-soft" : "text-slate-300"}`}>
+                    {d.hasCost ? `${Math.round((d.costPct ?? 0) * 100)}%` : t(T.noCost)}
+                  </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button onClick={() => edit.startEdit(r)} className="text-xs text-brand hover:text-brand-soft mr-2">{t(T.edit)}</button>
                     <button

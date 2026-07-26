@@ -46,6 +46,34 @@ describe("rankDishes", () => {
   });
 });
 
+describe("rankDishes — margin / food-cost %", () => {
+  it("computes margin, marginPct, costPct once a real cost is entered", () => {
+    const [r] = rankDishes([{ dish: "红烧蟹肉翅", price: "48", cost: "18", soldMonth: "10" }]);
+    expect(r.hasCost).toBe(true);
+    expect(r.cost).toBe(18);
+    expect(r.margin).toBeCloseTo(30, 2);
+    expect(r.marginPct).toBeCloseTo(30 / 48, 4);
+    expect(r.costPct).toBeCloseTo(18 / 48, 4); // 食材成本率
+  });
+
+  it("leaves margin/marginPct/costPct null-ish when cost is blank or zero — not a false 0% claim", () => {
+    const blank = rankDishes([{ dish: "海鲜粥", price: "18", soldMonth: "5" }])[0];
+    expect(blank.hasCost).toBe(false);
+    expect(blank.marginPct).toBeNull();
+    expect(blank.costPct).toBeNull();
+
+    const zero = rankDishes([{ dish: "海鲜粥", price: "18", cost: "0", soldMonth: "5" }])[0];
+    expect(zero.hasCost).toBe(false);
+    expect(zero.marginPct).toBeNull();
+  });
+
+  it("treats a zero price as unratable (avoids divide-by-zero)", () => {
+    const r = rankDishes([{ dish: "赠品", price: "0", cost: "5", soldMonth: "1" }])[0];
+    expect(r.marginPct).toBeNull();
+    expect(r.costPct).toBeNull();
+  });
+});
+
 describe("topRevenue", () => {
   it("returns the single highest revenue figure", () => {
     expect(topRevenue(rankDishes(dishes))).toBe(48 * 1286);

@@ -35,6 +35,12 @@ const T: Record<string, Dict> = {
   pendingPill: { en: "{n} pending", zh: "{n} 单待处理", fr: "{n} en attente" },
   enableSoundTitle: { en: "New-order sound alert", zh: "新订单提示音", fr: "Alerte sonore des nouvelles commandes" },
   enableSound: { en: "🔔 Enable sound", zh: "🔔 开启提示音", fr: "🔔 Activer le son" },
+  // Spoken new-order announcement (like Alipay's "到账" voice). Tap cycles the
+  // device through Off → 中文 → English; the selected language is spoken.
+  voiceTitle: { en: "Spoken new-order announcement", zh: "新订单语音播报", fr: "Annonce vocale des nouvelles commandes" },
+  voiceOff: { en: "🔊 Voice: Off", zh: "🔊 播报:关", fr: "🔊 Voix : Arrêt" },
+  voiceZh: { en: "🔊 Voice: 中文", zh: "🔊 播报:中文", fr: "🔊 Voix : 中文" },
+  voiceEn: { en: "🔊 Voice: English", zh: "🔊 播报:English", fr: "🔊 Voix : English" },
   pushTitle: {
     en: "Push notifications — get a system alert on new orders even when this app is closed",
     zh: "推送通知 — 即使关闭本应用,来新订单也会收到系统通知",
@@ -227,6 +233,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [orders, setOrders] = useState<Order[]>([]);
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
+  const [voiceLang, setVoiceLang] = useState<"off" | "zh" | "en">("off"); // spoken new-order announcement
   const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
   const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
   // starts as the slug, replaced by the tenant's real name once fetched —
@@ -274,12 +281,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const audioCtx = useRef<AudioContext | null>(null);
   const baseTitle = useRef<string>("");
   const soundRef = useRef(false);
+  const voiceRef = useRef<"off" | "zh" | "en">("off"); // mirror of voiceLang for the poll callback
 
   useEffect(() => {
     try {
       const on = localStorage.getItem("bento_order_sound") === "on";
       setSoundOn(on);
       soundRef.current = on;
+      const v = localStorage.getItem("bento_order_voice");
+      if (v === "zh" || v === "en") { setVoiceLang(v); voiceRef.current = v; }
     } catch {
       /* ignore */
     }
@@ -326,6 +336,36 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
   }, []);
 
+  // Spoken announcement via the browser's built-in speech synthesis (no audio
+  // files, works offline with the OS voices). `lang` picks the utterance's
+  // language so the right voice + pronunciation is used.
+  const speak = useCallback((lang: "zh" | "en") => {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      synth.cancel(); // don't let announcements pile up if orders arrive in a burst
+      const phrase = lang === "zh" ? "叮咚，您有新订单" : "New order received";
+      const u = new SpeechSynthesisUtterance(phrase);
+      u.lang = lang === "zh" ? "zh-CN" : "en-US";
+      const match = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith(lang === "zh" ? "zh" : "en"));
+      if (match) u.voice = match;
+      synth.speak(u);
+    } catch {
+      /* speech can be blocked/unavailable — degrade silently */
+    }
+  }, []);
+
+  // Tap cycles Off → 中文 → English → Off. The click is also the user gesture
+  // iOS/Safari needs to unlock speech, so we speak the confirmation immediately.
+  const cycleVoice = () => {
+    const next = voiceLang === "off" ? "zh" : voiceLang === "zh" ? "en" : "off";
+    setVoiceLang(next);
+    voiceRef.current = next;
+    try { localStorage.setItem("bento_order_voice", next); } catch { /* ignore */ }
+    if (next !== "off") speak(next);
+    else try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+  };
+
   const load = useCallback(async () => {
     try {
       const data = await listOrders(slug);
@@ -343,11 +383,12 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       if (freshActive.length > 0) {
         setUnread((u) => u + freshActive.length);
         if (soundRef.current) beep();
+        if (voiceRef.current !== "off") speak(voiceRef.current);
       }
     } catch {
       // Keep the last good list — a transient/auth error must not blank the kitchen screen.
     }
-  }, [slug, beep]);
+  }, [slug, beep, speak]);
 
   // Poll while visible; pause when hidden; refetch immediately on return.
   useEffect(() => {
@@ -813,6 +854,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               {t(T.enableSound)}
             </button>
           )}
+          <button
+            onClick={cycleVoice}
+            title={t(T.voiceTitle)}
+            className={`text-sm ${voiceLang !== "off" ? "btn-ghost border border-brand bg-brand-wash text-brand-ink" : "btn-ghost border border-slate-300"}`}
+          >
+            {voiceLang === "zh" ? t(T.voiceZh) : voiceLang === "en" ? t(T.voiceEn) : t(T.voiceOff)}
+          </button>
           {pushState !== "unsupported" && (
             <button
               onClick={togglePush}

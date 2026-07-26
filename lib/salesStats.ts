@@ -111,3 +111,16 @@ export function shiftDate(ymd: string, days: number): string {
   dt.setUTCDate(dt.getUTCDate() + days);
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
 }
+
+/** First day (YYYY-MM-DD) of the calendar month containing the given business date. */
+export function monthStart(ymd: string): string {
+  const [y, m] = ymd.split("-").map(Number);
+  return `${y}-${String(m).padStart(2, "0")}-01`;
+}
+
+/** First day (YYYY-MM-DD) of the calendar quarter (Jan/Apr/Jul/Oct) containing the given business date. */
+export function quarterStart(ymd: string): string {
+  const [y, m] = ymd.split("-").map(Number);
+  const qm = Math.floor((m - 1) / 3) * 3 + 1;
+  return `${y}-${String(qm).padStart(2, "0")}-01`;
+}
