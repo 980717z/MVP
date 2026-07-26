@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* Minimal-functional entrance (utoronto landing, DESIGN-PLATFORM motion budget).
+   A gentle fade + rise on load; honours prefers-reduced-motion. */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: riseIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; }
+}
+
+/* ── "See it work" loop (utoronto landing): scan → order lands in the truck's
+   dashboard. One ~4.5s cycle: a dot travels the connector, then the dashboard
+   pings (bell + ring) and the new-order card slides in and holds. ───────────── */
+@keyframes flowDot {
+  0%, 3% { opacity: 0; transform: translateX(0); }
+  7% { opacity: 1; }
+  15% { opacity: 1; transform: translateX(88px); }
+  19%, 100% { opacity: 0; transform: translateX(88px); }
+}
+@keyframes orderArrive {
+  0%, 11% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  20% { opacity: 1; transform: translateY(0) scale(1); }
+  92% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-6px) scale(0.99); }
+}
+@keyframes bellRing {
+  0%, 13%, 26%, 100% { transform: rotate(0); }
+  15% { transform: rotate(-18deg); }
+  17% { transform: rotate(14deg); }
+  19% { transform: rotate(-10deg); }
+  21% { transform: rotate(6deg); }
+  23% { transform: rotate(-3deg); }
+}
+@keyframes pingRing {
+  0%, 13% { opacity: 0; transform: scale(0.5); }
+  15% { opacity: 0.55; }
+  34% { opacity: 0; transform: scale(1.9); }
+  100% { opacity: 0; }
+}
+.anim-dot { animation: flowDot 4.5s ease-in-out infinite; }
+.anim-order { animation: orderArrive 4.5s ease-in-out infinite; }
+.anim-bell { animation: bellRing 4.5s ease-in-out infinite; transform-origin: 50% 20%; }
+.anim-ping { animation: pingRing 4.5s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-dot, .anim-bell, .anim-ping { animation: none; opacity: 0; }
+  .anim-order { animation: none; opacity: 1; transform: none; }
+}
+
+/* ── Menu layout override (phone ⇄ desktop toggle) ──────────────────────────
+   The auto layout is pure Tailwind `md:` breakpoints — correct on first paint,
+   no hydration flash. These rules fire ONLY when the diner manually forces a
+   view via the header toggle (main[data-view=…]); they beat the md: utilities
+   by specificity. Marker classes: mv-shell (max width), mv-grid (dish columns),
+   mv-rail (nav width), mv-desktop (order panel), mv-phone (bottom cart bar). */
+main[data-view="phone"] .mv-shell { max-width: 440px !important; }
+main[data-view="phone"] .mv-grid { grid-template-columns: 1fr !important; }
+main[data-view="phone"] .mv-rail { width: 88px !important; }
+main[data-view="phone"] .mv-desktop { display: none !important; }
+main[data-view="phone"] .mv-phone { display: block !important; }
+
+main[data-view="desktop"] .mv-shell { max-width: 1440px !important; }
+main[data-view="desktop"] .mv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+main[data-view="desktop"] .mv-rail { width: 11rem !important; }
+main[data-view="desktop"] .mv-desktop { display: flex !important; }
+main[data-view="desktop"] .mv-phone { display: none !important; }
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+  .btn {
+    /* ≥44px tap target on phones (DESIGN-PLATFORM.md), 40px on desktop. */
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition md:min-h-10;
+  }
+  .btn-primary {
+    @apply btn bg-brand text-white hover:bg-brand-soft;
+  }
+  .btn-ghost {
+    @apply btn text-ink-soft hover:bg-slate-100;
+  }
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-faint;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}

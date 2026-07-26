@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "type": "food-truck",
+  "label": {
+    "zh": "校园餐车（订餐-取餐 · 无桌码）",
+    "en": "Campus food truck (order-ahead pickup, no tables)"
+  },
+  "modules": ["menu-generator", "qr-menu", "online-orders", "members"],
+  "tables": [],
+  "categories": ["招牌饭", "面 & 小食", "饮品"],
+  "delivery_fsas": [],
+  "hours": "11:00-20:00",
+  "menu": [
+    { "key": "rice-1", "name_zh": "招牌鸡肉饭", "name_en": "Signature Chicken Rice Bowl", "price": 12.99, "category": "招牌饭" },
+    { "key": "rice-2", "name_zh": "红烧牛肉饭", "name_en": "Braised Beef Rice Bowl", "price": 13.99, "category": "招牌饭" },
+    { "key": "rice-3", "name_zh": "麻婆豆腐饭", "name_en": "Mapo Tofu Rice Bowl", "price": 11.49, "category": "招牌饭" },
+    { "key": "noodle-1", "name_zh": "红烧牛肉面", "name_en": "Braised Beef Noodle Soup", "price": 13.49, "category": "面 & 小食" },
+    { "key": "snack-1", "name_zh": "煎饺 (5 只)", "name_en": "Pan-fried Dumplings (5)", "price": 7.99, "category": "面 & 小食" },
+    { "key": "snack-2", "name_zh": "椒盐鸡", "name_en": "Salt & Pepper Chicken", "price": 9.99, "category": "面 & 小食" },
+    { "key": "snack-3", "name_zh": "春卷 (3 只)", "name_en": "Spring Rolls (3)", "price": 5.49, "category": "面 & 小食" },
+    {
+      "key": "drink-1",
+      "name_zh": "珍珠奶茶",
+      "name_en": "Bubble Milk Tea",
+      "category": "饮品",
+      "variants": [
+        { "label_zh": "中杯", "label_en": "M", "price": 5.5 },
+        { "label_zh": "大杯", "label_en": "L", "price": 6.5 }
+      ]
+    },
+    { "key": "drink-2", "name_zh": "柠檬绿茶", "name_en": "Lemon Green Tea", "price": 4.5, "category": "饮品" }
+  ]
+}

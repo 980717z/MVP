@@ -1,0 +1,402 @@
+{
+  "version": 1,
+  "type": "chinese-restaurant",
+  "label": {
+    "zh": "中餐馆（堂食 + 外卖）",
+    "en": "Chinese restaurant (dine-in + takeout)"
+  },
+  "modules": [
+    "menu-generator",
+    "qr-menu",
+    "online-orders"
+  ],
+  "tables": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12"
+  ],
+  "categories": [
+    "火锅",
+    "招牌精选",
+    "滋补菜式",
+    "火锅配菜",
+    "海鲜",
+    "汤羹",
+    "头盘",
+    "蔬菜豆腐",
+    "猪肉牛肉",
+    "鸡鸭",
+    "铁板煲仔",
+    "芙蓉蛋",
+    "炒粉面",
+    "煲仔饭",
+    "饭类",
+    "炒饭",
+    "汤粉面",
+    "粥类",
+    "酒水饮品"
+  ],
+  "delivery_fsas": [
+    "M5T"
+  ],
+  "hours": "11:00-22:00",
+  "menu": [
+    {
+      "key": "dish-0",
+      "name_zh": "大补走地鸡窝",
+      "name_en": "Free Range Chicken Hot Pot",
+      "price": 45.99,
+      "category": "火锅",
+      "variants": [
+        {
+          "label_zh": "全",
+          "label_en": "Whole",
+          "price": 45.99
+        },
+        {
+          "label_zh": "半",
+          "label_en": "Half",
+          "price": 35.99
+        }
+      ]
+    },
+    {
+      "key": "dish-1",
+      "name_zh": "滋补竹丝鸡窝",
+      "name_en": "Black Chicken Hot Pot",
+      "price": 50.99,
+      "category": "火锅",
+      "variants": [
+        {
+          "label_zh": "全",
+          "label_en": "Whole",
+          "price": 50.99
+        },
+        {
+          "label_zh": "半",
+          "label_en": "Half",
+          "price": 40.99
+        }
+      ]
+    },
+    {
+      "key": "dish-2",
+      "name_zh": "荷香笼仔蒸蟹饭",
+      "name_en": "Steamed Crab with Rice in Lotus Leaf",
+      "price": 99.99,
+      "category": "招牌精选"
+    },
+    {
+      "key": "dish-3",
+      "name_zh": "潮式大拼盘 (大/中)",
+      "name_en": "Chiu Chow Combo Platter (L/M)",
+      "price": 85.99,
+      "category": "招牌精选"
+    },
+    {
+      "key": "dish-4",
+      "name_zh": "佛跳墙",
+      "name_en": "Buddha Jumps Over the Wall",
+      "price": null,
+      "category": "滋补菜式",
+      "is_market": true
+    },
+    {
+      "key": "dish-5",
+      "name_zh": "蚝皇大鲍鱼",
+      "name_en": "Abalone in Oyster Sauce",
+      "price": null,
+      "category": "滋补菜式",
+      "is_market": true
+    },
+    {
+      "key": "dish-6",
+      "name_zh": "桂花蚌",
+      "name_en": "Osmanthus Mussels",
+      "price": 32.99,
+      "category": "火锅配菜"
+    },
+    {
+      "key": "dish-7",
+      "name_zh": "中虾",
+      "name_en": "Shrimp",
+      "price": 12.99,
+      "category": "火锅配菜"
+    },
+    {
+      "key": "dish-8",
+      "name_zh": "生猛龙虾",
+      "name_en": "Live Lobster (Steamed / Ginger & Onion / Black Bean)",
+      "price": null,
+      "category": "海鲜",
+      "is_market": true
+    },
+    {
+      "key": "dish-9",
+      "name_zh": "生猛温哥华蟹",
+      "name_en": "Live Vancouver Crab",
+      "price": null,
+      "category": "海鲜",
+      "is_market": true
+    },
+    {
+      "key": "dish-10",
+      "name_zh": "红烧蟹肉翅",
+      "name_en": "Shark's Fin & Crab Meat in Thick Soup",
+      "price": 35.99,
+      "category": "汤羹",
+      "variants": [
+        {
+          "label_zh": "位",
+          "label_en": "Single",
+          "price": 35.99
+        },
+        {
+          "label_zh": "小",
+          "label_en": "Small",
+          "price": 59.99
+        },
+        {
+          "label_zh": "中",
+          "label_en": "Medium",
+          "price": 87.99
+        },
+        {
+          "label_zh": "大",
+          "label_en": "Large",
+          "price": 145.99
+        },
+        {
+          "label_zh": "特大",
+          "label_en": "XL",
+          "price": 190.99
+        }
+      ]
+    },
+    {
+      "key": "dish-11",
+      "name_zh": "红烧鸡丝翅",
+      "name_en": "Shark's Fin & Shredded Chicken in Thick Soup",
+      "price": 32.99,
+      "category": "汤羹",
+      "variants": [
+        {
+          "label_zh": "位",
+          "label_en": "Single",
+          "price": 32.99
+        },
+        {
+          "label_zh": "小",
+          "label_en": "Small",
+          "price": 52.99
+        },
+        {
+          "label_zh": "中",
+          "label_en": "Medium",
+          "price": 76.99
+        },
+        {
+          "label_zh": "大",
+          "label_en": "Large",
+          "price": 135.99
+        },
+        {
+          "label_zh": "特大",
+          "label_en": "XL",
+          "price": 180.99
+        }
+      ]
+    },
+    {
+      "key": "dish-12",
+      "name_zh": "白灼中虾",
+      "name_en": "Boiled Shrimps (Shells on)",
+      "price": 16.99,
+      "category": "头盘"
+    },
+    {
+      "key": "dish-13",
+      "name_zh": "日式鱿鱼筒",
+      "name_en": "Pan Fried Whole Calamari",
+      "price": 13.99,
+      "category": "头盘"
+    },
+    {
+      "key": "dish-14",
+      "name_zh": "清炒雪豆王子菇",
+      "name_en": "Pan Fried Snow Pea with King Mushroom",
+      "price": 23.99,
+      "category": "蔬菜豆腐"
+    },
+    {
+      "key": "dish-15",
+      "name_zh": "黄金玉子豆腐",
+      "name_en": "King Mushroom with Deep Fried Japanese Bean Curd",
+      "price": 23.99,
+      "category": "蔬菜豆腐"
+    },
+    {
+      "key": "dish-16",
+      "name_zh": "鱼香茄子",
+      "name_en": "Eggplant with Ginger and Minced Pork",
+      "price": 19.99,
+      "category": "猪肉牛肉"
+    },
+    {
+      "key": "dish-17",
+      "name_zh": "豉汁肉碎玉子豆腐",
+      "name_en": "Minced Pork with Japanese Bean Curd in Black Bean Sauce",
+      "price": 24.99,
+      "category": "猪肉牛肉"
+    },
+    {
+      "key": "dish-18",
+      "name_zh": "脆皮炸子鸡 (全只)",
+      "name_en": "Deep Fried Crispy Chicken (whole)",
+      "price": 39.99,
+      "category": "鸡鸭"
+    },
+    {
+      "key": "dish-19",
+      "name_zh": "脆皮炸子鸡 (半只)",
+      "name_en": "Deep Fried Crispy Chicken (half)",
+      "price": 20.99,
+      "category": "鸡鸭"
+    },
+    {
+      "key": "dish-20",
+      "name_zh": "海鲜豆腐煲",
+      "name_en": "Hot Pot with Assorted Seafood & Bean Curd",
+      "price": 22.99,
+      "category": "铁板煲仔"
+    },
+    {
+      "key": "dish-21",
+      "name_zh": "鸡牛叉烧豆腐煲",
+      "name_en": "Hot Pot with Assorted Meat & Bean Curd",
+      "price": 22.99,
+      "category": "铁板煲仔"
+    },
+    {
+      "key": "dish-22",
+      "name_zh": "煎蚝饼",
+      "name_en": "Fried Oyster Pancake",
+      "price": 23.99,
+      "category": "芙蓉蛋"
+    },
+    {
+      "key": "dish-23",
+      "name_zh": "海鲜芙蓉蛋",
+      "name_en": "Mixed Seafood Egg Foo Young",
+      "price": 22.99,
+      "category": "芙蓉蛋"
+    },
+    {
+      "key": "dish-24",
+      "name_zh": "北菇干烧伊面",
+      "name_en": "Braised E-Fu Noodles with Chinese Mushroom",
+      "price": 18.99,
+      "category": "炒粉面"
+    },
+    {
+      "key": "dish-25",
+      "name_zh": "日式炒乌冬",
+      "name_en": "Fried Japanese Udon",
+      "price": 19.99,
+      "category": "炒粉面"
+    },
+    {
+      "key": "dish-26",
+      "name_zh": "海鲜煲仔饭",
+      "name_en": "Seafood with Rice in Hot Pot",
+      "price": 22.99,
+      "category": "煲仔饭"
+    },
+    {
+      "key": "dish-27",
+      "name_zh": "咸鱼肉片煲仔饭",
+      "name_en": "Salted Fish & Sliced Pork with Rice in Hot Pot",
+      "price": 22.99,
+      "category": "煲仔饭"
+    },
+    {
+      "key": "dish-28",
+      "name_zh": "虾龙糊饭",
+      "name_en": "Shrimps in Lobster Sauce on Rice",
+      "price": 13.99,
+      "category": "饭类"
+    },
+    {
+      "key": "dish-29",
+      "name_zh": "滑蛋虾仁饭",
+      "name_en": "Shrimps with Scrambled Egg Sauce on Rice",
+      "price": 13.99,
+      "category": "饭类"
+    },
+    {
+      "key": "dish-30",
+      "name_zh": "咸鱼鸡粒炒饭",
+      "name_en": "Salted Fish and Diced Chicken Fried Rice",
+      "price": 20.99,
+      "category": "炒饭"
+    },
+    {
+      "key": "dish-31",
+      "name_zh": "阔佬炒饭",
+      "name_en": "Supreme Fried Rice",
+      "price": 21.99,
+      "category": "炒饭"
+    },
+    {
+      "key": "dish-32",
+      "name_zh": "海鲜汤面",
+      "name_en": "Seafood Noodle Soup",
+      "price": 12.99,
+      "category": "汤粉面"
+    },
+    {
+      "key": "dish-33",
+      "name_zh": "鱼丸汤面",
+      "name_en": "Fish Ball Noodle Soup",
+      "price": 11.99,
+      "category": "汤粉面"
+    },
+    {
+      "key": "dish-34",
+      "name_zh": "招牌粥",
+      "name_en": "Special Congee",
+      "price": 12.99,
+      "category": "粥类"
+    },
+    {
+      "key": "dish-35",
+      "name_zh": "鸡片粥",
+      "name_en": "Sliced Chicken Congee",
+      "price": 11.99,
+      "category": "粥类"
+    },
+    {
+      "key": "corona-36",
+      "name_zh": "青岛 / 喜力 / Corona 啤酒",
+      "name_en": "Tsing Tao / Heineken / Corona",
+      "price": 7,
+      "category": "酒水饮品"
+    },
+    {
+      "key": "sapporo-37",
+      "name_zh": "Sapporo 啤酒",
+      "name_en": "Sapporo",
+      "price": 13,
+      "category": "酒水饮品"
+    }
+  ]
+}
