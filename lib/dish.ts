@@ -94,3 +94,31 @@ export function unitPrice(d: DishLike, vi: number | null): number {
   }
   return Number(d.price) || 0;
 }
+
+/** Cooked-surcharge for chicken-pot dishes on the takeout/delivery menu. */
+export const TOGO_COOK_SURCHARGE = 5;
+
+/** True for chicken-pot dishes (name contains 鸡锅). They get a 生/熟 (raw/cooked)
+ *  choice on the takeout/delivery/pickup menu ONLY — see withCookVariants. */
+export function isCookPotDish(d: { name_zh?: string }): boolean {
+  return (d.name_zh || "").includes("鸡锅");
+}
+
+/** Takeout/delivery ONLY: turn a chicken-pot dish into a 生/熟 choice — 生 keeps
+ *  the current price, 熟 adds TOGO_COOK_SURCHARGE. A dish that already has sizes
+ *  (全只/半只) becomes size×生熟 (全只生/全只熟/半只生/半只熟). lineName renders the
+ *  label as 菜名（label）, e.g. 药材竹丝鸡锅（生）. Dine-in never calls this, so the
+ *  shared menu_items row is untouched. */
+export function withCookVariants<T extends DishLike>(d: T): T {
+  const base: VariantLike[] =
+    d.variants && d.variants.length
+      ? d.variants
+      : [{ label_zh: "", label_en: "", price: Number(d.price) || 0 }];
+  const variants: VariantLike[] = [];
+  for (const v of base) {
+    const p = Number(v.price) || 0;
+    variants.push({ label_zh: v.label_zh ? `${v.label_zh}生` : "生", label_en: v.label_en ? `${v.label_en} Raw` : "Raw", price: p });
+    variants.push({ label_zh: v.label_zh ? `${v.label_zh}熟` : "熟", label_en: v.label_en ? `${v.label_en} Cooked` : "Cooked", price: Math.round((p + TOGO_COOK_SURCHARGE) * 100) / 100 });
+  }
+  return { ...d, variants };
+}

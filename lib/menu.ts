@@ -133,7 +133,7 @@ export function parseCartKey(key: string): { id: string; vi: number | null } {
 // server-side pickup route can apply the SAME rules without pulling in the
 // browser Supabase client this module creates. Re-exported here so callers that
 // already import from @/lib/menu are unaffected.
-export { lineName, isNoCookDish, unitPrice } from "./dish";
+export { lineName, isNoCookDish, unitPrice, isCookPotDish, withCookVariants, TOGO_COOK_SURCHARGE } from "./dish";
 export type { DishLike, VariantLike } from "./dish";
 /** Total for a cart, resolving each key's dish + variant. Pure — unit-tested. */
 export function cartTotal(cart: Record<string, number>, byId: Record<string, MenuItem>): number {

@@ -4,7 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
+import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, isCookPotDish, withCookVariants, type MenuItem, type Variant } from "@/lib/menu";
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
 import { resolveOrderModes, type OrderMode } from "@/lib/orderModes";
 import { isValidEmail, hasName } from "@/lib/contact";
@@ -340,7 +340,15 @@ export default function PublicMenu() {
     return () => { alive = false; };
   }, [slug, reloadTick]);
 
-  const byId = useMemo(() => Object.fromEntries(dishes.map((d) => [d.id, d])), [dishes]);
+  // Takeout/delivery ONLY: chicken-pot dishes gain a 生/熟 (raw/cooked) choice —
+  // cooked adds a surcharge (see withCookVariants). Dine-in keeps the menu as-is.
+  // Everything downstream (row render, 选规格 sheet, cart, order) reads dishes via
+  // effectiveDishes/byId, so injecting the variants here applies it everywhere.
+  const effectiveDishes = useMemo(
+    () => (togoMode ? dishes.map((d) => (isCookPotDish(d) ? withCookVariants(d) : d)) : dishes),
+    [dishes, togoMode],
+  );
+  const byId = useMemo(() => Object.fromEntries(effectiveDishes.map((d) => [d.id, d])), [effectiveDishes]);
   const inc = (key: string, delta: number) =>
     setCart((c) => {
       const q = Math.max(0, (c[key] ?? 0) + delta);
@@ -693,10 +701,10 @@ export default function PublicMenu() {
   };
 
   const cats = useMemo(() => {
-    const present = Array.from(new Set(dishes.map((d) => d.category).filter(Boolean)));
+    const present = Array.from(new Set(effectiveDishes.map((d) => d.category).filter(Boolean)));
     const ordered = orderedCategories(present, catOrder, ORDER);
-    return ordered.map((c) => ({ category: c, items: dishes.filter((d) => d.category === c) }));
-  }, [dishes, catOrder]);
+    return ordered.map((c) => ({ category: c, items: effectiveDishes.filter((d) => d.category === c) }));
+  }, [effectiveDishes, catOrder]);
 
   // default the active tab to the first category once dishes load
   useEffect(() => {
@@ -744,7 +752,7 @@ export default function PublicMenu() {
   // Search across all dishes (zh + en), case-insensitive, flat results.
   const q = deferredQuery.trim().toLowerCase();
   const results = q
-    ? dishes.filter(
+    ? effectiveDishes.filter(
         (d) =>
           d.name_zh.toLowerCase().includes(q) ||
           (d.name_en || "").toLowerCase().includes(q) ||
