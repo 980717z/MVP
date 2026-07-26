@@ -1386,8 +1386,10 @@ export default function PublicMenu() {
                       </div>
                     </div>
                     <span className={`font-bold tabular-nums ${sheetDish.is_market ? "text-gold" : "text-jade"}`}>{sheetDish.is_market ? t("market") : fmtPrice(v.price)}</span>
-                    {/* staff-only: 备注 / 改价 for THIS size (same editor as single-price dishes, keyed by the size's cartKey) */}
-                    {staff && q > 0 && (
+                    {/* staff-only: 备注 / 改价 for THIS size (same editor as single-price dishes, keyed by the
+                        size's cartKey). Shown always (like single-price dishes) — the editor adds the size at
+                        qty 1 with the customization if none is in the cart yet. */}
+                    {staff && (
                       <button
                         onClick={() => {
                           const n = Math.max(1, cart[key] ?? 0);
