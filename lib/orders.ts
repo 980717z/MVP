@@ -111,6 +111,8 @@ export async function createOrder(
     order_type?: OrderType;
     address?: OrderAddress;
     customer_email?: string;
+    /** Scheduled pickup/delivery time (ISO); omit/null = ASAP. */
+    requested_pickup_at?: string | null;
   }
 ): Promise<{ id?: string; error?: string }> {
   const id = newId();
@@ -128,6 +130,7 @@ export async function createOrder(
     order_type: input.order_type ?? "dine_in",
     address: input.address ?? null,
     customer_email: input.customer_email?.trim() || null,
+    requested_pickup_at: input.requested_pickup_at ?? null,
   });
   if (error) {
     console.error("createOrder", error);

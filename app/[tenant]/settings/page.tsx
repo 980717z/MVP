@@ -12,8 +12,11 @@ import {
   setTrackPayments,
   setMenuLangs,
   setOrderModes,
+  saveOrderHours,
   type Role,
   type Tenant,
+  type OrderHours,
+  type DayHours,
 } from "@/lib/store";
 import type { OrderMode } from "@/lib/orderModes";
 import { MODULE_BY_ID, READY_MODULES, readyByCategory, readyCategoriesInDomain, readyDomains } from "@/lib/catalog";
@@ -109,6 +112,14 @@ const T: Record<string, Dict> = {
   modePickup: { en: "Order-ahead pickup", zh: "预约取餐", fr: "Ramassage sur commande" },
   modeMarket: { en: "Market price (时价)", zh: "时价", fr: "Prix du jour" },
   keepOne: { en: "Keep at least one on.", zh: "至少保留一项。", fr: "Gardez-en au moins un." },
+  ohTitle: { en: "Accept-order hours", zh: "接单时间", fr: "Heures de commande" },
+  ohBlurb: { en: "When customers can schedule pickup / delivery orders. A closed day accepts no orders for that channel; leave all days off to accept anytime.", zh: "顾客能预约自提/配送的时段。某天关闭则当天该渠道不接单;全部关闭 = 不限时随时接单。", fr: "Quand les clients peuvent planifier. Un jour fermé n'accepte aucune commande." },
+  ohPickup: { en: "Pickup", zh: "自提", fr: "Ramassage" },
+  ohDelivery: { en: "Delivery", zh: "配送", fr: "Livraison" },
+  ohOpen: { en: "Open", zh: "开始", fr: "Ouvre" },
+  ohClose: { en: "Close", zh: "结束", fr: "Ferme" },
+  ohClosed: { en: "Closed", zh: "休息", fr: "Fermé" },
+  ohSave: { en: "Save hours", zh: "保存时间", fr: "Enregistrer" },
   opsTitle: { en: "Operations", zh: "运营设置", fr: "Exploitation" },
   opsBlurb: { en: "How the day is counted and whether payment methods are recorded.", zh: "如何划分营业日,以及是否记录付款方式。", fr: "Comment compter la journée et si les modes de paiement sont enregistrés." },
   dayStartLabel: { en: "New business day starts at", zh: "新营业日开始于", fr: "La nouvelle journée commence à" },
@@ -262,6 +273,9 @@ export default function Settings() {
       <MenuConfigSettings slug={slug} tenant={tenant} />
 
       <OpsSettings slug={slug} tenant={tenant} />
+
+      {/* ── Accept-order hours (pickup + delivery scheduling) ── */}
+      <OrderHoursSettings slug={slug} tenant={tenant} />
 
       {/* ── Users ─────────────────────────────────────────── */}
       <section className="card mb-8 p-5">
@@ -563,6 +577,82 @@ function OpsSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
           <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${track ? "left-[22px]" : "left-0.5"}`} />
         </button>
       </div>
+    </section>
+  );
+}
+
+const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const DAY_LABELS: Record<string, Dict> = {
+  mon: { en: "Mon", zh: "周一", fr: "Lun" }, tue: { en: "Tue", zh: "周二", fr: "Mar" },
+  wed: { en: "Wed", zh: "周三", fr: "Mer" }, thu: { en: "Thu", zh: "周四", fr: "Jeu" },
+  fri: { en: "Fri", zh: "周五", fr: "Ven" }, sat: { en: "Sat", zh: "周六", fr: "Sam" },
+  sun: { en: "Sun", zh: "周日", fr: "Dim" },
+};
+
+/** Per-weekday accept-order hours for pickup + delivery. One [open,close] range
+ *  per day (the underlying DayHours supports several; the UI keeps it to one). */
+function OrderHoursSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
+  const { t } = useLang();
+  const [hours, setHours] = useState<OrderHours>({ pickup: {}, delivery: {} });
+  const [savedTag, setSavedTag] = useState(false);
+  useEffect(() => { if (tenant) setHours({ pickup: { ...tenant.orderHours.pickup }, delivery: { ...tenant.orderHours.delivery } }); }, [tenant]);
+
+  const dayRange = (ch: DayHours, day: string): [string, string] | null => {
+    const r = ch[day]?.[0];
+    return r && r[0] && r[1] ? [r[0], r[1]] : null;
+  };
+  const setDay = (channel: "pickup" | "delivery", day: string, range: [string, string] | null) =>
+    setHours((h) => {
+      const ch = { ...h[channel] };
+      if (range) ch[day] = [range];
+      else delete ch[day];
+      return { ...h, [channel]: ch };
+    });
+  const save = async () => { await saveOrderHours(slug, hours); setSavedTag(true); setTimeout(() => setSavedTag(false), 1600); };
+
+  const Channel = ({ channel, label }: { channel: "pickup" | "delivery"; label: string }) => (
+    <div className="mb-5">
+      <div className="mb-2 text-sm font-semibold text-ink">{label}</div>
+      <div className="space-y-1.5">
+        {DAY_KEYS.map((day) => {
+          const r = dayRange(hours[channel], day);
+          const on = !!r;
+          return (
+            <div key={day} className="flex items-center gap-2">
+              <span className="w-12 flex-none text-sm text-ink-soft">{t(DAY_LABELS[day])}</span>
+              <button
+                onClick={() => setDay(channel, day, on ? null : ["11:00", "21:00"])}
+                role="switch" aria-checked={on}
+                className={`relative h-6 w-11 flex-none rounded-full transition ${on ? "bg-brand" : "bg-slate-300"}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-[22px]" : "left-0.5"}`} />
+              </button>
+              {on ? (
+                <div className="flex items-center gap-1.5 text-sm">
+                  <input type="time" value={r![0]} onChange={(e) => setDay(channel, day, [e.target.value, r![1]])} className="rounded-lg border border-slate-300 px-2 py-1" />
+                  <span className="text-ink-faint">–</span>
+                  <input type="time" value={r![1]} onChange={(e) => setDay(channel, day, [r![0], e.target.value])} className="rounded-lg border border-slate-300 px-2 py-1" />
+                </div>
+              ) : (
+                <span className="text-sm text-ink-faint">{t(T.ohClosed)}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="card mb-8 p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-ink">{t(T.ohTitle)}</h2>
+        {savedTag && <span className="rounded-full bg-brand-wash px-2 py-0.5 text-xs font-semibold text-brand-ink">{t(T.saved)}</span>}
+      </div>
+      <p className="mb-5 text-sm text-ink-soft">{t(T.ohBlurb)}</p>
+      <Channel channel="pickup" label={t(T.ohPickup)} />
+      <Channel channel="delivery" label={t(T.ohDelivery)} />
+      <button onClick={save} className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white">{t(T.ohSave)}</button>
     </section>
   );
 }

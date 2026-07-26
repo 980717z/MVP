@@ -5,6 +5,8 @@ import Image from "next/image";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, isCookPotDish, withCookVariants, type MenuItem, type Variant } from "@/lib/menu";
+import { orderSlots, hoursConfigured } from "@/lib/orderHours";
+import type { DayHours } from "@/lib/store";
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
 import { resolveOrderModes, type OrderMode } from "@/lib/orderModes";
 import { isValidEmail, hasName } from "@/lib/contact";
@@ -152,6 +154,10 @@ export default function PublicMenu() {
   // the per-phone rate limit.
   const [noPhone, setNoPhone] = useState(false);
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
+  // Accept-order hours per channel (tenants.order_hours) + the customer's chosen
+  // schedule for a togo/delivery order (null = 现在/ASAP).
+  const [orderHours, setOrderHours] = useState<{ pickup: DayHours; delivery: DayHours }>({ pickup: {}, delivery: {} });
+  const [schedAt, setSchedAt] = useState<string | null>(null);
   // Desktop/iPad vs phone layout. `viewOverride` = the manual toggle (null = auto).
   // The auto layout is driven by CSS `md:` breakpoints (correct on first paint, no
   // hydration flash); this state only powers the manual override attribute + toggle.
@@ -320,6 +326,19 @@ export default function PublicMenu() {
       .then(({ data }) => { const ml = (data as { menu_langs?: unknown } | null)?.menu_langs; if (Array.isArray(ml) && ml.length) setMenuLangs(ml as Lang[]); });
     supabase.from("storefront").select("order_modes").eq("slug", slug).maybeSingle()
       .then(({ data }) => { const om = (data as { order_modes?: unknown } | null)?.order_modes; if (Array.isArray(om) && om.length) setMenuOrderModes(resolveOrderModes(om)); });
+    // Accept-order hours (pickup/delivery scheduling). Defensive: a pre-migration
+    // view without order_hours errors quietly → scheduling stays "anytime".
+    supabase.from("storefront").select("order_hours").eq("slug", slug).maybeSingle()
+      .then(({ data }) => {
+        const oh = (data as { order_hours?: unknown } | null)?.order_hours;
+        if (oh && typeof oh === "object") {
+          const o = oh as { pickup?: unknown; delivery?: unknown };
+          setOrderHours({
+            pickup: (o.pickup && typeof o.pickup === "object" ? o.pickup : {}) as DayHours,
+            delivery: (o.delivery && typeof o.delivery === "object" ? o.delivery : {}) as DayHours,
+          });
+        }
+      });
     let alive = true;
     setLoadErr(false);
     Promise.all([
@@ -405,6 +424,16 @@ export default function PublicMenu() {
   // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
   // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
   const isDelivery = togoMode && togoType === "delivery";
+  // Scheduling slots for the chosen channel (自取→pickup hours, 配送→delivery).
+  // Recomputed when the cart opens so "现在" reflects a fresh clock. Campus
+  // pickupMode keeps its own +15/+30 picker; this is fulai's togo/delivery only.
+  const schedChannel = togoType === "delivery" ? orderHours.delivery : orderHours.pickup;
+  // Scheduling is offered only once the owner has configured this channel's hours;
+  // until then customers see 现在 only (and requested_pickup_at stays null, which
+  // the anon-insert guard requires). This also avoids a broken window before the
+  // order-hours migration runs.
+  const schedConfigured = hoursConfigured(schedChannel);
+  const sched = useMemo(() => orderSlots(schedChannel, new Date()), [schedChannel, open]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tenant with no table labels is a food truck / counter-service vendor:
   // no dine-in table field, and every order needs a phone (there's no table to
   // call out, so the number is how staff reach the customer).
@@ -635,6 +664,7 @@ export default function PublicMenu() {
       order_type: togoMode ? togoType : "dine_in",
       address: isDelivery ? { street: street.trim(), unit: unit.trim() || undefined, city: "Toronto, ON", postal: postal.trim().toUpperCase() } : undefined,
       customer_email: togoMode ? email : undefined,
+      requested_pickup_at: togoMode ? schedAt : null, // null = 现在/ASAP
     });
     setSubmitting(false);
     if (res.error) {
@@ -698,6 +728,7 @@ export default function PublicMenu() {
     setTableNo(lockedTable ?? "");
     setPhone("");
     setNote("");
+    setSchedAt(null);
   };
 
   const cats = useMemo(() => {
@@ -1519,6 +1550,35 @@ export default function PublicMenu() {
                         {renderAddress()}
                         {addrErr && <p className="text-xs text-red-600">{addrErr}</p>}
                       </>
+                    )}
+                    {/* fulai togo/delivery scheduling: 现在(ASAP, staff callback) or a
+                        future slot bounded by the channel's accept-order hours. */}
+                    {!pickupMode && (
+                      <div>
+                        <div className="mb-1.5 text-sm font-medium text-ink">🕐 {tri("什么时候要？", "When?", "Quand ?")}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSchedAt(null)}
+                            className={`min-h-11 rounded-full px-3.5 text-sm font-medium transition ${schedAt === null ? "bg-jade text-white" : "border border-slate-200 bg-white text-ink-soft"}`}
+                          >
+                            {tri("现在", "Now", "Maintenant")}
+                          </button>
+                          {schedConfigured && sched.slots.length > 0 && (
+                            <select
+                              value={schedAt ?? ""}
+                              onChange={(e) => setSchedAt(e.target.value || null)}
+                              className={`min-h-11 rounded-full border px-3 text-sm ${schedAt ? "border-jade bg-jade-wash font-semibold text-jade" : "border-slate-200 bg-white text-ink-soft"}`}
+                            >
+                              <option value="">{tri("预约时间…", "Schedule…", "Planifier…")}</option>
+                              {sched.slots.map((s) => {
+                                const day = s.dayOffset === 0 ? tri("今天", "Today", "Auj.") : s.dayOffset === 1 ? tri("明天", "Tmr", "Dem.") : new Date(s.iso).toLocaleDateString("en-CA", { timeZone: "America/Toronto", month: "numeric", day: "numeric" });
+                                return <option key={s.iso} value={s.iso}>{day} {s.hhmm}</option>;
+                              })}
+                            </select>
+                          )}
+                        </div>
+                      </div>
                     )}
                     {/* Scheduled pickup: order from class now, pick up after it ends.
                         ASAP keeps the original flow (staff set the ETA on accept). */}

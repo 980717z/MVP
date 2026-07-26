@@ -95,6 +95,7 @@ const T: Record<string, Dict> = {
   },
   // Campus order-ahead pickup (🚚) — distinct from fulai's takeout (自取)
   viewPickup: { en: "Order-ahead", zh: "取餐", fr: "Sur commande" },
+  scheduledFor: { en: "for", zh: "预约", fr: "prévu" },
   emptyPickup: { en: "No order-ahead pickups yet.", zh: "还没有取餐订单。", fr: "Aucune commande à ramasser." },
   puAcceptHint: { en: "Accept · prep time", zh: "接单 · 预计时间", fr: "Accepter · délai" },
   puReady: { en: "✅ Ready", zh: "✅ 可取餐", fr: "✅ Prêt" },
@@ -777,6 +778,12 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             )}
             {o.order_type === "pickup" && o.status === "preparing" && !o.ready_at && o.eta_minutes && (
               <span className="text-xs text-ink-faint">{t(T.puEta).replace("{n}", String(o.eta_minutes))}</span>
+            )}
+            {/* Scheduled togo/delivery time (null = ASAP → no badge). Have it ready by then. */}
+            {(o.order_type === "togo" || o.order_type === "delivery") && o.requested_pickup_at && (
+              <span className="pill bg-amber-100 font-bold text-amber-700" title={t(T.puWhenTitle)}>
+                🕐 {t(T.scheduledFor)} {new Date(o.requested_pickup_at).toLocaleString("en-CA", { timeZone: "America/Toronto", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}
+              </span>
             )}
             {o.table_no && <span className="text-sm font-medium text-ink">{t(T.table)} {displayTable(o.table_no)}</span>}
             {o.phone && o.phone !== "N/A" ? (

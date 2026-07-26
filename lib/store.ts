@@ -52,8 +52,20 @@ export interface Tenant {
   campus: boolean; // campus-only merchant (e.g. Pita Express) → campus branding/flows
   menuLangs: string[]; // customer-menu languages offered (ordered; first = primary). [] = unset → bilingual
   orderModes: OrderMode[]; // which ordering flows this vendor offers; campus truck = ['pickup']
+  orderHours: OrderHours; // per-weekday accept-order windows for pickup + delivery (America/Toronto)
   users: User[];
   records: Record<string, RecordRow[]>;
+}
+
+/** Per-weekday ranges per channel — same shape as lib/hours' Hours. Empty/missing
+ *  ⇒ unconfigured ⇒ that channel isn't time-gated (see lib/orderHours). */
+export type DayHours = Record<string, [string, string][]>;
+export interface OrderHours { pickup: DayHours; delivery: DayHours }
+const emptyOrderHours = (): OrderHours => ({ pickup: {}, delivery: {} });
+function parseOrderHours(v: unknown): OrderHours {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const pick = (x: unknown): DayHours => (x && typeof x === "object" ? (x as DayHours) : {});
+  return { pickup: pick(o.pickup), delivery: pick(o.delivery) };
 }
 
 // keep enabled in canonical catalog order
@@ -76,9 +88,17 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     campus: !!row.campus,
     menuLangs: Array.isArray(row.menu_langs) ? row.menu_langs : [],
     orderModes: resolveOrderModes(row.order_modes),
+    orderHours: parseOrderHours(row.order_hours),
     users,
     records,
   };
+}
+
+/** Save a tenant's pickup/delivery accept-order windows (settings screen). */
+export async function saveOrderHours(slug: string, hours: OrderHours): Promise<{ error?: string }> {
+  const { error } = await supabase.from("tenants").update({ order_hours: hours }).eq("slug", slug);
+  if (error) { console.error("saveOrderHours", error); return { error: error.message }; }
+  return {};
 }
 
 // ── reads ──────────────────────────────────────────────────────────────────
