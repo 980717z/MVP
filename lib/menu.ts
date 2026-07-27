@@ -34,6 +34,11 @@ export interface MenuItem {
   /** Pinyin initials of name_zh (菠萝咕噜肉 → "blglr"), for staff search. Computed
    *  in the admin (lib/pinyin) on save; the customer menu only MATCHES it. */
   search_initials?: string;
+  /** 菜号 — the code printed beside this dish on the paper menu ("48A", "F12").
+   *  OPTIONAL; '' for the many dishes that have none. NEVER rendered on the
+   *  customer menu — it exists so a diner holding the paper menu (or staff on a
+   *  phone order) can search by number. See lib/dishNo. */
+  dish_no?: string;
 }
 
 // normVariants moved to ./dish (zero-import) so the server-side pickup route
@@ -180,7 +185,7 @@ export async function listMenuItemsRaw(slug: string): Promise<MenuItem[]> {
 
 export async function addMenuItem(
   slug: string,
-  item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string; variants?: Variant[]; search_initials?: string }
+  item: { name_zh: string; name_en?: string; price?: string | number | null; category?: string; image_url?: string; variants?: Variant[]; search_initials?: string; dish_no?: string }
 ): Promise<{ error?: string }> {
   const price =
     item.price === "" || item.price === undefined || item.price === null
@@ -198,6 +203,9 @@ export async function addMenuItem(
     // absence on a pre-migration DB via the caller catching the error? No — it's
     // a defaulted column, so this is safe once menu-search-initials.sql has run.
     ...(item.search_initials !== undefined ? { search_initials: item.search_initials } : {}),
+    // 菜号 — omitted entirely when not supplied, so this insert still works on a
+    // DB where menu-dish-no.sql hasn't run yet.
+    ...(item.dish_no ? { dish_no: item.dish_no } : {}),
   });
   if (error) {
     console.error("addMenuItem", error);
@@ -208,7 +216,7 @@ export async function addMenuItem(
 
 export async function updateMenuItem(
   id: string,
-  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market" | "sold_out" | "search_initials">>
+  patch: Partial<Pick<MenuItem, "name_zh" | "name_en" | "price" | "category" | "image_url" | "variants" | "is_market" | "sold_out" | "search_initials" | "dish_no">>
 ): Promise<{ error?: string }> {
   const clean: Record<string, any> = { ...patch };
   if ("price" in clean) {

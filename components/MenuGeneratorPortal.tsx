@@ -6,6 +6,7 @@ import type { ModuleDef } from "@/lib/catalog";
 import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, getMenuLangs, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { resolveOfferedLangs } from "@/lib/menuLangs";
 import { pinyinInitials } from "@/lib/pinyin";
+import { cleanDishNo, dishNoMatches } from "@/lib/dishNo";
 import { price as fmtPrice } from "@/lib/format";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -35,6 +36,15 @@ const T = {
   nameEnPh: { en: "Steam Pot Chicken", zh: "Steam Pot Chicken", fr: "Steam Pot Chicken" },
   price: { en: "Price", zh: "价格", fr: "Prix" },
   category: { en: "Category", zh: "分类", fr: "Catégorie" },
+  // 菜号 — optional paper-menu code. Searchable, never shown to diners.
+  dishNo: { en: "Dish no. (optional)", zh: "菜号(选填)", fr: "N° du plat (facultatif)" },
+  dishNoPh: { en: "e.g. 115 / 48A", zh: "如 115 / 48A", fr: "ex. 115 / 48A" },
+  dishNoHint: {
+    en: "The number on your paper menu. Hidden from the QR menu — customers and staff can search by it.",
+    zh: "纸质菜单上的编号。二维码菜单上不显示,但可以用它搜索到这道菜。",
+    fr: "Le numéro de votre menu papier. Masqué sur le menu QR, mais utilisable pour la recherche.",
+  },
+  dishNoShort: { en: "No.", zh: "菜号", fr: "N°" },
   // VT3: merchant-defined categories. The dropdown offers the shop's OWN
   // categories (derived from its dishes), not a hardcoded Chinese-restaurant list.
   newCategory: { en: "+ New category", zh: "+ 新分类", fr: "+ Nouvelle catégorie" },
@@ -122,6 +132,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [zh, setZh] = useState("");
   const [en, setEn] = useState("");
   const [price, setPrice] = useState("");
+  const [dishNo, setDishNo] = useState(""); // 菜号 — optional paper-menu code
   const [category, setCategory] = useState("");
   // "+ New category" mode: the category field becomes a free text input.
   const [newCatMode, setNewCatMode] = useState(false);
@@ -155,6 +166,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     setZh("");
     setEn("");
     setPrice("");
+    setDishNo("");
     pickImage(null);
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -186,7 +198,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     // English-only vendor who left Chinese blank still gets a real ticket name:
     // fall back name_zh to the English name. name_en stays as typed.
     const name_zh = zh.trim() || (primaryLang === "en" ? en.trim() : "");
-    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url, search_initials: pinyinInitials(name_zh) });
+    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url, search_initials: pinyinInitials(name_zh), dish_no: cleanDishNo(dishNo) });
     setBusy(false);
     if (error) {
       alert(t(T.errAdd) + error);
@@ -274,10 +286,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     items: dishes.filter((d) => d.category === c),
   }));
 
-  // back-office search: filter by zh/en name (365 dishes is a lot to scroll)
+  // back-office search: filter by zh/en name or 菜号 (365 dishes is a lot to scroll)
   const sq = search.trim().toLowerCase();
   const visibleDishes = sq
-    ? dishes.filter((d) => d.name_zh.toLowerCase().includes(sq) || (d.name_en || "").toLowerCase().includes(sq))
+    ? dishes.filter((d) => d.name_zh.toLowerCase().includes(sq) || (d.name_en || "").toLowerCase().includes(sq) || dishNoMatches(d.dish_no, sq))
     : dishes;
 
   // editable list grouped by category in the saved order; search filters within.
@@ -425,6 +437,18 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                       />
                     </div>
                   )}
+                </div>
+                <div>
+                  <label className="label">{t(T.dishNo)}</label>
+                  <input
+                    className="input"
+                    value={dishNo}
+                    onChange={(e) => setDishNo(e.target.value)}
+                    placeholder={t(T.dishNoPh)}
+                    inputMode="text"
+                    autoCapitalize="characters"
+                  />
+                  <p className="mt-1 text-xs text-ink-faint">{t(T.dishNoHint)}</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -615,6 +639,28 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                         onChange={(e) => patchLocal(d.id, { name_en: e.target.value })}
                         onBlur={(e) => saveField(d.id, { name_en: e.target.value })}
                       />
+                      {/* 菜号 — optional paper-menu code. Never rendered on the
+                          customer menu; it only makes the dish findable by number
+                          in the search box (lib/dishNo). Normalized on blur so
+                          "f 12" and "F12" store identically. */}
+                      <div className="flex w-40 items-center gap-1.5 rounded-lg border border-slate-300 px-2">
+                        <span className="flex-none text-xs font-medium text-ink-faint">{t(T.dishNoShort)}</span>
+                        <input
+                          className="w-full bg-transparent py-1.5 text-sm outline-none"
+                          value={d.dish_no ?? ""}
+                          placeholder={t(T.dishNoPh)}
+                          autoCapitalize="characters"
+                          title={t(T.dishNoHint)}
+                          onChange={(e) => patchLocal(d.id, { dish_no: e.target.value })}
+                          onBlur={(e) => {
+                            // Normalize locally too, or the field keeps showing the
+                            // raw "f 12" while the DB holds "F12" until a reload.
+                            const v = cleanDishNo(e.target.value);
+                            patchLocal(d.id, { dish_no: v });
+                            saveField(d.id, { dish_no: v });
+                          }}
+                        />
+                      </div>
                       {(d.variants?.length ?? 0) === 0 ? (
                         <div className="flex items-center gap-3">
                           {/* 时价 dishes have no fixed price — hide the field; use the 今日时价 panel below */}

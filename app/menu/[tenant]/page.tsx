@@ -8,6 +8,7 @@ import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, dis
 import { orderSlots, hoursConfigured } from "@/lib/orderHours";
 import type { DayHours } from "@/lib/store";
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
+import { dishNoMatches } from "@/lib/dishNo";
 import { resolveOrderModes, type OrderMode } from "@/lib/orderModes";
 import { isValidEmail, hasName } from "@/lib/contact";
 import { createOrder, fetchOrderNo, type OrderItem } from "@/lib/orders";
@@ -794,7 +795,11 @@ export default function PublicMenu() {
           (d.name_en || "").toLowerCase().includes(q) ||
           // Pinyin initials: "blglr" → 菠萝咕噜肉. Precomputed on the dish (no
           // pinyin code here). Prefix match so each keystroke narrows down.
-          (!!d.search_initials && d.search_initials.startsWith(q)),
+          (!!d.search_initials && d.search_initials.startsWith(q)) ||
+          // 菜号 from the paper menu ("115", "48A", "F12"). Findable but never
+          // DISPLAYED — a diner holding the printed menu can type the number,
+          // while the QR menu itself stays free of numbering. Blank never matches.
+          dishNoMatches(d.dish_no, q),
       )
     : [];
 

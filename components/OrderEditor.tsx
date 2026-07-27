@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { updateOrderItems, reprintOrder, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, adjustOrderSale } from "@/lib/store";
 import { listMenuItems, displayPrice, catLabel, type MenuItem } from "@/lib/menu";
+import { dishNoMatches } from "@/lib/dishNo";
 import { useLang, type Dict } from "@/app/i18n";
 
 const T: Record<string, Dict> = {
@@ -100,7 +101,9 @@ export default function OrderEditor({
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
     const list = menu.filter((d) => !d.sold_out);
-    if (s) return list.filter((d) => d.name_zh.toLowerCase().includes(s) || (d.name_en || "").toLowerCase().includes(s) || (d.search_initials || "").includes(s));
+    // name (zh/en) · pinyin initials · 菜号 from the paper menu — staff taking a
+    // phone order can punch "115" straight off the printed sheet.
+    if (s) return list.filter((d) => d.name_zh.toLowerCase().includes(s) || (d.name_en || "").toLowerCase().includes(s) || (d.search_initials || "").includes(s) || dishNoMatches(d.dish_no, s));
     return cat ? list.filter((d) => catOf(d) === cat) : list;
   }, [menu, q, cat]);
 
