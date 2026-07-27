@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { updateOrderItems, reprintOrder, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, adjustOrderSale } from "@/lib/store";
-import { listMenuItems, displayPrice, type MenuItem } from "@/lib/menu";
+import { listMenuItems, displayPrice, catLabel, type MenuItem } from "@/lib/menu";
 import { useLang, type Dict } from "@/app/i18n";
 
 const T: Record<string, Dict> = {
@@ -25,6 +25,9 @@ const T: Record<string, Dict> = {
   reprint: { en: "🖨 Reprint ticket", zh: "🖨 重打小票", fr: "🖨 Réimprimer" },
   noReprint: { en: "No, done", zh: "不用了", fr: "Non, terminé" },
   saveErr: { en: "Save failed, retry: ", zh: "保存失败,请重试:", fr: "Échec, réessayez : " },
+  done: { en: "Done", zh: "完成", fr: "Terminé" },
+  allCats: { en: "All", zh: "全部", fr: "Tous" },
+  noHits: { en: "No dishes found.", zh: "没有找到菜品。", fr: "Aucun plat trouvé." },
 };
 
 type Row = OrderItem & { cancelled?: boolean };
@@ -47,6 +50,7 @@ export default function OrderEditor({
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
+  const [cat, setCat] = useState(""); // "" = all categories; else browse one category
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"edit" | "reprint">("edit");
   const [err, setErr] = useState("");
@@ -69,21 +73,45 @@ export default function OrderEditor({
   };
   const removeRow = (i: number) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, cancelled: true } : r)));
 
+  // Tap-to-add: bump the qty of the matching single-price line if it's already on
+  // the order (keeps the bill tidy), else append it. Panel stays open so staff can
+  // keep browsing the menu and add several dishes in a row.
   const addDish = (d: MenuItem) => {
     const price = displayPrice(d) ?? 0;
-    setRows((rs) => [...rs, { id: d.id, name_zh: d.name_zh, name_en: d.name_en, price, qty: 1 }]);
-    setAdding(false);
-    setQ("");
+    setRows((rs) => {
+      const i = rs.findIndex((r) => r.id === d.id && r.vi == null && !r.cancelled);
+      if (i >= 0) return rs.map((r, k) => (k === i ? { ...r, qty: r.qty + 1 } : r));
+      return [...rs, { id: d.id, name_zh: d.name_zh, name_en: d.name_en, price, qty: 1 }];
+    });
   };
 
+  const catOf = (d: MenuItem) => d.category || "其他";
+  const clabel = (c: string) => catLabel(c, lang === "zh" ? "zh" : "en");
+  const searching = q.trim().length > 0;
+
+  // Category rail: every category present in the menu, in menu order.
+  const cats = useMemo(() => {
+    const seen: string[] = [];
+    for (const d of menu) { if (d.sold_out) continue; const c = catOf(d); if (!seen.includes(c)) seen.push(c); }
+    return seen;
+  }, [menu]);
+
+  // Search matches across all categories; otherwise browse (all, or one category).
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
     const list = menu.filter((d) => !d.sold_out);
-    if (!s) return list.slice(0, 40);
-    return list
-      .filter((d) => d.name_zh.toLowerCase().includes(s) || (d.name_en || "").toLowerCase().includes(s) || (d.search_initials || "").includes(s))
-      .slice(0, 40);
-  }, [menu, q]);
+    if (s) return list.filter((d) => d.name_zh.toLowerCase().includes(s) || (d.name_en || "").toLowerCase().includes(s) || (d.search_initials || "").includes(s));
+    return cat ? list.filter((d) => catOf(d) === cat) : list;
+  }, [menu, q, cat]);
+
+  // Grouped-by-category headers only when browsing ALL with no search; a single
+  // category or a search shows a flat list.
+  const grouped = useMemo(() => {
+    if (searching || cat) return null;
+    const m = new Map<string, MenuItem[]>();
+    for (const d of results) { const c = catOf(d); const a = m.get(c); if (a) a.push(d); else m.set(c, [d]); }
+    return [...m.entries()];
+  }, [results, searching, cat]);
 
   const doSave = async () => {
     if (busy) return;
@@ -136,7 +164,7 @@ export default function OrderEditor({
 
         {phase === "edit" ? (
           <>
-            <div className="max-h-[52vh] overflow-y-auto px-5 py-3">
+            <div className="max-h-[64vh] overflow-y-auto px-5 py-3">
               {activeCount === 0 && <p className="py-6 text-center text-sm text-ink-faint">{t(T.empty)}</p>}
               {rows.map((r, i) =>
                 r.cancelled ? null : (
@@ -166,20 +194,54 @@ export default function OrderEditor({
 
               {adding ? (
                 <div className="mt-2 rounded-xl border border-slate-200 p-2">
-                  <input
-                    autoFocus
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder={t(T.searchDish)}
-                    className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                  <div className="max-h-48 overflow-y-auto">
-                    {results.map((d) => (
-                      <button key={d.id} onClick={() => addDish(d)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-50">
-                        <span className="truncate text-ink">{dishName(d)}</span>
-                        <span className="flex-none tabular-nums text-ink-soft">${(displayPrice(d) ?? 0).toFixed(2)}</span>
+                  <div className="mb-2 flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder={t(T.searchDish)}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <button onClick={() => { setAdding(false); setQ(""); setCat(""); }} className="flex-none rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:bg-slate-100">
+                      {t(T.done)}
+                    </button>
+                  </div>
+                  {/* Category rail — tap to browse one section; hidden while searching. */}
+                  {!searching && cats.length > 1 && (
+                    <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+                      <button onClick={() => setCat("")} className={`flex-none rounded-full border px-3 py-1 text-xs font-medium ${cat === "" ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"}`}>
+                        {t(T.allCats)}
                       </button>
-                    ))}
+                      {cats.map((c) => (
+                        <button key={c} onClick={() => setCat(c)} className={`flex-none whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${cat === c ? "border-brand bg-brand-wash text-brand-ink" : "border-slate-200 text-ink-soft hover:bg-slate-50"}`}>
+                          {clabel(c)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="max-h-[42vh] overflow-y-auto">
+                    {results.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-ink-faint">{t(T.noHits)}</p>
+                    ) : grouped ? (
+                      grouped.map(([c, items]) => (
+                        <div key={c} className="mb-1">
+                          <div className="sticky top-0 bg-white px-2 py-1 text-xs font-semibold text-ink-faint">{clabel(c)}</div>
+                          {items.map((d) => (
+                            <button key={d.id} onClick={() => addDish(d)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left text-sm hover:bg-slate-50">
+                              <span className="truncate text-ink">{dishName(d)}</span>
+                              <span className="flex-none tabular-nums text-ink-soft">${(displayPrice(d) ?? 0).toFixed(2)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    ) : (
+                      results.map((d) => (
+                        <button key={d.id} onClick={() => addDish(d)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left text-sm hover:bg-slate-50">
+                          <span className="truncate text-ink">{dishName(d)}</span>
+                          <span className="flex-none tabular-nums text-ink-soft">${(displayPrice(d) ?? 0).toFixed(2)}</span>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
               ) : (
