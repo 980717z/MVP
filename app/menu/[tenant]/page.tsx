@@ -72,6 +72,10 @@ const T = {
 
 // Flipped to "1" when the Clover checkout routes go live (Phase 0/1).
 const PAYMENTS_LIVE = process.env.NEXT_PUBLIC_PAYMENTS_LIVE === "1";
+/** 大字模式 zoom factor. Kept as a constant because viewport-sized elements have
+ *  to divide by it — CSS zoom scales an element AFTER dvh resolves, so anything
+ *  measured in dvh renders this much taller than the screen unless compensated. */
+const BIG_ZOOM = 1.18;
 // Client-side zone hint; the server re-validates against tenants.delivery_fsas at checkout.
 const DT_FSAS = ["M4W", "M4X", "M4Y", "M5A", "M5B", "M5C", "M5E", "M5G", "M5H", "M5J", "M5K", "M5L", "M5S", "M5T", "M5V", "M5X"];
 
@@ -157,6 +161,7 @@ export default function PublicMenu() {
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
   // 大字模式 (elderly-friendly): CSS zoom on <main> scales the whole menu — text,
   // spacing, buttons — uniformly (works with the fixed/px Tailwind sizes). Persisted.
+  // Anything sized against the viewport must divide by BIG_ZOOM — see --vp below.
   const [big, setBig] = useState(false);
   useEffect(() => { try { if (localStorage.getItem("bento_menu_bigtext") === "1") setBig(true); } catch { /* ignore */ } }, []);
   const toggleBig = () => setBig((b) => { const n = !b; try { localStorage.setItem("bento_menu_bigtext", n ? "1" : "0"); } catch { /* ignore */ } return n; });
@@ -977,7 +982,22 @@ export default function PublicMenu() {
     <main
       data-view={viewOverride ?? undefined}
       className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32 md:pb-6" : "pb-20 md:pb-6"}`}
-      style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif', zoom: big ? 1.18 : undefined }}
+      style={{
+        fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif',
+        zoom: big ? BIG_ZOOM : undefined,
+        // Usable screen height for the sticky columns (category rail + order
+        // panel), expressed in THIS element's coordinate space.
+        //
+        // CSS `zoom` does not change what 100dvh resolves to — it stays the real
+        // viewport — but it DOES scale the element afterwards. So a column sized
+        // at calc(100dvh - 150px) rendered 18% taller than the screen in 大字 and
+        // its bottom (合计 + 结账) fell below the fold with no way to scroll to it,
+        // because the column is `sticky`. Dividing by the zoom first cancels that.
+        //
+        // dvh, not vh: on mobile Safari the toolbar shrinks the visible area, and
+        // vh keeps reporting the taller pre-collapse height.
+        ["--vp" as string]: big ? `calc(100dvh / ${BIG_ZOOM})` : "100dvh",
+      } as React.CSSProperties}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -1199,7 +1219,11 @@ export default function PublicMenu() {
           {cats.length > 1 && (
             <nav
               ref={railRef}
-              className="mv-rail sticky top-[130px] z-[5] max-h-[calc(100vh-150px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
+              // --vp is the real screen height in this element's space (zoom-aware,
+              // dvh-based). 142px = the 130px sticky offset + 12px breathing room,
+              // so the rail always ends ON screen and scrolls to its own last row.
+              style={{ maxHeight: "calc(var(--vp) - 142px)" }}
+              className="mv-rail sticky top-[130px] z-[5] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
             >
               {cats.map((g, i) => {
                 const on = g.category === activeCat;
@@ -1235,7 +1259,10 @@ export default function PublicMenu() {
 
           {/* desktop/iPad: persistent order panel — live order while browsing.
               Always in DOM; CSS `md:` (+ [data-view] override) controls visibility. */}
-          <aside className="mv-desktop sticky top-[130px] hidden max-h-[calc(100vh-150px)] w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex">
+          <aside
+            style={{ maxHeight: "calc(var(--vp) - 142px)" }}
+            className="mv-desktop sticky top-[130px] hidden w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex"
+          >
             {renderOrderPanel()}
           </aside>
         </div>
