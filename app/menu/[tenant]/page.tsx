@@ -757,7 +757,7 @@ export default function PublicMenu() {
       for (let i = 0; i < cats.length; i++) {
         const el = document.getElementById(`menu-cat-${i}`);
         if (!el) continue;
-        if (el.getBoundingClientRect().top - 92 <= 1) current = cats[i].category;
+        if (el.getBoundingClientRect().top - 140 <= 1) current = cats[i].category;
         else break;
       }
       if (current) setActiveCat((prev) => (prev === current ? prev : current));
@@ -1130,9 +1130,11 @@ export default function PublicMenu() {
           </div>
         )}
 
-        {/* search bar — filters across all categories */}
+        {/* search bar — filters across all categories. Sticky just under the
+            header so it stays reachable while scrolling the dish list; the rail +
+            order panel below start at top-[130px] to clear it. */}
         {dishes.length > 0 && (
-          <div className="relative mb-5">
+          <div className="sticky top-[68px] z-[6] mb-4 bg-paper/95 py-2.5 backdrop-blur">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
             <input
               value={query}
@@ -1177,7 +1179,7 @@ export default function PublicMenu() {
           {cats.length > 1 && (
             <nav
               ref={railRef}
-              className="mv-rail sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
+              className="mv-rail sticky top-[130px] z-[5] max-h-[calc(100vh-150px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
             >
               {cats.map((g, i) => {
                 const on = g.category === activeCat;
@@ -1202,7 +1204,7 @@ export default function PublicMenu() {
           {/* dish list — every category as a section; scrolling syncs the rail */}
           <div className="min-w-0 flex-1">
             {cats.map((g, i) => (
-              <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[76px]">
+              <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[140px]">
                 <h2 className="mb-3 flex items-baseline gap-2 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">
                   {catLabel(g.category, lang2)}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
                 </h2>
@@ -1213,7 +1215,7 @@ export default function PublicMenu() {
 
           {/* desktop/iPad: persistent order panel — live order while browsing.
               Always in DOM; CSS `md:` (+ [data-view] override) controls visibility. */}
-          <aside className="mv-desktop sticky top-[68px] hidden max-h-[calc(100vh-88px)] w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex">
+          <aside className="mv-desktop sticky top-[130px] hidden max-h-[calc(100vh-150px)] w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex">
             {renderOrderPanel()}
           </aside>
         </div>
