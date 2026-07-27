@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupReady, claimPickedUp, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
-import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
+import { postOrderSales, recordOrderSale, syncMemberFromOrder, adjustOrderSale, deleteOrderSale, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import { type OrderMode } from "@/lib/orderModes";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
@@ -145,8 +145,24 @@ const T: Record<string, Dict> = {
   printBill: { en: "🧾 Print bill", zh: "🧾 打印账单", fr: "🧾 Imprimer l'addition" },
   reprintKitchen: { en: "Reprint kitchen ticket", zh: "重打厨房单", fr: "Réimprimer le ticket cuisine" },
   editOrder: { en: "✏️ Edit order", zh: "✏️ 编辑订单", fr: "✏️ Modifier" },
+  // 加菜到「已完成」的自取/取餐单(未完成的单用「编辑订单」加菜即可)。
+  addDishDone: { en: "＋ Add dish", zh: "＋ 加菜到本单", fr: "＋ Ajouter un plat" },
+  mergeOrder: { en: "🔗 Merge order", zh: "🔗 合并订单", fr: "🔗 Fusionner" },
   cancelOrder: { en: "Cancel order", zh: "取消订单", fr: "Annuler la commande" },
   deleteOrder: { en: "Delete", zh: "删除", fr: "Supprimer" },
+  // Merge picker
+  mergeTitle: { en: "Merge {no} into…", zh: "把 {no} 合并到…", fr: "Fusionner {no} dans…" },
+  mergeHint: {
+    en: "Its dishes move onto the order you pick; this one is then removed. Sales totals stay correct.",
+    zh: "这张单的菜会并入你选择的单,本单随后删除。营业额与菜品销量保持不变。",
+    fr: "Ses plats sont déplacés vers la commande choisie ; celle-ci est ensuite supprimée. Les totaux restent corrects.",
+  },
+  mergeNone: {
+    en: "No other order to merge into — need a same-type order in the same state (both done, or both open).",
+    zh: "没有可合并的另一张单 —— 需要同类型、且状态相同(都已完成,或都未完成)的单。",
+    fr: "Aucune commande compatible — même type et même état (toutes deux terminées ou toutes deux ouvertes).",
+  },
+  mergeFailed: { en: "Merge failed, retry: ", zh: "合并失败,请重试:", fr: "Échec de la fusion, réessayez : " },
   // Dialogs / alerts
   confirmRefund: {
     en: "This order was paid online for ${amt}. Cancelling will auto-refund the customer. Are you sure?",
@@ -240,6 +256,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
   const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
   const [editOrder, setEditOrder] = useState<Order | null>(null); // order open in the back-office editor
+  const [mergeFrom, setMergeFrom] = useState<Order | null>(null); // source order being merged INTO another
   // starts as the slug, replaced by the tenant's real name once fetched —
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
@@ -612,6 +629,56 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
+  const orderLabel = (o: Order) => (o.order_no ? `#${o.order_no}` : `#${o.id.slice(0, 4)}`);
+
+  // Orders `src` can merge into: SAME order_type, not cancelled, and the SAME
+  // posted-state (both 已完成, or both still open). That restriction is exactly
+  // when the merge needs NO sales rewrite — a done order already posted its own
+  // dishes + revenue, an open one posts the union at completion — so combining
+  // never double-counts or drops a sale (see doMerge).
+  const mergeCandidates = (src: Order) =>
+    orders.filter(
+      (o) =>
+        o.id !== src.id &&
+        o.order_type === src.order_type &&
+        o.status !== "cancelled" &&
+        (o.status === "done") === (src.status === "done"),
+    );
+
+  // Merge `src` INTO `target`: fold src's active items onto target (summing
+  // identical lines so the bill stays tidy), rewrite target's items + total, then
+  // delete src. No sales writes — see mergeCandidates for why that's correct.
+  const doMerge = async (src: Order, target: Order) => {
+    const keyOf = (it: any) => `${it.id}#${it.vi ?? ""}#${it.note ?? ""}`;
+    const merged: OrderItem[] = [];
+    const idx = new Map<string, number>();
+    for (const it of [...(target.items ?? []), ...(src.items ?? [])] as any[]) {
+      if (it.cancelled) continue;
+      const k = keyOf(it);
+      const at = idx.get(k);
+      if (at != null) merged[at] = { ...merged[at], qty: merged[at].qty + it.qty };
+      else { idx.set(k, merged.length); merged.push({ ...it }); }
+    }
+    const total = Math.round(merged.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0) * 100) / 100;
+    const { error } = await updateOrderItems(target.id, merged, total);
+    if (error) { setToast(t(T.mergeFailed) + error); return; }
+    // Fold the sales ledger when merging two ALREADY-DONE orders (candidates are
+    // same-state, so if src is done, target is too): rewrite the survivor's sale
+    // row to the merged total and drop src's row — otherwise the day double-counts
+    // src's revenue. 菜品销量 is left alone (both dish sets already counted once).
+    // Two OPEN orders have no sale rows yet; the survivor posts the union when it
+    // completes, so nothing to fold there.
+    if (target.status === "done") {
+      try {
+        await adjustOrderSale(slug, { id: target.id, total, items: merged, source: "qr" });
+        await deleteOrderSale(slug, src.id);
+      } catch { /* non-blocking: items already merged; ledger self-heals on next edit */ }
+    }
+    await deleteOrder(src.id);
+    setMergeFrom(null);
+    load();
+  };
+
   const active = orders.filter((o) => o.status === "new" || o.status === "preparing");
 
   // Buckets by order type — dine-in goes to the floor plan; togo/delivery/pickup to lists.
@@ -834,6 +901,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                     {o.status !== "cancelled" && o.status !== "done" && (
                       <MenuItem onClick={() => setEditOrder(o)}>{t(T.editOrder)}</MenuItem>
                     )}
+                    {/* 加菜到「已完成」的自取/取餐单:同一张单继续加菜,补计入统计
+                        (见 OrderEditor)。未完成的单用上面的「编辑订单」即可加菜。 */}
+                    {(o.order_type === "togo" || o.order_type === "pickup") && o.status === "done" && (
+                      <MenuItem onClick={() => setEditOrder(o)}>{t(T.addDishDone)}</MenuItem>
+                    )}
+                    {/* 合并订单:把顾客拆成两张的自取/取餐/外送单并成一张。 */}
+                    {(o.order_type === "togo" || o.order_type === "pickup" || o.order_type === "delivery") && o.status !== "cancelled" && (
+                      <MenuItem onClick={() => setMergeFrom(o)}>{t(T.mergeOrder)}</MenuItem>
+                    )}
                     {o.status !== "cancelled" && (
                       <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert(t(T.printBillFailed) + r.error); }}>
                         {multi ? t(T.printTableBill) : t(T.printBill)}
@@ -1006,6 +1082,50 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           onSaved={() => { setEditOrder(null); load(); }}
         />
       )}
+
+      {/* Merge picker: pick which order to fold `mergeFrom` INTO. Candidates are
+          same-type + same-state so no sales rewrite is needed (see doMerge). */}
+      {mergeFrom && (() => {
+        const cands = mergeCandidates(mergeFrom);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center" onClick={() => setMergeFrom(null)}>
+            <div className="max-h-[85vh] w-full overflow-hidden rounded-t-2xl bg-white md:max-w-lg md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <h3 className="text-lg font-bold text-ink">{t(T.mergeTitle).replace("{no}", orderLabel(mergeFrom))}</h3>
+                <button onClick={() => setMergeFrom(null)} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-full text-ink-faint hover:bg-slate-100">✕</button>
+              </div>
+              <p className="px-5 pt-3 text-sm text-ink-soft">{t(T.mergeHint)}</p>
+              <div className="max-h-[60vh] overflow-y-auto px-5 py-3">
+                {cands.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-ink-faint">{t(T.mergeNone)}</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {cands.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => doMerge(mergeFrom, c)}
+                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-left transition hover:border-brand hover:bg-brand-wash"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            {c.order_no && <span className="pill bg-ink text-sm font-bold tracking-wider text-white">#{c.order_no}</span>}
+                            <span className={`pill ${STATUS[c.status].cls}`}>{t(T[STATUS[c.status].key])}</span>
+                            <span className="text-xs text-ink-faint">{fmtTime(c.created_at)}</span>
+                          </span>
+                          <span className="font-semibold text-ink">{fmtPrice(c.total)}</span>
+                        </div>
+                        <div className="mt-1 truncate text-sm text-ink-soft">
+                          {(c.items ?? []).filter((it: any) => !it.cancelled).map((it: any) => `${it.name_zh}×${it.qty}`).join("、")}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {newOrder && (
         <StaffOrderPicker

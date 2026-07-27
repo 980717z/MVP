@@ -539,6 +539,55 @@ export async function recordOrderSale(
 }
 
 /**
+ * Rewrite the 销售流水 (sales) ledger row for an order to a NEW total — used when
+ * staff 加菜 to an already-completed order (补计入营业额). recordOrderSale is
+ * idempotent-per-order so it CAN'T grow a done order's revenue; this updates the
+ * existing row in place, recomputing the Ontario tax split from the new total. If
+ * no sale row exists yet (e.g. the original post failed), it inserts one. 菜品销量
+ * is handled separately by postOrderSales(deltaItems) so only the ADDED dishes get
+ * counted — the original dishes were already posted when the order first completed.
+ */
+export async function adjustOrderSale(
+  slug: string,
+  order: { id: string; total: number; items: { name_zh: string; qty: number }[]; source?: string },
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from("records")
+    .select("id,data")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "sales");
+  const row = (existing ?? []).find((r) => r.data?.orderId === order.id);
+  if (!row) {
+    await recordOrderSale(slug, order);
+    return;
+  }
+  const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
+  const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
+  const { error } = await supabase
+    .from("records")
+    .update({ data: { ...(row.data ?? {}), desc, subtotal: String(subtotal), gst: String(gst), pst: String(pst), total: String(total) } })
+    .eq("id", row.id);
+  if (error) console.error("adjustOrderSale", error);
+}
+
+/** Remove the 销售流水 (sales) ledger row for an order. Used when a completed
+ *  order is MERGED into another: its revenue is folded into the survivor (via
+ *  adjustOrderSale) so its own row must go, or the day's total double-counts it.
+ *  菜品销量 is left untouched — both orders' dishes were already counted once and
+ *  the merge doesn't change the dish totals. */
+export async function deleteOrderSale(slug: string, orderId: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from("records")
+    .select("id,data")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "sales");
+  const row = (existing ?? []).find((r) => r.data?.orderId === orderId);
+  if (!row) return;
+  const { error } = await supabase.from("records").delete().eq("id", row.id);
+  if (error) console.error("deleteOrderSale", error);
+}
+
+/**
  * When an order is completed, add each dish's quantity to 菜品销量与毛利
  * (dish-margin) so sales figures update automatically. Matches by Chinese dish
  * name; creates the dish row if it doesn't exist yet. Call exactly once per

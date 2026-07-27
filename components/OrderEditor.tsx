@@ -8,6 +8,7 @@
 // reprint the kitchen ticket (an added dish the kitchen hasn't seen).
 import { useEffect, useMemo, useState } from "react";
 import { updateOrderItems, reprintOrder, type Order, type OrderItem } from "@/lib/orders";
+import { postOrderSales, adjustOrderSale } from "@/lib/store";
 import { listMenuItems, displayPrice, type MenuItem } from "@/lib/menu";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -88,9 +89,33 @@ export default function OrderEditor({
     if (busy) return;
     setBusy(true);
     setErr("");
+    const active = rows.filter((r) => !r.cancelled);
     const { error } = await updateOrderItems(order.id, rows, total);
+    if (error) { setBusy(false); setErr(t(T.saveErr) + error); return; }
+    // 加菜到「已完成」的单:该单完成时已把原有菜计入 菜品销量 + 营业额,所以这里只把
+    // 「新增的」菜(新菜或加量)补计入 菜品销量,并把这张单的营业额改写为新的合计。
+    // 未完成的单不走这里 —— 它们会在完成时正常一次性计入,不能提前 double count。
+    if (order.status === "done") {
+      const keyOf = (it: { id: string; vi?: number; note?: string }) => `${it.id}#${it.vi ?? ""}#${it.note ?? ""}`;
+      const before = new Map<string, number>();
+      for (const it of order.items ?? []) {
+        if ((it as Row).cancelled) continue;
+        before.set(keyOf(it), (before.get(keyOf(it)) ?? 0) + it.qty);
+      }
+      const nowQty = new Map<string, number>();
+      const sample = new Map<string, Row>();
+      for (const r of active) { nowQty.set(keyOf(r), (nowQty.get(keyOf(r)) ?? 0) + r.qty); sample.set(keyOf(r), r); }
+      const delta: { name_zh: string; qty: number; price: number | null }[] = [];
+      for (const [k, qty] of nowQty) {
+        const add = qty - (before.get(k) ?? 0);
+        if (add > 0) { const r = sample.get(k)!; delta.push({ name_zh: r.name_zh, qty: add, price: r.price }); }
+      }
+      try {
+        if (delta.length) await postOrderSales(slug, delta);
+        await adjustOrderSale(slug, { id: order.id, total, items: active, source: "qr" });
+      } catch { /* non-blocking: the order items already saved above */ }
+    }
     setBusy(false);
-    if (error) { setErr(t(T.saveErr) + error); return; }
     setPhase("reprint");
   };
 
