@@ -154,6 +154,11 @@ export default function PublicMenu() {
   // the per-phone rate limit.
   const [noPhone, setNoPhone] = useState(false);
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
+  // 大字模式 (elderly-friendly): CSS zoom on <main> scales the whole menu — text,
+  // spacing, buttons — uniformly (works with the fixed/px Tailwind sizes). Persisted.
+  const [big, setBig] = useState(false);
+  useEffect(() => { try { if (localStorage.getItem("bento_menu_bigtext") === "1") setBig(true); } catch { /* ignore */ } }, []);
+  const toggleBig = () => setBig((b) => { const n = !b; try { localStorage.setItem("bento_menu_bigtext", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Accept-order hours per channel (tenants.order_hours) + the customer's chosen
   // schedule for a togo/delivery order (null = 现在/ASAP).
   const [orderHours, setOrderHours] = useState<{ pickup: DayHours; delivery: DayHours }>({ pickup: {}, delivery: {} });
@@ -967,7 +972,7 @@ export default function PublicMenu() {
     <main
       data-view={viewOverride ?? undefined}
       className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32 md:pb-6" : "pb-20 md:pb-6"}`}
-      style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
+      style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif', zoom: big ? 1.18 : undefined }}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -979,6 +984,16 @@ export default function PublicMenu() {
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
         <div className="mv-shell mx-auto flex w-full max-w-[440px] items-center gap-3 px-5 py-4 md:max-w-[1440px]">
+          {/* 大字模式 toggle — top-left, for elderly diners. */}
+          <button
+            onClick={toggleBig}
+            aria-pressed={big}
+            title={tri("大字模式", "Large text", "Gros texte")}
+            className={`flex flex-none items-center gap-1 rounded-full border px-2.5 py-1.5 text-sm font-semibold transition ${big ? "border-jade bg-jade text-white" : "border-slate-200 text-ink-soft hover:bg-slate-50"}`}
+          >
+            <span className="text-base leading-none">A⁺</span>
+            <span className="hidden sm:inline">{tri("大字", "Large", "Gros")}</span>
+          </button>
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
               {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? (lang === "zh" ? name.zh : name.en || name.zh) : "…"}
