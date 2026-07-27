@@ -6,6 +6,8 @@ import { reprintOrder, requestBill, cancelOrderItem, markServed, deleteOrder, se
 import { listMenuItems } from "@/lib/menu";
 import { tableOccupancy, unknownTableOrders, listTableCheckouts, listSessionOrders, type TableState, type TableCheckout, type SessionItem } from "@/lib/tableSessions";
 import { waitSince } from "@/lib/elapsed";
+import { activeTotal } from "@/lib/itemEdit";
+import ItemEditSheet from "@/components/ItemEditSheet";
 import { torontoToday } from "@/lib/salesStats";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import CheckoutModal from "@/components/CheckoutModal";
@@ -75,6 +77,7 @@ const T: Record<string, Dict> = {
   movePick: { zh: "选择桌号…", en: "Choose a table…", fr: "Choisir une table…" },
   moving: { zh: "保存中…", en: "Saving…", fr: "Enregistrement…" },
   moveFailed: { zh: "移动失败,请重试:", en: "Move failed, retry: ", fr: "Échec, réessayez : " },
+  editItemTitle: { zh: "点一下改数量 / 单价 / 备注", en: "Tap to edit qty, price or note", fr: "Toucher pour modifier quantité, prix ou note" },
 };
 
 const NEW_MS = 120_000; // "new order" cue window
@@ -118,6 +121,8 @@ export default function TableFloor({
   const [expandedItems, setExpandedItems] = useState<Record<string, SessionItem[] | "error">>({});
   const [rowMenu, setRowMenu] = useState<string | null>(null); // order id whose ⋯ (destructive) menu is open
   const [moving, setMoving] = useState<string | null>(null); // order id being reassigned to a table
+  // Which line is open in the per-dish editor (price / qty / 备注).
+  const [editItem, setEditItem] = useState<{ order: Order; index: number } | null>(null);
   const [moveErr, setMoveErr] = useState<Record<string, string>>({}); // per-order reassign failure
   // Wall clock for the wait timers. The portal only refetches every 8s, so
   // without a local tick the elapsed labels would freeze between polls. 15s is
@@ -210,6 +215,17 @@ export default function TableFloor({
     const { error } = await setOrderTable(o.id, tableNo);
     setMoving(null);
     if (error) { setMoveErr((m) => ({ ...m, [o.id]: error })); return; }
+    await onChanged();
+  };
+
+  /** Persist a per-dish edit (qty / unit price / 备注) and re-total the round.
+   *  Throws on failure so the sheet can surface it inline and stay open — a
+   *  silently-dropped price change would be charged wrong at checkout. */
+  const saveItemEdit = async (order: Order, index: number, next: OrderItem) => {
+    const items = (order.items ?? []).map((it, i) => (i === index ? next : it));
+    const { error } = await updateOrderItems(order.id, items, activeTotal(items as never));
+    if (error) throw new Error(error);
+    setEditItem(null);
     await onChanged();
   };
 
@@ -404,9 +420,26 @@ export default function TableFloor({
                             ✓
                           </button>
                         )}
-                        <span className={`min-w-0 flex-1 ${it.cancelled ? "text-ink-faint line-through" : it.served ? "text-amber-700" : "text-ink"}`}>
-                          {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>{(it.note || it.adjust) && <span className="ml-1 text-xs text-gold">· {it.note || "加价"}{it.adjust ? ` ${it.adjust >= 0 ? "+" : "−"}$${Math.abs(it.adjust).toFixed(2)}` : ""}</span>}
-                        </span>
+                        {/* Tapping the NAME opens the per-dish editor (qty / 单价 /
+                            备注) — the ✕ stays a separate target so a waiter can't
+                            fat-finger a cancel while reaching for a price change.
+                            Cancelled lines are no longer editable. */}
+                        {it.cancelled ? (
+                          <span className="min-w-0 flex-1 text-ink-faint line-through">
+                            {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setEditItem({ order: o, index: i })}
+                            className={`-my-1 min-w-0 flex-1 rounded py-1 text-left transition hover:bg-slate-50 ${it.served ? "text-amber-700" : "text-ink"}`}
+                            title={t(T.editItemTitle)}
+                          >
+                            {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>
+                            {(it.note || it.adjust) && (
+                              <span className="ml-1 text-xs text-gold">· {it.note || "加价"}{it.adjust ? ` ${it.adjust >= 0 ? "+" : "−"}$${Math.abs(it.adjust).toFixed(2)}` : ""}</span>
+                            )}
+                          </button>
+                        )}
                         {it.market && !(Number(it.price) > 0) ? (
                           <span className="flex-none rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">{t(T.marketPending)}</span>
                         ) : (
@@ -546,6 +579,20 @@ export default function TableFloor({
           </div>
         </div>
       )}
+
+      {/* Per-dish editor — the write path for 备注 + 改价 on an order that already
+          exists (a QR order arrives with no note; the diner then asks for 加料). */}
+      {editItem && (() => {
+        const it = (editItem.order.items ?? [])[editItem.index] as OrderItem | undefined;
+        if (!it) return null;
+        return (
+          <ItemEditSheet
+            item={it}
+            onCancel={() => setEditItem(null)}
+            onSave={(next) => saveItemEdit(editItem.order, editItem.index, next as OrderItem)}
+          />
+        );
+      })()}
 
       {ordering && sel && (
         <StaffOrderPicker slug={slug} tableNo={sel} onClose={() => setOrdering(false)} onPlaced={() => { setOrdering(false); onChanged(); }} />
