@@ -281,6 +281,20 @@ export async function claimPickedUp(id: string): Promise<{ claimed: boolean; err
   return { claimed: !!data };
 }
 
+/** Move an order to a different table. Staff-only by construction: anon has no
+ *  update grant on orders, so this can only run from the back-office. Used by
+ *  the floor plan's unknown-table rescue — a QR card printed with a label that
+ *  isn't in tenants.tables lands the order on no table, and this puts it on the
+ *  right one (see unknownTableOrders). */
+export async function setOrderTable(id: string, tableNo: string): Promise<{ error?: string }> {
+  const { error } = await supabase.from("orders").update({ table_no: tableNo }).eq("id", id);
+  if (error) {
+    console.error("setOrderTable", error);
+    return { error: error.message };
+  }
+  return {};
+}
+
 export async function deleteOrder(id: string): Promise<void> {
   const { error } = await supabase.from("orders").delete().eq("id", id);
   if (error) console.error("deleteOrder", error);

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { TableSpot } from "@/lib/store";
-import { reprintOrder, requestBill, cancelOrderItem, markServed, deleteOrder, setOrderStatus, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
+import { reprintOrder, requestBill, cancelOrderItem, markServed, deleteOrder, setOrderStatus, setOrderTable, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
 import { listMenuItems } from "@/lib/menu";
-import { tableOccupancy, listTableCheckouts, listSessionOrders, type TableState, type TableCheckout, type SessionItem } from "@/lib/tableSessions";
+import { tableOccupancy, unknownTableOrders, listTableCheckouts, listSessionOrders, type TableState, type TableCheckout, type SessionItem } from "@/lib/tableSessions";
+import { waitSince } from "@/lib/elapsed";
 import { torontoToday } from "@/lib/salesStats";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import CheckoutModal from "@/components/CheckoutModal";
@@ -57,6 +58,23 @@ const T: Record<string, Dict> = {
   servedTag: { zh: "已出", en: "Served", fr: "Servi" },
   more: { zh: "更多", en: "More", fr: "Plus" },
   serveAria: { zh: "标记出餐", en: "Mark served", fr: "Marquer servi" },
+  waitAria: { zh: "已等 {t}", en: "waiting {t}", fr: "attente {t}" },
+  // Unknown-table rescue: a QR card whose ?t= label isn't in 桌位设置.
+  unknownTitle: {
+    zh: "{n} 个订单找不到对应桌号",
+    en: "{n} order(s) have no matching table",
+    fr: "{n} commande(s) sans table correspondante",
+  },
+  unknownHint: {
+    zh: "扫码用的桌号不在桌位设置里(可能是二维码印错或桌位改过)。选一个桌号把订单移过去,否则它不会出现在桌面图上。",
+    en: "The scanned table label isn't in your table settings (mis-printed QR, or the table was renamed). Move each order to the right table — otherwise it won't appear on the floor plan.",
+    fr: "L'étiquette scannée n'est pas dans vos réglages de tables (QR mal imprimé ou table renommée). Déplacez chaque commande vers la bonne table, sinon elle n'apparaîtra pas sur le plan.",
+  },
+  unknownScanned: { zh: "扫码桌号 {t}", en: "Scanned {t}", fr: "Scanné {t}" },
+  moveTo: { zh: "移到桌号", en: "Move to table", fr: "Déplacer vers" },
+  movePick: { zh: "选择桌号…", en: "Choose a table…", fr: "Choisir une table…" },
+  moving: { zh: "保存中…", en: "Saving…", fr: "Enregistrement…" },
+  moveFailed: { zh: "移动失败,请重试:", en: "Move failed, retry: ", fr: "Échec, réessayez : " },
 };
 
 const NEW_MS = 120_000; // "new order" cue window
@@ -97,7 +115,16 @@ export default function TableFloor({
   const [expanded, setExpanded] = useState<string | null>(null); // session id whose items are open
   const [expandedItems, setExpandedItems] = useState<Record<string, SessionItem[] | "error">>({});
   const [rowMenu, setRowMenu] = useState<string | null>(null); // order id whose ⋯ (destructive) menu is open
-  const now = Date.now();
+  const [moving, setMoving] = useState<string | null>(null); // order id being reassigned to a table
+  const [moveErr, setMoveErr] = useState<Record<string, string>>({}); // per-order reassign failure
+  // Wall clock for the wait timers. The portal only refetches every 8s, so
+  // without a local tick the elapsed labels would freeze between polls. 15s is
+  // minute-granularity-safe (formatWait never shows seconds) and cheap.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
   const paidSum = history.reduce((s, h) => s + Number(h.total || 0), 0);
 
   const loadSession = async (id: string) => {
@@ -131,6 +158,14 @@ export default function TableFloor({
 
   const state = (label: string): TableState | undefined => occ.get(label);
   const isNew = (s?: TableState) => !!s && now - s.newestAt < NEW_MS;
+  /** How long this table has been waiting, from its FIRST unpaid round. "" when
+   *  empty or when the device clock is behind the server (see lib/elapsed). */
+  const waitOf = (s?: TableState) => (s?.hasOrder ? waitSince(s.oldestAt, now) : "");
+
+  // Orders whose scanned ?t= label matches no configured table. They'd render
+  // on NO node (TableFloor only draws configured labels), so they're surfaced
+  // above the map instead of silently vanishing.
+  const orphans = unknownTableOrders(orders, tables);
 
   // Before opening the bill, price any un-priced 时价 item (weighed live seafood):
   // prefill today's board price, else prompt for the weighed price. Mirrors the
@@ -164,6 +199,18 @@ export default function TableFloor({
     setCheckout(true);
   };
 
+  /** Rescue an unknown-table order onto a real table. On failure the row STAYS
+   *  (with an inline error) so it can be retried — never silently swallowed. */
+  const moveOrder = async (o: Order, tableNo: string) => {
+    if (!tableNo || moving) return;
+    setMoving(o.id);
+    setMoveErr((m) => { const { [o.id]: _drop, ...rest } = m; return rest; });
+    const { error } = await setOrderTable(o.id, tableNo);
+    setMoving(null);
+    if (error) { setMoveErr((m) => ({ ...m, [o.id]: error })); return; }
+    await onChanged();
+  };
+
   const nodeClasses = (s?: TableState) =>
     !s?.hasOrder
       ? "border-slate-200 bg-white text-ink-faint"
@@ -180,6 +227,68 @@ export default function TableFloor({
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-amber-400 bg-amber-50" />{t(T.legendServed)}</span>
       </div>
 
+      {/* UNKNOWN-TABLE RESCUE — orders whose scanned ?t= label isn't a configured
+          table. They print to the kitchen but render on no node, so without this
+          they're invisible. Amber (needs action), not red: a mis-printed QR is
+          routine, and red stays reserved for destructive/failed. Zero pixels when
+          empty. aria-live announces it once on appearance (the 15s timer tick is
+          deliberately NOT live — it would re-announce every table every 15s). */}
+      {orphans.length > 0 && (
+        <div role="status" aria-live="polite" className="mb-3 rounded-xl border border-warn/30 bg-warn-wash p-4">
+          <h3 className="text-sm font-bold text-warn">
+            ❗ {t(T.unknownTitle).replace("{n}", String(orphans.length))}
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">{t(T.unknownHint)}</p>
+          <div className="mt-3 flex flex-col gap-2">
+            {orphans.map((o) => {
+              const active = (o.items ?? []).filter((it: OrderItem & { cancelled?: boolean }) => !it.cancelled);
+              const sum = active.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+              return (
+                <div key={o.id} className="rounded-lg border border-warn/20 bg-white p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    {/* Mono + raw (never displayTable) so staff read this as the
+                        LITERAL text off the QR. Matters because the floor plan
+                        pads single digits for display — a card printed "?t=01"
+                        scans as "01" while the stored label is "1", and padded
+                        display would make the two look identical here. */}
+                    <span className="text-sm font-semibold text-ink">
+                      {t(T.unknownScanned).replace("{t}", "")}
+                      <code className="rounded bg-warn-wash px-1.5 py-0.5 font-mono text-[13px] text-warn">
+                        {(o.table_no || "").trim() || "—"}
+                      </code>
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums text-ink">{fmtPrice(sum)}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-ink-soft">
+                    {active.map((it) => `${it.name_zh}×${it.qty}`).join("、") || t(T.noItems)}
+                    {waitSince(new Date(o.created_at).getTime(), now) && (
+                      <span className="tabular-nums"> · {waitSince(new Date(o.created_at).getTime(), now)}</span>
+                    )}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <label htmlFor={`move-${o.id}`} className="text-xs font-medium text-ink-soft">{t(T.moveTo)}</label>
+                    <select
+                      id={`move-${o.id}`}
+                      defaultValue=""
+                      disabled={moving === o.id}
+                      onChange={(e) => moveOrder(o, e.target.value)}
+                      className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-ink disabled:opacity-50"
+                    >
+                      <option value="" disabled>{t(T.movePick)}</option>
+                      {tables.map((label) => (
+                        <option key={label} value={label}>{displayTable(label)}</option>
+                      ))}
+                    </select>
+                    {moving === o.id && <span className="text-xs text-ink-faint">{t(T.moving)}</span>}
+                  </div>
+                  {moveErr[o.id] && <p className="mt-1.5 text-xs text-red-600">{t(T.moveFailed)}{moveErr[o.id]}</p>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* DESKTOP: spatial map — bounded, centered "room" canvas (portrait, like
           the real room) so tables sit at comfortable density instead of sprawling. */}
       <div className="relative mx-auto hidden aspect-[4/5] w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-[#FBFAF8] sm:block">
@@ -189,13 +298,20 @@ export default function TableFloor({
             <button
               key={sp.label}
               onClick={() => { setSel(sp.label); setCheckout(false); }}
-              aria-label={`${displayTable(sp.label)} · ${s?.hasOrder ? fmtPrice(s.total) : t(T.empty)}`}
+              aria-label={`${displayTable(sp.label)} · ${s?.hasOrder ? `${fmtPrice(s.total)}${waitOf(s) ? ` · ${t(T.waitAria).replace("{t}", waitOf(s))}` : ""}` : t(T.empty)}`}
               style={{ left: `${(0.05 + sp.x * 0.9) * 100}%`, top: `${(0.06 + sp.y * 0.88) * 100}%` }}
               className={`absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center border-2 p-2 text-center shadow-sm transition hover:scale-105 ${nodeClasses(s)} ${sp.shape === "round" ? "h-20 w-20 rounded-full" : "min-h-16 min-w-24 rounded-2xl"}`}
             >
               {isNew(s) && <span className="absolute -right-1.5 -top-1.5 h-4 w-4 animate-pulse rounded-full bg-amber-500 ring-2 ring-white" />}
               <span className="text-xl font-extrabold leading-none">{displayTable(sp.label)}</span>
-              {s?.hasOrder && <span className="mt-1 text-xs font-semibold leading-none">{fmtPrice(s.total)} · {nOrders(s.orders.length)}</span>}
+              {/* money then wait — the round-count lives in the table sheet now, so
+                  the node keeps two calm tokens and the wait wins the 3s glance.
+                  tabular-nums: the wait re-renders every 15s and must not jitter. */}
+              {s?.hasOrder && (
+                <span className="mt-1 text-xs font-semibold leading-none tabular-nums">
+                  {fmtPrice(s.total)}{waitOf(s) && <> · {waitOf(s)}</>}
+                </span>
+              )}
             </button>
           );
         })}
@@ -215,7 +331,7 @@ export default function TableFloor({
                 {isNew(s) && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-amber-500" />}
                 <span className="text-base font-bold">{displayTable(sp.label)}</span>
               </span>
-              <span className="text-sm">{s?.hasOrder ? `${fmtPrice(s.total)} · ${nOrders(s.orders.length)}` : t(T.empty)}</span>
+              <span className="text-sm tabular-nums">{s?.hasOrder ? `${fmtPrice(s.total)}${waitOf(s) ? ` · ${waitOf(s)}` : ""}` : t(T.empty)}</span>
             </button>
           );
         })}
@@ -241,7 +357,14 @@ export default function TableFloor({
                 state(sel)!.orders.map((o, ri) => (
                   <div key={o.id} className={`${ri > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}`}>
                     <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-ink-faint">
-                      <span>{t(T.round).replace("{n}", String(ri + 1))}</span>
+                      {/* The node shows the TABLE's total wait (oldest round); here each
+                          round carries its own age, so staff can see which round is late. */}
+                      <span>
+                        {t(T.round).replace("{n}", String(ri + 1))}
+                        {waitSince(new Date(o.created_at).getTime(), now) && (
+                          <span className="ml-1.5 tabular-nums">· {waitSince(new Date(o.created_at).getTime(), now)}</span>
+                        )}
+                      </span>
                       <span className="flex items-center gap-3">
                         {(() => {
                           const act = (o.items ?? []).filter((it: OrderItem & { cancelled?: boolean }) => !it.cancelled);

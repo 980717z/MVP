@@ -20,6 +20,10 @@ export interface TableState {
   hasOrder: boolean;
   served: boolean; // 已出餐: ≥1 active dish marked served (any-served → orange)
   newestAt: number; // ms of the most recent order (for the "new" cue)
+  /** ms of the FIRST unpaid round at this table — the table's total wait.
+   *  The floor plan shows this (not newestAt) so a table seated 40 minutes ago
+   *  can't look fresh just because someone added a drink round. */
+  oldestAt: number;
 }
 
 const money = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -37,14 +41,49 @@ export function tableOccupancy(orders: Order[]): Map<string, TableState> {
     if (o.order_type !== "dine_in" || o.payment_status !== "unpaid" || o.status === "cancelled") continue;
     const k = (o.table_no || "").trim();
     if (!k) continue;
-    const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, served: false, newestAt: 0 };
+    const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, served: false, newestAt: 0, oldestAt: 0 };
     cur.orders.push(o);
     cur.total = money(cur.total + activeTotal(o));
     cur.served = cur.served || (o.items ?? []).some((it) => !(it as { cancelled?: boolean }).cancelled && (it as { served?: boolean }).served);
-    cur.newestAt = Math.max(cur.newestAt, new Date(o.created_at).getTime());
+    const at = new Date(o.created_at).getTime();
+    // Guard the reduce against an unparseable created_at: NaN would poison both
+    // Math.max and Math.min and blank the timer for the whole table.
+    if (Number.isFinite(at)) {
+      cur.newestAt = Math.max(cur.newestAt, at);
+      cur.oldestAt = cur.oldestAt === 0 ? at : Math.min(cur.oldestAt, at);
+    }
     map.set(k, cur);
   }
   return map;
+}
+
+/**
+ * Live dine-in orders whose table_no matches NO configured table.
+ *
+ * Why this exists: the customer menu locks `?t=<label>` straight from the QR
+ * with no validation (app/menu/[tenant]/page.tsx). A card printed with a typo,
+ * a retired label, or the wrong case ("2a" vs "2A") still saves an order and
+ * still prints to the kitchen — but tableOccupancy keys it under a label the
+ * floor plan never renders, so it lands on NO table and is invisible. Silent
+ * drop. This surfaces those orders so a mis-printed sign fails LOUD.
+ *
+ * Same liveness filter as tableOccupancy (unpaid, dine-in, not cancelled), so
+ * an order appears in exactly one place: a real table node, or this list.
+ * Comparison is exact — case and whitespace included — because that is what
+ * tableOccupancy keys on. Matching loosely here would hide the very typo class
+ * this is built to catch.
+ */
+export function unknownTableOrders(orders: Order[], tables: string[]): Order[] {
+  const known = new Set(tables.map((t) => (t ?? "").trim()).filter(Boolean));
+  // No tables configured yet → nothing is "unknown" (a brand-new tenant would
+  // otherwise see every order flagged). Occupancy still renders them normally.
+  if (known.size === 0) return [];
+  return orders.filter((o) => {
+    if (o.order_type !== "dine_in" || o.payment_status !== "unpaid" || o.status === "cancelled") return false;
+    const k = (o.table_no || "").trim();
+    // Blank table_no is a staff/phone order with no table, not a bad QR label.
+    return k !== "" && !known.has(k);
+  });
 }
 
 /** A past checkout record (for a table's "paid history" in the sheet). */
