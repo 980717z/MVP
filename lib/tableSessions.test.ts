@@ -195,8 +195,63 @@ describe("tableOccupancy — oldestAt (the table's total wait)", () => {
   });
 });
 
+// The cards are ALREADY PRINTED, so the system has to accept whatever spelling
+// they carry. The floor plan displays "01" for stored label "1", so a card
+// transcribed off the screen reads ?t=01 — that must land on table 1, not
+// orphan. Resolving our own display padding is deterministic, not a guess.
+describe("tableOccupancy — accepts zero-padded / lower-case labels from printed cards", () => {
+  const TABLES = ["1", "2", "2A", "3", "8A", "10"];
+
+  it("files a scanned 01 under the configured table 1", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "01", items: [item("鱼", 30)] as any })], TABLES);
+    expect(occ.get("1")!.orders.map((o) => o.id)).toEqual(["a"]);
+    expect(occ.has("01")).toBe(false); // no phantom bucket
+  });
+
+  it("files a scanned 2a under the configured 2A", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "2a", items: [item("鱼", 30)] as any })], TABLES);
+    expect(occ.get("2A")!.orders.map((o) => o.id)).toEqual(["a"]);
+  });
+
+  it("merges a padded round and an exact round onto ONE table (same total, one node)", () => {
+    const occ = tableOccupancy([
+      mk({ id: "padded", table_no: "01", items: [item("鱼", 30)] as any }),
+      mk({ id: "exact", table_no: "1", items: [item("虾", 20)] as any }),
+    ], TABLES);
+    expect(occ.size).toBe(1);
+    expect(occ.get("1")!.orders.length).toBe(2);
+    expect(occ.get("1")!.total).toBeCloseTo(50, 2);
+  });
+
+  it("leaves multi-digit labels alone (10 stays 10)", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "10", items: [item("x", 5)] as any })], TABLES);
+    expect(occ.get("10")!.orders.length).toBe(1);
+  });
+
+  // Sending an order to the WRONG table is worse than leaving it unresolved.
+  it("refuses to resolve when the tenant configured BOTH 1 and 01 (ambiguous)", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "001", items: [item("x", 5)] as any })], ["1", "01"]);
+    expect(occ.has("1")).toBe(false);
+    expect(occ.has("01")).toBe(false);
+    expect(occ.has("001")).toBe(true); // falls through, then the rescue list catches it
+  });
+
+  it("without a tables argument behaves exactly as before (raw grouping)", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "01", items: [item("x", 5)] as any })]);
+    expect(occ.has("01")).toBe(true);
+  });
+});
+
 describe("unknownTableOrders — the mis-printed-QR safety net", () => {
   const TABLES = ["1", "2", "2A", "3", "8A"];
+
+  it("does NOT flag zero-padded / lower-case spellings — those are real tables", () => {
+    const out = unknownTableOrders([
+      mk({ id: "pad", table_no: "01", items: [item("x", 5)] as any }),
+      mk({ id: "lower", table_no: "2a", items: [item("x", 5)] as any }),
+    ], TABLES);
+    expect(out).toEqual([]);
+  });
 
   // The silent-drop this exists to catch: ?t= comes straight off the printed
   // card with no validation, so a typo'd label saves + prints but renders on no
@@ -206,12 +261,12 @@ describe("unknownTableOrders — the mis-printed-QR safety net", () => {
     expect(out.map((o) => o.id)).toEqual(["bad"]);
   });
 
-  it("is case- and whitespace-exact, matching what tableOccupancy keys on", () => {
+  it("flags a label that resolves to nothing even after normalization", () => {
     const out = unknownTableOrders([
-      mk({ id: "lower", table_no: "2a", items: [item("x", 5)] as any }), // 2A exists, 2a does not
+      mk({ id: "bad", table_no: "2B", items: [item("x", 5)] as any }), // 2A exists, 2B does not
       mk({ id: "ok", table_no: "2A", items: [item("x", 5)] as any }),
     ], TABLES);
-    expect(out.map((o) => o.id)).toEqual(["lower"]);
+    expect(out.map((o) => o.id)).toEqual(["bad"]);
   });
 
   it("leaves configured tables alone", () => {
@@ -245,22 +300,22 @@ describe("unknownTableOrders — the mis-printed-QR safety net", () => {
     const orders = [
       mk({ id: "ok1", table_no: "1", items: [item("x", 5)] as any }),
       mk({ id: "ok2", table_no: "8A", items: [item("x", 5)] as any }),
-      mk({ id: "bad1", table_no: "01", items: [item("x", 5)] as any }), // zero-padded ≠ stored "1"
-      mk({ id: "bad2", table_no: "9", items: [item("x", 5)] as any }),  // no table 9 configured
+      mk({ id: "pad", table_no: "01", items: [item("x", 5)] as any }), // printed card spelling → resolves to 1
+      mk({ id: "bad", table_no: "9", items: [item("x", 5)] as any }),  // no table 9 configured → orphan
     ];
-    const occ = tableOccupancy(orders);
+    const occ = tableOccupancy(orders, TABLES);
     // what the floor plan actually draws: one node per CONFIGURED label
     const rendered = TABLES.flatMap((label) => (occ.get(label)?.orders ?? []).map((o) => o.id));
     const unknown = unknownTableOrders(orders, TABLES).map((o) => o.id);
 
-    expect(unknown.sort()).toEqual(["bad1", "bad2"]);
+    expect(unknown).toEqual(["bad"]);
     expect(rendered.filter((id) => unknown.includes(id))).toEqual([]); // disjoint
-    expect([...rendered, ...unknown].sort()).toEqual(["bad1", "bad2", "ok1", "ok2"]); // nothing lost
+    expect([...rendered, ...unknown].sort()).toEqual(["bad", "ok1", "ok2", "pad"]); // nothing lost
 
-    // Proof of the underlying bug: without the rescue list these two are
-    // bucketed by occupancy yet drawn nowhere.
-    expect(occ.has("9")).toBe(true);
-    expect(rendered).not.toContain("bad2");
+    // The padded card lands on a DRAWN node — that's the whole point of not
+    // reprinting; only the genuinely unknown label falls to the rescue list.
+    expect(rendered).toContain("pad");
+    expect(rendered).not.toContain("bad");
   });
 });
 

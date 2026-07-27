@@ -106,7 +106,9 @@ export default function TableFloor({
 }) {
   const { t } = useLang();
   const nOrders = (n: number) => t(T.ordersCount).replace("{n}", String(n));
-  const occ = tableOccupancy(orders);
+  // Pass the configured labels so a scanned "01" / "2a" from an already-printed
+  // card files under the configured "1" / "2A" instead of a phantom bucket.
+  const occ = tableOccupancy(orders, tables);
   const [sel, setSel] = useState<string | null>(null);
   const [checkout, setCheckout] = useState(false);
   const [ordering, setOrdering] = useState(false);

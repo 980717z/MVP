@@ -31,16 +31,69 @@ const activeTotal = (o: Order) =>
   money((o.items ?? []).filter((it) => !(it as { cancelled?: boolean }).cancelled).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0));
 
 /**
+ * Canonical key for a table label, used ONLY to match a scanned `?t=` against a
+ * configured table. Upper-cases and drops leading zeros: "01"→"1", "2a"→"2A",
+ * "08B"→"8B".
+ *
+ * WHY: the floor plan DISPLAYS labels zero-padded (displayTable in lib/format
+ * renders stored "1" as "01"), so a QR card transcribed from the screen very
+ * reasonably reads `?t=01` while the stored label is `1`. Those are the same
+ * physical table. This resolves our OWN display formatting; it is not a guess
+ * at what the merchant meant.
+ *
+ * The printed QR contract is untouched — nothing here renames a table or
+ * changes a URL. It only makes the READ side accept both spellings.
+ */
+export function tableKey(label: string | null | undefined): string {
+  const s = (label ?? "").trim().toUpperCase();
+  // strip leading zeros on the numeric prefix, but never produce ""
+  return s.replace(/^0+(?=\d)/, "");
+}
+
+/**
+ * Map every canonical key → its configured label, so a scanned variant can be
+ * resolved back to the real table.
+ *
+ * SAFETY: if two configured labels share a key (a tenant with BOTH "1" and
+ * "01"), that key is dropped entirely. Sending an order to the wrong table is
+ * far worse than leaving it unresolved — an ambiguous label falls through to
+ * exact matching and, failing that, to the unknown-table rescue list.
+ */
+function tableResolver(tables: string[]): Map<string, string> {
+  const byKey = new Map<string, string>();
+  const clash = new Set<string>();
+  for (const label of tables) {
+    const l = (label ?? "").trim();
+    if (!l) continue;
+    const k = tableKey(l);
+    if (byKey.has(k) && byKey.get(k) !== l) clash.add(k);
+    else byKey.set(k, l);
+  }
+  for (const k of clash) byKey.delete(k);
+  return byKey;
+}
+
+/**
  * Group unpaid dine-in orders by table → occupancy for the floor plan.
  * Pure: pass the orders the portal already has. A table is "has-order" iff it
  * carries ≥1 unpaid dine-in order; everything else renders empty.
+ *
+ * `tables` (the tenant's configured labels) is optional and additive: supply it
+ * and a scanned "01" / "2a" is filed under the configured "1" / "2A" instead of
+ * creating a phantom bucket no node ever renders. Omit it and behaviour is
+ * exactly as before.
  */
-export function tableOccupancy(orders: Order[]): Map<string, TableState> {
+export function tableOccupancy(orders: Order[], tables: string[] = []): Map<string, TableState> {
   const map = new Map<string, TableState>();
+  const resolver = tableResolver(tables);
+  const known = new Set(tables.map((t) => (t ?? "").trim()).filter(Boolean));
   for (const o of orders) {
     if (o.order_type !== "dine_in" || o.payment_status !== "unpaid" || o.status === "cancelled") continue;
-    const k = (o.table_no || "").trim();
-    if (!k) continue;
+    const raw = (o.table_no || "").trim();
+    if (!raw) continue;
+    // exact configured label wins; else resolve a zero-pad/case variant; else
+    // keep the raw label (legacy behaviour, and what the rescue list catches).
+    const k = known.has(raw) ? raw : resolver.get(tableKey(raw)) ?? raw;
     const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, served: false, newestAt: 0, oldestAt: 0 };
     cur.orders.push(o);
     cur.total = money(cur.total + activeTotal(o));
@@ -67,22 +120,26 @@ export function tableOccupancy(orders: Order[]): Map<string, TableState> {
  * floor plan never renders, so it lands on NO table and is invisible. Silent
  * drop. This surfaces those orders so a mis-printed sign fails LOUD.
  *
- * Same liveness filter as tableOccupancy (unpaid, dine-in, not cancelled), so
- * an order appears in exactly one place: a real table node, or this list.
- * Comparison is exact — case and whitespace included — because that is what
- * tableOccupancy keys on. Matching loosely here would hide the very typo class
- * this is built to catch.
+ * Same liveness filter as tableOccupancy (unpaid, dine-in, not cancelled), and
+ * the SAME resolution, so an order appears in exactly one place: a real table
+ * node, or this list. A zero-pad/case variant ("01", "2a") resolves to its
+ * configured table and is NOT flagged — that spelling is already on printed
+ * cards and is a real table, not a mistake. Only a label that resolves to
+ * nothing at all (a genuine typo, a retired table, "9" when no 9 exists)
+ * surfaces here.
  */
 export function unknownTableOrders(orders: Order[], tables: string[]): Order[] {
   const known = new Set(tables.map((t) => (t ?? "").trim()).filter(Boolean));
   // No tables configured yet → nothing is "unknown" (a brand-new tenant would
   // otherwise see every order flagged). Occupancy still renders them normally.
   if (known.size === 0) return [];
+  const resolver = tableResolver(tables);
   return orders.filter((o) => {
     if (o.order_type !== "dine_in" || o.payment_status !== "unpaid" || o.status === "cancelled") return false;
     const k = (o.table_no || "").trim();
     // Blank table_no is a staff/phone order with no table, not a bad QR label.
-    return k !== "" && !known.has(k);
+    if (k === "") return false;
+    return !known.has(k) && !resolver.has(tableKey(k));
   });
 }
 
