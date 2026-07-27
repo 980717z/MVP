@@ -229,20 +229,26 @@ export default function TableFloor({
     await onChanged();
   };
 
+  // Status lives in the RING, not a full fill. At a busy service most tables are
+  // 已出餐, and filling each one amber turned the whole map into a wall of yellow
+  // — colour stops being a signal when it's everywhere. A coloured outline on a
+  // white surface stays readable across the room, behaves identically on square
+  // and round nodes, and lets the table number and money keep full contrast.
   const nodeClasses = (s?: TableState) =>
     !s?.hasOrder
       ? "border-slate-200 bg-white text-ink-faint"
       : s.served
-        ? "border-amber-400 bg-amber-50 text-amber-700" // 已出餐: some food is out
-        : "border-brand bg-brand-wash text-brand-ink"; // 用餐中: ordered, nothing served yet
+        ? "border-amber-400 bg-white text-ink" // 已出餐: some food is out
+        : "border-brand bg-white text-ink"; // 用餐中: ordered, nothing served yet
 
   return (
     <>
       {/* legend */}
       <div className="mb-3 flex items-center gap-4 text-xs text-ink-faint">
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-slate-200 bg-white" />{t(T.legendEmpty)}</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-brand bg-brand-wash" />{t(T.legendBusy)}</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-amber-400 bg-amber-50" />{t(T.legendServed)}</span>
+        {/* swatches mirror the nodes: white surface, status carried by the ring */}
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-slate-200 bg-white" />{t(T.legendEmpty)}</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-brand bg-white" />{t(T.legendBusy)}</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-amber-400 bg-white" />{t(T.legendServed)}</span>
       </div>
 
       {/* UNKNOWN-TABLE RESCUE — orders whose scanned ?t= label isn't a configured
@@ -332,8 +338,8 @@ export default function TableFloor({
                   ($1288.00 · 1h28m included) with room to spare. */}
               {s?.hasOrder && (
                 <span className="mt-1 flex flex-col items-center gap-px leading-none">
-                  <span className="text-[11px] font-semibold tabular-nums">{fmtPrice(s.total)}</span>
-                  {waitOf(s) && <span className="text-[10px] font-medium tabular-nums opacity-70">{waitOf(s)}</span>}
+                  <span className="text-[11px] font-semibold tabular-nums text-ink">{fmtPrice(s.total)}</span>
+                  {waitOf(s) && <span className="text-[10px] font-medium tabular-nums text-ink-faint">{waitOf(s)}</span>}
                 </span>
               )}
             </button>
