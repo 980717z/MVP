@@ -318,7 +318,7 @@ export default function TableFloor({
               onClick={() => { setSel(sp.label); setCheckout(false); }}
               aria-label={`${displayTable(sp.label)} · ${s?.hasOrder ? `${fmtPrice(s.total)}${waitOf(s) ? ` · ${t(T.waitAria).replace("{t}", waitOf(s))}` : ""}` : t(T.empty)}`}
               style={{ left: `${(0.05 + sp.x * 0.9) * 100}%`, top: `${(0.06 + sp.y * 0.88) * 100}%` }}
-              className={`absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center border-2 p-2 text-center shadow-sm transition hover:scale-105 ${nodeClasses(s)} ${sp.shape === "round" ? "h-20 w-20 rounded-full" : "min-h-16 min-w-28 rounded-2xl"}`}
+              className={`absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center border-2 p-2 text-center shadow-sm transition hover:scale-105 ${nodeClasses(s)} ${sp.shape === "round" ? "h-28 w-28 rounded-full" : "min-h-16 min-w-28 rounded-2xl"}`}
             >
               {isNew(s) && <span className="absolute -right-1.5 -top-1.5 h-4 w-4 animate-pulse rounded-full bg-amber-500 ring-2 ring-white" />}
               <span className="text-xl font-extrabold leading-none">{displayTable(sp.label)}</span>
