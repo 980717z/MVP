@@ -318,7 +318,7 @@ export default function TableFloor({
               onClick={() => { setSel(sp.label); setCheckout(false); }}
               aria-label={`${displayTable(sp.label)} · ${s?.hasOrder ? `${fmtPrice(s.total)}${waitOf(s) ? ` · ${t(T.waitAria).replace("{t}", waitOf(s))}` : ""}` : t(T.empty)}`}
               style={{ left: `${(0.05 + sp.x * 0.9) * 100}%`, top: `${(0.06 + sp.y * 0.88) * 100}%` }}
-              className={`absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center border-2 p-2 text-center shadow-sm transition hover:scale-105 ${nodeClasses(s)} ${sp.shape === "round" ? "h-20 w-20 rounded-full" : "min-h-16 min-w-24 rounded-2xl"}`}
+              className={`absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center border-2 p-2 text-center shadow-sm transition hover:scale-105 ${nodeClasses(s)} ${sp.shape === "round" ? "h-20 w-20 rounded-full" : "min-h-16 min-w-28 rounded-2xl"}`}
             >
               {isNew(s) && <span className="absolute -right-1.5 -top-1.5 h-4 w-4 animate-pulse rounded-full bg-amber-500 ring-2 ring-white" />}
               <span className="text-xl font-extrabold leading-none">{displayTable(sp.label)}</span>
@@ -326,7 +326,9 @@ export default function TableFloor({
                   the node keeps two calm tokens and the wait wins the 3s glance.
                   tabular-nums: the wait re-renders every 15s and must not jitter. */}
               {s?.hasOrder && (
-                <span className="mt-1 text-xs font-semibold leading-none tabular-nums">
+                // nowrap: "$72.97 · 42m" must stay one line — wrapping it made
+                // the node two rows tall and broke the map's even rhythm.
+                <span className="mt-1 whitespace-nowrap text-[11px] font-semibold leading-none tabular-nums">
                   {fmtPrice(s.total)}{waitOf(s) && <> · {waitOf(s)}</>}
                 </span>
               )}

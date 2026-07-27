@@ -15,6 +15,8 @@ import { currentPushState, enablePush, disablePush, type PushState } from "@/lib
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
+import OrderLineup from "@/components/OrderLineup";
+import { useFocus } from "@/components/FocusMode";
 import { useLang, type Dict } from "@/app/i18n";
 
 // Trilingual UI chrome (EN default, + 中 / FR). Merchant DATA (dish names, store
@@ -257,6 +259,24 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
   const [editOrder, setEditOrder] = useState<Order | null>(null); // order open in the back-office editor
   const [mergeFrom, setMergeFrom] = useState<Order | null>(null); // source order being merged INTO another
+  // 专注模式 right rail: the time-ordered queue. Its open/closed state persists
+  // per device so a station iPad reopens the way staff left it.
+  const { focus, scale } = useFocus();
+  const [railOpen, setRailOpen] = useState(true);
+  useEffect(() => {
+    try { setRailOpen(localStorage.getItem("bento_lineup_open") !== "off"); } catch { /* ignore */ }
+  }, []);
+  const toggleRail = (v: boolean) => {
+    setRailOpen(v);
+    try { localStorage.setItem("bento_lineup_open", v ? "on" : "off"); } catch { /* ignore */ }
+  };
+  // Ticking clock so the rail's wait labels advance between the 8s polls.
+  const [railNow, setRailNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!focus) return;
+    const id = setInterval(() => setRailNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [focus]);
   // starts as the slug, replaced by the tenant's real name once fetched —
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
@@ -930,9 +950,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     );
   };
 
-  return (
-    <main className="px-6 py-8 lg:px-10">
-      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t(T.overview)}</Link>
+  const body = (
+    <main className={focus ? "min-w-0 flex-1 overflow-y-auto px-6 py-6 lg:px-8" : "px-6 py-8 lg:px-10"}>
+      {/* the shell's back-link is redundant in 专注模式 (there's no nav to go back
+          to on screen); the exit-fullscreen button is the way out */}
+      {!focus && <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t(T.overview)}</Link>}
       <header className="mt-3 mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
@@ -1163,5 +1185,18 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         </div>
       )}
     </main>
+  );
+
+  // Normal mode: unchanged. 专注模式: content + the time-ordered queue rail,
+  // side by side, filling the viewport the shell just freed up.
+  if (!focus) return body;
+  return (
+    // Height is divided by the 大字 zoom: the shell zooms this subtree, so a
+    // plain 100% would render at 118% of the viewport and force a scrollbar.
+    // Dividing first means it lands at exactly one screen either way.
+    <div className="flex min-h-0 w-full" style={{ height: `${100 / scale}dvh` }}>
+      {body}
+      <OrderLineup orders={orders} now={railNow} open={railOpen} onToggle={toggleRail} />
+    </div>
   );
 }
