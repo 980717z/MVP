@@ -9,6 +9,7 @@ import { waitSince } from "@/lib/elapsed";
 import { activeTotal } from "@/lib/itemEdit";
 import ItemEditSheet from "@/components/ItemEditSheet";
 import MarketPriceSheet, { type MarketLine } from "@/components/MarketPriceSheet";
+import ConfirmSheet from "@/components/ConfirmSheet";
 import { torontoToday } from "@/lib/salesStats";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import CheckoutModal from "@/components/CheckoutModal";
@@ -77,6 +78,8 @@ const T: Record<string, Dict> = {
   moving: { zh: "保存中…", en: "Saving…", fr: "Enregistrement…" },
   moveFailed: { zh: "移动失败,请重试:", en: "Move failed, retry: ", fr: "Échec, réessayez : " },
   editItemTitle: { zh: "点一下改数量 / 单价 / 备注", en: "Tap to edit qty, price or note", fr: "Toucher pour modifier quantité, prix ou note" },
+  // fallback label when an adjusted line has no note (加料 etc.)
+  adjustTag: { zh: "加价", en: "Adjusted", fr: "Ajusté" },
 };
 
 const NEW_MS = 120_000; // "new order" cue window
@@ -124,6 +127,15 @@ export default function TableFloor({
   const [editItem, setEditItem] = useState<{ order: Order; index: number } | null>(null);
   // 时价录入 before checkout: the table + its un-priced market lines.
   const [marketPricing, setMarketPricing] = useState<{ table: TableState; lines: MarketLine[] } | null>(null);
+  // In-app confirm + transient toast (replace window.confirm/alert, which froze
+  // the floor plan behind an OS dialog mid-service).
+  const [confirmAsk, setConfirmAsk] = useState<{ body: string; label: string; action: () => void | Promise<void> } | null>(null);
+  const [floorToast, setFloorToast] = useState("");
+  useEffect(() => {
+    if (!floorToast) return;
+    const id = setTimeout(() => setFloorToast(""), 5000);
+    return () => clearTimeout(id);
+  }, [floorToast]);
   const [moveErr, setMoveErr] = useState<Record<string, string>>({}); // per-order reassign failure
   // Wall clock for the wait timers. The portal only refetches every 8s, so
   // without a local tick the elapsed labels would freeze between polls. 15s is
@@ -433,8 +445,8 @@ export default function TableFloor({
                             <>
                               <div className="fixed inset-0 z-40" onClick={() => setRowMenu(null)} />
                               <div className="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg">
-                                <button onClick={async () => { setRowMenu(null); if (confirm(t(T.confirmCancelOrder))) { await setOrderStatus(o.id, "cancelled"); onChanged(); } }} className="block w-full px-3 py-2.5 text-left text-red-600 hover:bg-red-50">{t(T.cancelOrder)}</button>
-                                <button onClick={async () => { setRowMenu(null); if (confirm(t(T.confirmDel))) { await deleteOrder(o.id); onChanged(); } }} className="block w-full px-3 py-2.5 text-left text-red-600 hover:bg-red-50">{t(T.del)}</button>
+                                <button onClick={() => { setRowMenu(null); setConfirmAsk({ body: t(T.confirmCancelOrder), label: t(T.cancelOrder), action: async () => { await setOrderStatus(o.id, "cancelled"); onChanged(); } }); }} className="block w-full px-3 py-2.5 text-left text-red-600 hover:bg-red-50">{t(T.cancelOrder)}</button>
+                                <button onClick={() => { setRowMenu(null); setConfirmAsk({ body: t(T.confirmDel), label: t(T.del), action: async () => { await deleteOrder(o.id); onChanged(); } }); }} className="block w-full px-3 py-2.5 text-left text-red-600 hover:bg-red-50">{t(T.del)}</button>
                               </div>
                             </>
                           )}
@@ -472,7 +484,7 @@ export default function TableFloor({
                           >
                             {it.name_zh} <span className="text-ink-faint">×{it.qty}</span>
                             {(it.note || it.adjust) && (
-                              <span className="ml-1 text-xs text-gold">· {it.note || "加价"}{it.adjust ? ` ${it.adjust >= 0 ? "+" : "−"}$${Math.abs(it.adjust).toFixed(2)}` : ""}</span>
+                              <span className="ml-1 text-xs text-gold">· {it.note || t(T.adjustTag)}{it.adjust ? ` ${it.adjust >= 0 ? "+" : "−"}$${Math.abs(it.adjust).toFixed(2)}` : ""}</span>
                             )}
                           </button>
                         )}
@@ -536,7 +548,7 @@ export default function TableFloor({
                   {t(T.addRound)}
                 </button>
                 <button
-                  onClick={async () => { await requestBill(state(sel)!.orders.map((o) => o.id)).catch(() => {}); alert(t(T.billSent)); }}
+                  onClick={async () => { await requestBill(state(sel)!.orders.map((o) => o.id)).catch(() => {}); setFloorToast(t(T.billSent)); }}
                   className="min-h-11 rounded-lg border border-slate-300 px-4 font-medium text-ink-soft transition hover:bg-slate-50"
                 >
                   🖨️ {t(T.printBill)}
@@ -629,6 +641,28 @@ export default function TableFloor({
           />
         );
       })()}
+
+      {/* In-app confirm for destructive row actions (was window.confirm). All
+          TableFloor confirms are destructive → always the red variant. */}
+      {confirmAsk && (
+        <ConfirmSheet
+          body={confirmAsk.body}
+          confirmLabel={confirmAsk.label}
+          danger
+          onCancel={() => setConfirmAsk(null)}
+          onConfirm={() => { const a = confirmAsk; setConfirmAsk(null); a.action(); }}
+        />
+      )}
+
+      {/* transient confirmation toast (bill sent) — auto-dismisses, blocks nothing */}
+      {floorToast && (
+        <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-4 z-[95] flex justify-center px-4">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-brand/30 bg-brand-wash px-4 py-3 shadow-lg">
+            <span aria-hidden>🖨️</span>
+            <p className="text-sm text-brand-ink">{floorToast}</p>
+          </div>
+        </div>
+      )}
 
       {/* 时价录入 — every un-priced market dish at this table, one sheet, then checkout. */}
       {marketPricing && (

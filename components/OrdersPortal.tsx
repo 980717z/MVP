@@ -11,6 +11,7 @@ import MarketPricePanel from "@/components/MarketPricePanel";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
 import OrderEditor from "@/components/OrderEditor";
 import MarketPriceSheet, { type MarketLine } from "@/components/MarketPriceSheet";
+import ConfirmSheet from "@/components/ConfirmSheet";
 import { supabase } from "@/lib/supabase";
 import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
@@ -191,6 +192,7 @@ const T: Record<string, Dict> = {
     fr: "{n} renvoyées ; l'imprimante les imprimera dans les prochaines secondes.",
   },
   printBillFailed: { en: "Print bill failed: ", zh: "打印账单失败:", fr: "Échec de l'impression de l'addition : " },
+  billQueued: { en: "Bill sent to the printer.", zh: "账单已送打印机。", fr: "Addition envoyée à l'imprimante." },
   confirmDelete: { en: "Delete this order?", zh: "确定删除这个订单?", fr: "Supprimer cette commande ?" },
 };
 
@@ -295,10 +297,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   // freezes the whole portal behind an OS dialog staff must dismiss one-handed
   // mid-service (and Chrome then offers "suppress dialogs", which would hide
   // every future error). Inline + auto-dismissing per DESIGN-PLATFORM.md.
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ msg: string; kind: "err" | "ok" } | null>(null);
+  const toastErr = (msg: string) => setToast({ msg, kind: "err" });
+  const toastOk = (msg: string) => setToast({ msg, kind: "ok" });
+  // One pending in-app confirmation (replaces window.confirm — which froze the
+  // whole portal + its poll behind an OS dialog).
+  const [confirmAsk, setConfirmAsk] = useState<{ body: string; label: string; danger?: boolean; action: () => void | Promise<void> } | null>(null);
   useEffect(() => {
     if (!toast) return;
-    const id = setTimeout(() => setToast(""), 8000);
+    const id = setTimeout(() => setToast(null), 8000);
     return () => clearTimeout(id);
   }, [toast]);
   const [trackPay, setTrackPay] = useState(true); // record cash/EMT/card at checkout + method stats (tenant setting)
@@ -357,8 +364,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     try {
       const next = pushState === "on" ? await disablePush() : await enablePush(slug);
       setPushState(next);
-      if (next === "denied") alert(t(T.pushDenied));
-      else if (next === "unsupported") alert(t(T.pushUnsupported));
+      if (next === "denied") toastErr(t(T.pushDenied));
+      else if (next === "unsupported") toastErr(t(T.pushUnsupported));
     } catch {
       /* surfaced via state; keep the screen alive */
     } finally {
@@ -513,6 +520,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   // orders with an advance() in flight — blocks double-tap double-posting
   const advancing = useRef<Set<string>>(new Set());
+  // paid orders whose refund-cancel the staff already confirmed in the sheet
+  const refundOk = useRef<Set<string>>(new Set());
 
   const advance = async (o: Order, to: Order["status"]) => {
     if (advancing.current.has(o.id)) return;
@@ -522,7 +531,20 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       // lets a paid order be cancelled, so an un-refunded cancel keeps the
       // diner's cash). Refund server-side, then fall through to set 'cancelled'.
       if (to === "cancelled" && o.payment_status === "paid" && (o.order_type === "togo" || o.order_type === "delivery")) {
-        if (!confirm(t(T.confirmRefund).replace("{amt}", Number(o.total).toFixed(2)))) return;
+        // In-app confirm (was window.confirm): first pass opens the sheet and
+        // returns; confirming marks the order and re-enters advance(), which
+        // then proceeds to the refund below. Same continuation pattern as the
+        // 时价 gate.
+        if (!refundOk.current.has(o.id)) {
+          setConfirmAsk({
+            body: t(T.confirmRefund).replace("{amt}", Number(o.total).toFixed(2)),
+            label: t(T.cancelOrder),
+            danger: true,
+            action: () => { refundOk.current.add(o.id); advance(o, "cancelled"); },
+          });
+          return;
+        }
+        refundOk.current.delete(o.id);
         const { data: sess } = await supabase.auth.getSession();
         const res = await fetch("/api/pay/refund", {
           method: "POST",
@@ -531,7 +553,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         });
         const rd = await res.json().catch(() => ({ ok: false }));
         if (!rd.ok) {
-          alert(t(T.refundFailed) + (rd.error ?? t(T.refundRetry)));
+          toastErr(t(T.refundFailed) + (rd.error ?? t(T.refundRetry)));
           return;
         }
       }
@@ -570,7 +592,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           ? await claimPickedUp(o.id)
           : await claimOrderDone(o.id);
         if (error) {
-          setToast(t(T.statusFailed) + error);
+          toastErr(t(T.statusFailed) + error);
           return;
         }
         if (claimed) {
@@ -591,7 +613,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         }
       } else {
         const { error } = await setOrderStatus(o.id, to);
-        if (error) setToast(t(T.statusFailed) + error);
+        if (error) toastErr(t(T.statusFailed) + error);
         // Tell the student their pickup order died — otherwise the tracker
         // shows "Order received" forever (design review 5A).
         if (!error && to === "cancelled" && o.order_type === "pickup") await notifyPickup(o.id, "cancelled");
@@ -610,7 +632,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     advancing.current.add(o.id);
     try {
       const { error } = await acceptPickup(o.id, eta);
-      if (error) setToast(t(T.statusFailed) + error);
+      if (error) toastErr(t(T.statusFailed) + error);
       load();
     } finally {
       advancing.current.delete(o.id);
@@ -638,7 +660,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     advancing.current.add(o.id);
     try {
       const { readied, error } = await markPickupReady(o.id);
-      if (error) setToast(t(T.statusFailed) + error);
+      if (error) toastErr(t(T.statusFailed) + error);
       // Only the CAS winner pushes, so the diner gets the "ready" alert once.
       if (readied) await notifyPickup(o.id, "ready");
       load();
@@ -684,7 +706,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
     const total = Math.round(merged.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0) * 100) / 100;
     const { error } = await updateOrderItems(target.id, merged, total);
-    if (error) { setToast(t(T.mergeFailed) + error); return; }
+    if (error) { toastErr(t(T.mergeFailed) + error); return; }
     // Fold the sales ledger when merging two ALREADY-DONE orders (candidates are
     // same-state, so if src is done, target is too): rewrite the survivor's sale
     // row to the merged total and drop src's row — otherwise the day double-counts
@@ -934,7 +956,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                       <MenuItem onClick={() => setMergeFrom(o)}>{t(T.mergeOrder)}</MenuItem>
                     )}
                     {o.status !== "cancelled" && (
-                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert(t(T.printBillFailed) + r.error); }}>
+                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) toastErr(t(T.printBillFailed) + r.error); else toastOk(t(T.billQueued)); }}>
                         {multi ? t(T.printTableBill) : t(T.printBill)}
                       </MenuItem>
                     )}
@@ -942,7 +964,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                     {o.status !== "cancelled" && o.status !== "done" && (
                       <MenuItem danger onClick={() => advance(o, "cancelled")}>{t(T.cancelOrder)}</MenuItem>
                     )}
-                    <MenuItem danger onClick={async () => { if (confirm(t(T.confirmDelete))) { await deleteOrder(o.id); load(); } }}>{t(T.deleteOrder)}</MenuItem>
+                    <MenuItem danger onClick={() => setConfirmAsk({ body: t(T.confirmDelete), label: t(T.deleteOrder), danger: true, action: async () => { await deleteOrder(o.id); load(); } })}>{t(T.deleteOrder)}</MenuItem>
                   </div>
                 </>
               )}
@@ -1021,11 +1043,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                   <button
                     onClick={async () => {
                       setHeaderMenu(false);
-                      if (active.length === 0) { alert(t(T.noActive)); return; }
-                      if (!confirm(t(T.confirmReprintAll).replace("{n}", String(active.length)))) return;
-                      const n = await reprintActiveOrders(slug);
-                      load();
-                      alert(t(T.reprintedN).replace("{n}", String(n)));
+                      if (active.length === 0) { toastOk(t(T.noActive)); return; }
+                      setConfirmAsk({
+                        body: t(T.confirmReprintAll).replace("{n}", String(active.length)),
+                        label: t(T.reprintAll),
+                        action: async () => {
+                          const n = await reprintActiveOrders(slug);
+                          load();
+                          toastOk(t(T.reprintedN).replace("{n}", String(n)));
+                        },
+                      });
                     }}
                     className="flex w-full items-center px-3.5 py-3 text-left text-sm text-ink hover:bg-slate-50"
                   >
@@ -1221,18 +1248,30 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           announced to screen readers. Staff can keep working while it's up. */}
       {toast && (
         <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex justify-center px-4">
-          <div className="pointer-events-auto flex max-w-lg items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg">
-            <span aria-hidden className="text-lg leading-none">⚠️</span>
-            <p className="flex-1 text-sm text-red-700">{toast}</p>
+          <div className={`pointer-events-auto flex max-w-lg items-start gap-3 rounded-xl border px-4 py-3 shadow-lg ${toast.kind === "err" ? "border-red-200 bg-red-50" : "border-brand/30 bg-brand-wash"}`}>
+            <span aria-hidden className="text-lg leading-none">{toast.kind === "err" ? "⚠️" : "✅"}</span>
+            <p className={`flex-1 text-sm ${toast.kind === "err" ? "text-red-700" : "text-brand-ink"}`}>{toast.msg}</p>
             <button
-              onClick={() => setToast("")}
+              onClick={() => setToast(null)}
               aria-label={t(T.close)}
-              className="-my-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg leading-none text-red-700 hover:bg-red-100"
+              className={`-my-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg leading-none ${toast.kind === "err" ? "text-red-700 hover:bg-red-100" : "text-brand-ink hover:bg-brand-wash"}`}
             >
               ✕
             </button>
           </div>
         </div>
+      )}
+
+      {/* In-app confirmation (was window.confirm) — blocks only the guarded
+          action, never the screen or the order poll behind it. */}
+      {confirmAsk && (
+        <ConfirmSheet
+          body={confirmAsk.body}
+          confirmLabel={confirmAsk.label}
+          danger={confirmAsk.danger}
+          onCancel={() => setConfirmAsk(null)}
+          onConfirm={() => { const a = confirmAsk; setConfirmAsk(null); a.action(); }}
+        />
       )}
     </main>
   );
