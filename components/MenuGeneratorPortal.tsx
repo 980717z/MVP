@@ -45,6 +45,7 @@ const T = {
     fr: "Le numéro de votre menu papier. Masqué sur le menu QR, mais utilisable pour la recherche.",
   },
   dishNoShort: { en: "No.", zh: "菜号", fr: "N°" },
+  uncategorized: { en: "Uncategorized", zh: "未分类", fr: "Sans catégorie" },
   // VT3: merchant-defined categories. The dropdown offers the shop's OWN
   // categories (derived from its dishes), not a hardcoded Chinese-restaurant list.
   newCategory: { en: "+ New category", zh: "+ 新分类", fr: "+ Nouvelle catégorie" },
@@ -558,7 +559,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 {visibleGrouped.map((g) => (
                   <div key={g.category || "_uncat"} className="space-y-2">
                     <div className="sticky top-0 z-10 -mx-1 flex items-baseline gap-2 bg-[#FBFAF8]/90 px-1 py-1.5 backdrop-blur">
-                      <span className="text-sm font-bold text-ink">{g.category || "未分类"}</span>
+                      <span className="text-sm font-bold text-ink">{g.category || t(T.uncategorized)}</span>
                       <span className="text-xs text-ink-faint">{g.items.length}</span>
                     </div>
                     {g.items.map((d) => (
