@@ -111,6 +111,11 @@ export default function PublicMenu() {
   const [phoneErr, setPhoneErr] = useState(false);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Order-submit failure, shown INLINE above the submit button. This was a
+  // native alert() — the one place a DINER ever hit a frozen browser dialog was
+  // the moment their order failed, with no retry affordance. The cart is intact,
+  // so the fix is: read the reason, tap submit again.
+  const [submitErr, setSubmitErr] = useState("");
   const [placed, setPlaced] = useState(false);
   // togo/delivery pay-first: the order awaiting card payment (Clover sheet)
   const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number; lines: PlacedLine[] } | null>(null);
@@ -417,8 +422,38 @@ export default function PublicMenu() {
 
   // Orders already placed this session (each "再点一单" round). Lets a returning
   // diner see what they've ordered plus the running total across rounds.
+  //
+  // PERSISTED per tenant+table (3h expiry): this was memory-only state, so a
+  // diner who closed the tab — or whose iPad Safari evicted the page while they
+  // ate — rescanned the QR and found their 已点 record and running total gone.
+  // The meal is the session, not the browser tab. 3h covers the longest hot-pot
+  // sitting without leaking one party's orders to the table's NEXT party
+  // tomorrow. Table-keyed so table 3's record never shows at table 5.
   type PlacedLine = { name_zh: string; name_en: string; price: number | null; qty: number };
   const [placedOrders, setPlacedOrders] = useState<{ lines: PlacedLine[]; total: number; orderNo?: string | null }[]>([]);
+  const placedKey = `bento_placed_${slug}_${lockedTable ?? ""}`;
+  const PLACED_TTL_MS = 3 * 60 * 60 * 1000;
+  useEffect(() => {
+    // Restore only for table QR sessions (lockedTable) — the 整店一码/togo flows
+    // don't have a stable "same seat" identity to restore against.
+    if (!lockedTable) return;
+    try {
+      const raw = localStorage.getItem(placedKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { at: number; orders: typeof placedOrders };
+      if (Date.now() - saved.at < PLACED_TTL_MS && Array.isArray(saved.orders) && saved.orders.length) {
+        setPlacedOrders(saved.orders);
+      } else {
+        localStorage.removeItem(placedKey);
+      }
+    } catch { /* private mode / corrupt JSON — start clean */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedKey, lockedTable]);
+  useEffect(() => {
+    if (!lockedTable || placedOrders.length === 0) return;
+    try { localStorage.setItem(placedKey, JSON.stringify({ at: Date.now(), orders: placedOrders })); } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedOrders, placedKey, lockedTable]);
   const placedTotal = placedOrders.reduce((a, o) => a + o.total, 0);
   const grandTotal = placedTotal + total;
   const placedLines = useMemo(() => {
@@ -541,6 +576,7 @@ export default function PublicMenu() {
   }, [hasHotpot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
+    setSubmitErr("");
     // Required phone. +1 (default): strip formatting, drop a typed leading "1",
     // require exactly 10 digits — stored bare (legacy format). Other country
     // codes: 7-12 digits, stored as +<code><digits>.
@@ -686,7 +722,9 @@ export default function PublicMenu() {
       if (staff && typeof window !== "undefined" && window.parent !== window) {
         window.parent.postMessage({ type: "bento-staff-order-failed", message: res.error }, window.location.origin);
       } else {
-        alert("提交失败：" + res.error);
+        // Inline, above the submit button — the cart is untouched, so the diner
+        // can read the reason and just tap submit again.
+        setSubmitErr(tri("提交失败，请重试：", "Couldn't place the order — please try again: ", "Échec de la commande, réessayez : ") + res.error);
       }
       return;
     }
@@ -1821,6 +1859,9 @@ export default function PublicMenu() {
                   ) : null}
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
+                  )}
+                  {submitErr && (
+                    <p role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-700">{submitErr}</p>
                   )}
                   <button
                     onClick={submit}

@@ -8,6 +8,7 @@ import { tableOccupancy, unknownTableOrders, listTableCheckouts, listSessionOrde
 import { waitSince } from "@/lib/elapsed";
 import { activeTotal } from "@/lib/itemEdit";
 import ItemEditSheet from "@/components/ItemEditSheet";
+import MarketPriceSheet, { type MarketLine } from "@/components/MarketPriceSheet";
 import { torontoToday } from "@/lib/salesStats";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import CheckoutModal from "@/components/CheckoutModal";
@@ -44,8 +45,6 @@ const T: Record<string, Dict> = {
   cancelOrder: { zh: "取消整单", en: "Cancel order", fr: "Annuler la commande" },
   del: { zh: "删除", en: "Delete", fr: "Supprimer" },
   marketPending: { zh: "时价", en: "Market", fr: "Prix du jour" },
-  marketPrompt: { zh: "「{name}」今日单价 ($)", en: "Today's unit price for “{name}” ($)", fr: "Prix unitaire du jour pour « {name} » ($)" },
-  invalidPrice: { zh: "请输入有效价格。", en: "Enter a valid price.", fr: "Saisissez un prix valide." },
   confirmCancelOrder: { zh: "取消这一单？", en: "Cancel this order?", fr: "Annuler cette commande ?" },
   confirmDel: { zh: "删除这一单？", en: "Delete this order?", fr: "Supprimer cette commande ?" },
   legendEmpty: { zh: "空闲", en: "Empty", fr: "Vide" },
@@ -123,6 +122,8 @@ export default function TableFloor({
   const [moving, setMoving] = useState<string | null>(null); // order id being reassigned to a table
   // Which line is open in the per-dish editor (price / qty / 备注).
   const [editItem, setEditItem] = useState<{ order: Order; index: number } | null>(null);
+  // 时价录入 before checkout: the table + its un-priced market lines.
+  const [marketPricing, setMarketPricing] = useState<{ table: TableState; lines: MarketLine[] } | null>(null);
   const [moveErr, setMoveErr] = useState<Record<string, string>>({}); // per-order reassign failure
   // Wall clock for the wait timers. The portal only refetches every 8s, so
   // without a local tick the elapsed labels would freeze between polls. 15s is
@@ -174,35 +175,58 @@ export default function TableFloor({
   // above the map instead of silently vanishing.
   const orphans = unknownTableOrders(orders, tables);
 
-  // Before opening the bill, price any un-priced 时价 item (weighed live seafood):
-  // prefill today's board price, else prompt for the weighed price. Mirrors the
-  // old 标记完成 gate so a table can't check out at $0.
+  // Before opening the bill, price any un-priced 时价 item (weighed live
+  // seafood). One MarketPriceSheet lists every such dish across the table's
+  // rounds, prefilled with today's board price — replacing the old
+  // window.prompt-per-item loop. Mirrors the 标记完成 gate so a table can't
+  // check out at $0; the sheet's save persists prices and opens the bill.
   const beginCheckout = async (s: TableState) => {
-    const needy = s.orders.filter((o) => (o.items ?? []).some((it) => (it as OrderItem & { cancelled?: boolean }).market && !(Number(it.price) > 0) && !(it as { cancelled?: boolean }).cancelled));
+    const needy = s.orders.flatMap((o) =>
+      (o.items ?? []).flatMap((it, i) => {
+        const x = it as OrderItem & { cancelled?: boolean };
+        return x.market && !(Number(x.price) > 0) && !x.cancelled
+          ? [{ orderId: o.id, index: i, it: x }]
+          : [];
+      }),
+    );
     if (needy.length) {
       const menu = await listMenuItems(slug).catch(() => []);
       const ref = new Map(menu.map((m) => [m.id, m.price]));
-      for (const o of needy) {
-        const items = [...(o.items ?? [])] as (OrderItem & { cancelled?: boolean })[];
-        let changed = false;
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
-          if (!it.market || Number(it.price) > 0 || it.cancelled) continue;
-          const pre = ref.get(it.id);
-          const raw = window.prompt(t(T.marketPrompt).replace("{name}", it.name_zh), pre != null && pre > 0 ? String(pre) : "");
-          if (raw == null) return; // waiter cancelled → abort checkout
-          const p = parseFloat(raw);
-          if (!(p > 0)) { alert(t(T.invalidPrice)); return; }
-          items[i] = { ...it, price: Math.round(p * 100) / 100 };
-          changed = true;
-        }
-        if (changed) {
-          const tot = items.filter((x) => !x.cancelled).reduce((sum, x) => sum + (Number(x.price) || 0) * x.qty, 0);
-          await updateOrderItems(o.id, items as OrderItem[], Math.round(tot * 100) / 100);
-        }
-      }
-      await onChanged(); // reload so the modal sees priced items
+      setMarketPricing({
+        table: s,
+        lines: needy.map((n) => ({
+          key: `${n.orderId}:${n.index}`,
+          name_zh: n.it.name_zh,
+          name_en: n.it.name_en,
+          qty: n.it.qty,
+          prefill: ref.get(n.it.id),
+        })),
+      });
+      return; // checkout opens from the sheet's onSave
     }
+    setCheckout(true);
+  };
+
+  /** MarketPriceSheet save → write each order's priced items, reload, open the bill. */
+  const applyMarketPrices = async (prices: Record<string, number>) => {
+    const s = marketPricing!.table;
+    for (const o of s.orders) {
+      let changed = false;
+      const items = (o.items ?? []).map((it, i) => {
+        const p = prices[`${o.id}:${i}`];
+        if (p == null) return it;
+        changed = true;
+        return { ...it, price: p };
+      });
+      if (!changed) continue;
+      const tot = items
+        .filter((x) => !(x as { cancelled?: boolean }).cancelled)
+        .reduce((sum, x) => sum + (Number(x.price) || 0) * x.qty, 0);
+      const res = await updateOrderItems(o.id, items as OrderItem[], Math.round(tot * 100) / 100);
+      if (res.error) throw new Error(res.error); // sheet shows it inline, stays open
+    }
+    await onChanged(); // reload so the modal sees priced items
+    setMarketPricing(null);
     setCheckout(true);
   };
 
@@ -605,6 +629,15 @@ export default function TableFloor({
           />
         );
       })()}
+
+      {/* 时价录入 — every un-priced market dish at this table, one sheet, then checkout. */}
+      {marketPricing && (
+        <MarketPriceSheet
+          lines={marketPricing.lines}
+          onCancel={() => setMarketPricing(null)}
+          onSave={applyMarketPrices}
+        />
+      )}
 
       {ordering && sel && (
         <StaffOrderPicker slug={slug} tableNo={sel} onClose={() => setOrdering(false)} onPlaced={() => { setOrdering(false); onChanged(); }} />

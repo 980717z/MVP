@@ -10,6 +10,7 @@ import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
 import OrderEditor from "@/components/OrderEditor";
+import MarketPriceSheet, { type MarketLine } from "@/components/MarketPriceSheet";
 import { supabase } from "@/lib/supabase";
 import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
@@ -173,13 +174,10 @@ const T: Record<string, Dict> = {
   },
   refundFailed: { en: "Refund failed, order not cancelled: ", zh: "退款失败,未取消订单:", fr: "Remboursement échoué, commande non annulée : " },
   refundRetry: { en: "please try again", zh: "请重试", fr: "veuillez réessayer" },
-  marketPrompt: {
-    en: "Market price: today's unit price for “{name}” ($)",
-    zh: "时价录入:「{name}」今日单价($)",
-    fr: "Prix du jour : prix unitaire d'aujourd'hui pour « {name} » ($)",
-  },
-  invalidPrice: { en: "Enter a valid price; order not completed.", zh: "请输入有效价格,订单未完成。", fr: "Saisissez un prix valide ; commande non terminée." },
-  savePriceFailed: { en: "Failed to save market price: ", zh: "保存时价失败:", fr: "Échec de l'enregistrement du prix : " },
+  // First-load states (the [] before the first fetch must never render as the
+  // real empty state — see firstLoaded).
+  loadFailedTitle: { en: "Couldn't load orders. Check the connection.", zh: "订单加载失败,请检查网络。", fr: "Impossible de charger les commandes. Vérifiez la connexion." },
+  loadRetry: { en: "Try again", zh: "重试", fr: "Réessayer" },
   statusFailed: { en: "Status update failed, please retry: ", zh: "状态更新失败,请重试:", fr: "Échec de la mise à jour du statut, réessayez : " },
   noActive: { en: "No in-progress orders", zh: "没有进行中的订单", fr: "Aucune commande en cours" },
   confirmReprintAll: {
@@ -252,6 +250,12 @@ const SAMPLE_ORDER = {
 export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
   const { t } = useLang();
   const [orders, setOrders] = useState<Order[]>([]);
+  // First-load state: [] before the first fetch resolves must render as LOADING,
+  // never as the real "no orders yet" empty state (a truck on flaky LTE would
+  // read that as "no orders exist"). After the first success, errors keep the
+  // last good list silently (the poll recovers on its own).
+  const [firstLoaded, setFirstLoaded] = useState(false);
+  const [loadErr, setLoadErr] = useState(false);
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
   const [voiceLang, setVoiceLang] = useState<"off" | "zh" | "en">("off"); // spoken new-order announcement
@@ -259,6 +263,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
   const [editOrder, setEditOrder] = useState<Order | null>(null); // order open in the back-office editor
   const [mergeFrom, setMergeFrom] = useState<Order | null>(null); // source order being merged INTO another
+  // 时价录入 sheet: the order being completed + its un-priced market lines
+  // (keys are item indexes). Replaces the old window.prompt-per-item loop.
+  const [pricing, setPricing] = useState<{ order: Order; lines: MarketLine[] } | null>(null);
   // 专注模式 right rail: the time-ordered queue. Its open/closed state persists
   // per device so a station iPad reopens the way staff left it.
   const { focus, scale } = useFocus();
@@ -411,6 +418,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     try {
       const data = await listOrders(slug);
       setOrders(data);
+      setFirstLoaded(true);
+      setLoadErr(false);
       const ids = data.map((o) => o.id);
       if (!inited.current) {
         // seed from the FIRST successful fetch so mount doesn't alert for existing orders
@@ -427,7 +436,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         if (voiceRef.current !== "off") speak(voiceRef.current);
       }
     } catch {
-      // Keep the last good list — a transient/auth error must not blank the kitchen screen.
+      // After the first successful load: keep the last good list — a transient
+      // error must not blank the kitchen screen. BEFORE it: flag the failure,
+      // because rendering the real "no orders yet" empty state while the fetch
+      // is failing tells staff on a flaky connection that no orders exist.
+      if (!inited.current) setLoadErr(true);
     }
   }, [slug, beep, speak]);
 
@@ -523,39 +536,29 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         }
       }
       // 时价 gate: an order can't be completed until every market-priced item has
-      // its actual price entered (today's 时价 from the menu prefills the prompt).
-      let items = o.items;
+      // its actual price entered. Un-priced items open the MarketPriceSheet (all
+      // dishes at once, today's board price prefilled) instead of the old
+      // window.prompt-per-item loop, which froze the iPad and the order poll.
+      // The sheet's save re-enters advance() with the priced items, so this gate
+      // passes on the second run and completion continues normally.
+      const items = o.items;
       if (to === "done" && o.status !== "done") {
         const needPricing = items.filter((it) => it.market && !(Number(it.price) > 0) && !(it as any).cancelled);
         if (needPricing.length > 0) {
           // today's reference prices from 菜单设置 (时价更新 panel)
           const menu = await listMenuItems(slug).catch(() => []);
           const menuPrice = new Map(menu.map((m) => [m.id, m.price]));
-          const updated = [...items];
-          for (const it of needPricing) {
-            const def = menuPrice.get(it.id);
-            const raw = window.prompt(
-              t(T.marketPrompt).replace("{name}", it.name_zh),
-              def != null && def > 0 ? String(def) : "",
-            );
-            if (raw == null) return; // staff cancelled — abort completion
-            const p = parseFloat(raw);
-            if (!(p > 0)) {
-              alert(t(T.invalidPrice));
-              return;
-            }
-            const idx = updated.indexOf(it);
-            updated[idx] = { ...it, price: Math.round(p * 100) / 100 };
-          }
-          const newTotal = updated
-            .filter((it: any) => !it.cancelled)
-            .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
-          const res = await updateOrderItems(o.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
-          if (res.error) {
-            alert(t(T.savePriceFailed) + res.error);
-            return;
-          }
-          items = updated;
+          setPricing({
+            order: o,
+            lines: needPricing.map((it) => ({
+              key: `${items.indexOf(it)}`,
+              name_zh: it.name_zh,
+              name_en: it.name_en,
+              qty: it.qty,
+              prefill: menuPrice.get(it.id),
+            })),
+          });
+          return; // completion resumes from the sheet's onSave
         }
       }
 
@@ -1060,11 +1063,35 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )}
       </div>
 
-      {view === "dine" && (
+      {/* FIRST LOAD: skeleton, not the real empty states — and a failed first
+          load says so with a retry, instead of masquerading as "no orders". */}
+      {!firstLoaded && (
+        loadErr ? (
+          <div className="card flex flex-col items-center px-6 py-16 text-center">
+            <p className="text-sm text-ink-soft">{t(T.loadFailedTitle)}</p>
+            <button onClick={() => { setLoadErr(false); load(); }} className="btn-primary mt-4 min-h-11 px-6 text-sm">
+              {t(T.loadRetry)}
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2" aria-label="loading" aria-busy>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="card p-4">
+                <div className="mb-3 h-5 w-32 animate-pulse rounded bg-slate-100" />
+                <div className="mb-2 h-4 w-full animate-pulse rounded bg-slate-100" />
+                <div className="mb-2 h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+                <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-100" />
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {firstLoaded && view === "dine" && (
         <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} trackPayments={trackPay} dayStartHour={tenant?.dayStartHour ?? 0} onChanged={load} />
       )}
 
-      {view === "togo" && (
+      {firstLoaded && view === "togo" && (
         togoOrders.length === 0 ? (
           renderEmptyWithCta(t(T.emptyTogoTitle))
         ) : (
@@ -1072,7 +1099,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {view === "delivery" && (
+      {firstLoaded && view === "delivery" && (
         deliveryOrders.length === 0 ? (
           renderEmptyWithCta(t(T.emptyDeliveryTitle))
         ) : (
@@ -1080,7 +1107,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {view === "pickup" && (
+      {firstLoaded && view === "pickup" && (
         pickupOrders.length === 0 ? (
           <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyPickup)}</div>
         ) : (
@@ -1088,7 +1115,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {view === "market" && <MarketPricePanel slug={slug} />}
+      {firstLoaded && view === "market" && <MarketPricePanel slug={slug} />}
 
       {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
 
@@ -1096,6 +1123,29 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           use for table orders (design review D2) — one ordering surface, so what
           staff see matches what the diner sees. The menu pings us via postMessage
           when the order lands; we close and refresh. */}
+      {/* 时价录入 — all un-priced market dishes of the completing order in one
+          sheet, prefilled from today's board prices. Save applies the prices and
+          re-enters advance(), which now passes the gate and completes the order. */}
+      {pricing && (
+        <MarketPriceSheet
+          lines={pricing.lines}
+          onCancel={() => setPricing(null)}
+          onSave={async (prices) => {
+            const p = pricing;
+            const updated = (p.order.items ?? []).map((it, i) =>
+              prices[String(i)] != null ? { ...it, price: prices[String(i)] } : it,
+            );
+            const newTotal = updated
+              .filter((it: any) => !it.cancelled)
+              .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+            const res = await updateOrderItems(p.order.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
+            if (res.error) throw new Error(res.error); // sheet shows it inline, stays open
+            setPricing(null);
+            await advance({ ...p.order, items: updated as OrderItem[] }, "done");
+          }}
+        />
+      )}
+
       {editOrder && (
         <OrderEditor
           slug={slug}
