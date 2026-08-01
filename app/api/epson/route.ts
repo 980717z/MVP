@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildEposXml, buildEposReceiptXml, buildEposSplitXml } from "@/lib/epson";
+import { printEligibilityOr } from "@/lib/printEligibility";
 import type { Order } from "@/lib/orders";
 
 export const runtime = "nodejs";
@@ -12,8 +13,10 @@ export const runtime = "nodejs";
 //  ePOS-Print XML ticket, and mark it printed (optimistic — one printer, and
 //  staff can 重打 if a print is lost). No job → an empty ePOS doc.
 //
-//  Print-eligible: dine-in always; togo/delivery only once payment_status='paid'
-//  (the pay-first gate). Cancelled orders never print. Honors tenants.print_enabled.
+//  Print-eligible: order_only tenants print every order type immediately (no
+//  online payment exists — 自取/配送 settle at handover); pay_first tenants print
+//  dine-in always but togo/delivery/pickup only once payment_status='paid'.
+//  Cancelled orders never print. Honors tenants.print_enabled.
 //
 //  Server Direct Print uses TWO POST channels (ConnectionType in the form body):
 //    • GetRequest  — "give me a job". Reply: the job's <PrintRequestInfo> XML,
@@ -74,15 +77,10 @@ async function handle(req: Request): Promise<Response> {
 
     // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query itself
     // (filtering after limit() would let stale unpaid orders block printing forever):
-    //   • dine-in            → always
-    //   • pickup @ order_only → always (order-ahead, pay at pickup / no online charge)
-    //   • togo / delivery / pickup@pay_first → only when payment_status='paid'
-    // payment_mode defaults to 'order_only' (campus trucks); a tenant that wires up
-    // payment flips to 'pay_first' and pickup then requires paid, like togo.
-    const orderOnly = !tenant?.payment_mode || tenant.payment_mode === "order_only";
-    const eligOr = orderOnly
-      ? "order_type.eq.dine_in,order_type.eq.pickup,payment_status.eq.paid"
-      : "order_type.eq.dine_in,payment_status.eq.paid";
+    //   • order_only tenant → EVERY order type, unpaid included (no online payment
+    //     exists; togo/delivery settle at handover — see lib/printEligibility.ts)
+    //   • pay_first tenant  → dine-in always; togo/delivery/pickup once paid
+    const eligOr = printEligibilityOr(tenant?.payment_mode);
     // Scheduled-pickup hold, in the QUERY rather than after it (eng review T4).
     // A ticket printed at order time makes a ticket-driven cook fire a 12:15
     // order at 11:40, so scheduled pickups are withheld until target − prep. Doing
@@ -92,13 +90,14 @@ async function handle(req: Request): Promise<Response> {
     // Requires supabase/pickup-time.sql (requested_pickup_at) — run 2026-07-18.
     const PICKUP_PREP_MS = 15 * 60_000;
     const dueBy = new Date(Date.now() + PICKUP_PREP_MS).toISOString();
-    const { data, error } = await db
+    let listQ = db
       .from("orders")
       .select("*")
       .eq("tenant_slug", slug)
       .is("printed_at", null)
-      .neq("status", "cancelled")
-      .or(eligOr)
+      .neq("status", "cancelled");
+    if (eligOr) listQ = listQ.or(eligOr);
+    const { data, error } = await listQ
       // ANDed with eligOr above: not a scheduled pickup, or its prep window opened.
       .or(`requested_pickup_at.is.null,requested_pickup_at.lte.${dueBy}`)
       .order("created_at", { ascending: true })
