@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildEposXml, buildEposReceiptXml, buildEposSplitXml } from "@/lib/epson";
 import { printEligibilityOr } from "@/lib/printEligibility";
+import { torontoDayStartIso } from "@/lib/salesStats";
 import type { Order } from "@/lib/orders";
 
 export const runtime = "nodejs";
@@ -67,7 +68,7 @@ async function handle(req: Request): Promise<Response> {
     // shop name + print switch
     const { data: tenant } = await db
       .from("tenants")
-      .select("name, print_enabled, payment_mode")
+      .select("name, print_enabled, payment_mode, day_start_hour")
       .eq("slug", slug)
       .maybeSingle();
     if (tenant && tenant.print_enabled === false) return empty();
@@ -90,15 +91,25 @@ async function handle(req: Request): Promise<Response> {
     // Requires supabase/pickup-time.sql (requested_pickup_at) — run 2026-07-18.
     const PICKUP_PREP_MS = 15 * 60_000;
     const dueBy = new Date(Date.now() + PICKUP_PREP_MS).toISOString();
+    // Freshness guard: auto-print only considers the CURRENT business day
+    // (tenants.day_start_hour; fulai = 7 → the queue resets at 7am like the
+    // table map). Without it, any eligibility change re-exposes every historical
+    // unprinted order and the printer drains the whole backlog — which is
+    // exactly what happened when order_only togo/delivery became eligible
+    // (2026-08-01). Scheduled orders placed the previous evening stay printable
+    // via their requested_pickup_at. A missed ticket at the boundary is
+    // recoverable with 重打; a backlog flood at the printer is not.
+    const dayStart = torontoDayStartIso(new Date(), (tenant as { day_start_hour?: number } | null)?.day_start_hour ?? 0);
     let listQ = db
       .from("orders")
       .select("*")
       .eq("tenant_slug", slug)
       .is("printed_at", null)
-      .neq("status", "cancelled");
+      .neq("status", "cancelled")
+      .or(`created_at.gte.${dayStart},requested_pickup_at.gte.${dayStart}`);
     if (eligOr) listQ = listQ.or(eligOr);
     const { data, error } = await listQ
-      // ANDed with eligOr above: not a scheduled pickup, or its prep window opened.
+      // ANDed with the filters above: not a scheduled pickup, or its prep window opened.
       .or(`requested_pickup_at.is.null,requested_pickup_at.lte.${dueBy}`)
       .order("created_at", { ascending: true })
       .limit(25);

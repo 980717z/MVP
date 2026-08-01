@@ -102,7 +102,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     let alive = true;
-    listOrders(slug)
+    listOrders(slug, tenant?.dayStartHour ?? 0)
       .then((o) => alive && setOrders(o))
       .catch(() => {
         /* orders table may be empty / not provisioned — degrade quietly */
@@ -110,7 +110,7 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [slug]);
+  }, [slug, tenant?.dayStartHour]);
 
   // catalog labels are still {zh,en} only — render via current lang (fr falls back to en)
   const tl = (b: { zh: string; en: string }) => (lang === "zh" ? b.zh : b.en);

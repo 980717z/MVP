@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "./supabase";
+import { torontoDayStartIso } from "./salesStats";
 import type { OrderType } from "./tax";
 
 export interface OrderItem {
@@ -153,39 +154,27 @@ export async function fetchOrderNo(id: string): Promise<string | null> {
   }
 }
 
-/** Start-of-today as an ISO timestamp in the shop's fixed timezone (Toronto),
- *  so the order window is stable for remote owners and across device clocks. */
-const SHOP_TZ = "America/Toronto";
-function startOfTodayShopTz(): string {
-  const now = new Date();
-  const d = new Intl.DateTimeFormat("en-CA", {
-    timeZone: SHOP_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now); // "YYYY-MM-DD"
-  const offPart = new Intl.DateTimeFormat("en-US", { timeZone: SHOP_TZ, timeZoneName: "longOffset" })
-    .formatToParts(now)
-    .find((p) => p.type === "timeZoneName")?.value; // "GMT-04:00"
-  const off = offPart?.match(/GMT([+-]\d{2}:\d{2})/)?.[1] ?? "-05:00";
-  return `${d}T00:00:00${off}`;
-}
-
 /**
  * Orders for the live staff log. Bounded so the 8s poll stays cheap forever:
- * today's orders OR anything still active (never drops an unfinished order
- * after midnight), newest first, capped at 200.
+ * this BUSINESS day's orders OR anything still active (never drops an
+ * unfinished order at the boundary), newest first, capped at 200.
+ *
+ * dayStartHour = the tenant's business-day start (fulai = 7): the list resets
+ * at 7am Toronto like the table map, so yesterday's 自取/配送 don't linger past
+ * opening, and 1am orders don't vanish mid-service at midnight.
+ * "delivering" counts as active too — an out-for-delivery order must not fall
+ * off the screen when the day rolls over.
  *
  * Throws on a real query error so callers can keep the last good list instead
  * of blanking the screen (empty result vs failure must be distinguishable).
  */
-export async function listOrders(slug: string): Promise<Order[]> {
-  const since = startOfTodayShopTz();
+export async function listOrders(slug: string, dayStartHour = 0): Promise<Order[]> {
+  const since = torontoDayStartIso(new Date(), dayStartHour);
   const { data, error } = await supabase
     .from("orders")
     .select("*")
     .eq("tenant_slug", slug)
-    .or(`created_at.gte.${since},status.in.(new,preparing)`)
+    .or(`created_at.gte.${since},status.in.(new,preparing,delivering)`)
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) {

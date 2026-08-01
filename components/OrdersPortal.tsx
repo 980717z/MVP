@@ -423,7 +423,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   const load = useCallback(async () => {
     try {
-      const data = await listOrders(slug);
+      const data = await listOrders(slug, tenant?.dayStartHour ?? 0);
       setOrders(data);
       setFirstLoaded(true);
       setLoadErr(false);
@@ -449,7 +449,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       // is failing tells staff on a flaky connection that no orders exist.
       if (!inited.current) setLoadErr(true);
     }
-  }, [slug, beep, speak]);
+  }, [slug, beep, speak, tenant?.dayStartHour]);
 
   // Poll while visible; pause when hidden; refetch immediately on return.
   useEffect(() => {
