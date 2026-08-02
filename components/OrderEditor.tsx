@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { updateOrderItems, reprintOrder, type Order, type OrderItem } from "@/lib/orders";
 import { postOrderSales, adjustOrderSale } from "@/lib/store";
-import { listMenuItems, displayPrice, catLabel, type MenuItem } from "@/lib/menu";
+import { listMenuItems, displayPrice, catLabel, isNoCookDish, type MenuItem } from "@/lib/menu";
 import { dishNoMatches } from "@/lib/dishNo";
 import { useLang, type Dict } from "@/app/i18n";
 
@@ -82,7 +82,9 @@ export default function OrderEditor({
     setRows((rs) => {
       const i = rs.findIndex((r) => r.id === d.id && r.vi == null && !r.cancelled);
       if (i >= 0) return rs.map((r, k) => (k === i ? { ...r, qty: r.qty + 1 } : r));
-      return [...rs, { id: d.id, name_zh: d.name_zh, name_en: d.name_en, price, qty: 1 }];
+      // Stamp noKitchen like the customer menu does — a 白饭/饮料 added here must
+      // not turn a no-cook round into a kitchen ticket on reprint.
+      return [...rs, { id: d.id, name_zh: d.name_zh, name_en: d.name_en, price, qty: 1, ...(isNoCookDish(d) ? { noKitchen: true } : {}) }];
     });
   };
 

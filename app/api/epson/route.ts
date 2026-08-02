@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildEposXml, buildEposReceiptXml, buildEposSplitXml } from "@/lib/epson";
-import { printEligibilityOr } from "@/lib/printEligibility";
+import { printEligibilityOr, roundNeedsKitchen } from "@/lib/printEligibility";
+import { isNoCookDish } from "@/lib/dish";
 import { torontoDayStartIso } from "@/lib/salesStats";
 import type { Order } from "@/lib/orders";
 
@@ -30,6 +31,42 @@ export const runtime = "nodejs";
 // ─────────────────────────────────────────────────────────────────────────
 
 const XML_HEADERS = { "Content-Type": "text/xml; charset=utf-8", "Cache-Control": "no-store" };
+
+// Kitchen-routing lookup (dish id → name/category) so the print decision reads the
+// CURRENT menu instead of trusting the noKitchen flag each writer happened to stamp.
+// Cached per warm lambda: the printer polls every few seconds and the menu is ~430
+// rows, so an uncached fetch would be steady Supabase egress for data that changes
+// a few times a week. A stale-by-≤5min menu only affects a dish reclassified in the
+// last minutes; the flag fallback still covers it.
+const NO_COOK_TTL_MS = 5 * 60_000;
+type NoCookRow = { name_zh: string; category?: string };
+const noCookCache = new Map<string, { at: number; byId: Map<string, NoCookRow> }>();
+
+async function kitchenLookup(
+  db: ReturnType<typeof supabaseAdmin>,
+  slug: string,
+): Promise<Map<string, NoCookRow>> {
+  const hit = noCookCache.get(slug);
+  if (hit && Date.now() - hit.at < NO_COOK_TTL_MS) return hit.byId;
+  const byId = new Map<string, NoCookRow>();
+  try {
+    const { data, error } = await db!
+      .from("menu_items")
+      .select("id, name_zh, category")
+      .eq("tenant_slug", slug);
+    if (error) throw new Error(error.message);
+    for (const r of (data ?? []) as { id: string; name_zh: string; category?: string }[]) {
+      byId.set(r.id, { name_zh: r.name_zh, category: r.category });
+    }
+  } catch (e) {
+    // Never block printing on this: an empty map makes roundNeedsKitchen fall back
+    // to the stored noKitchen flag (the behavior before this lookup existed).
+    console.error("[epson] menu lookup", e);
+    return new Map();
+  }
+  noCookCache.set(slug, { at: Date.now(), byId });
+  return byId;
+}
 // SDP "nothing for you" reply: empty body, 200. Used for idle GetRequest and for
 // the SetResponse ack. eposEmpty() (a real <epos-print/>) is kept only for tests.
 const empty = (status = 200) => new Response(null, { status, headers: XML_HEADERS });
@@ -126,11 +163,11 @@ async function handle(req: Request): Promise<Response> {
     // Held tickets are already excluded by the query; this re-check is a cheap
     // invariant guard so a future change to that filter can't fire an order early
     // (printed_at stays null either way, so a withheld ticket is deferred, not lost).
+    const dishById = (data ?? []).length ? await kitchenLookup(db, slug) : new Map<string, NoCookRow>();
     for (const order of (data as Order[] | null) ?? []) {
       const target = (order as { requested_pickup_at?: string | null }).requested_pickup_at;
       if (order.order_type === "pickup" && target && Date.parse(target) - Date.now() > PICKUP_PREP_MS) continue;
-      const active = (order.items ?? []).filter((it) => !(it as { cancelled?: boolean }).cancelled);
-      const needsKitchen = active.some((it) => !(it as { noKitchen?: boolean }).noKitchen);
+      const needsKitchen = roundNeedsKitchen(order.items, dishById, isNoCookDish);
       // CAS-claim so a rare double-poll can't double-print.
       const { data: claimed } = await db
         .from("orders")

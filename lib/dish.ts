@@ -70,11 +70,31 @@ export function lineName(d: DishLike, v: VariantLike | null, en = false): string
     : v ? `${d.name_zh}（${v.label_zh}）` : d.name_zh;
 }
 
+/** Strip the paper-menu dish number that 富来's menu bakes into name_zh
+ *  ("F15. ]白饭", "R1. 虾龙糊饭", "46A. XO酱炒王子菇"), plus any leftover
+ *  punctuation and a trailing size parenthetical, leaving the bare dish name.
+ *  The numbering came in with the printed-menu import, so an exact-match rule
+ *  on name_zh silently stopped matching — that is why 白饭 kept printing a
+ *  kitchen ticket. Only used for the rice test below. */
+function bareDishName(raw: string): string {
+  return (raw || "")
+    .trim()
+    .replace(/^[A-Za-z]{0,2}\d+[A-Za-z]?\s*[.．、]\s*/, "") // "F15. " / "143. " / "46A. "
+    .replace(/^[^一-鿿]+/, "") // stray "]" / spaces before the first CJK char
+    .replace(/[(（][^)）]*[)）]\s*$/, "") // trailing "(大)" / "(细)"
+    .trim();
+}
+
 /** Dishes the kitchen doesn't cook (drinks / plain rice). A round that is ALL
  *  no-cook skips the kitchen ticket but still prints on the bill. Derived from
- *  the dish, never from a client-sent flag. */
+ *  the dish, never from a client-sent flag.
+ *
+ *  Rice matches 白饭 / 米饭 / 白米饭 / 丝苗白饭 and their spaced forms, AFTER the
+ *  dish number is stripped. 炒饭 / 煲仔饭 / 咖喱鸡片饭 never match — they are
+ *  cooked dishes that merely end in 饭. */
 export function isNoCookDish(d: DishLike): boolean {
-  return d.category === "酒水饮品" || /^白\s*米?\s*饭$/.test((d.name_zh || "").trim());
+  if (d.category === "酒水饮品") return true;
+  return /^(丝苗|靓)?\s*白?\s*米?\s*饭$/.test(bareDishName(d.name_zh));
 }
 
 /** Unit price for a cart entry: the chosen variant's price, else the base price.
