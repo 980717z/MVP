@@ -76,6 +76,15 @@ const T = {
   marketCheckTitle: { en: "Market-price dish: the menu shows a gold “Market” tag and hides the price; customers can still order, and staff enter the actual price before completing.", zh: "时价菜:菜单显示金色「时价」标签、隐藏价格;顾客可下单,标记完成前店员录入当日实价", fr: "Plat à prix du jour : le menu affiche une étiquette dorée et masque le prix; le personnel saisit le prix réel avant de terminer." },
   marketLabel: { en: "Market", zh: "时价", fr: "Prix du jour" },
   sizesTitle: { en: "Sizes (one price each)", zh: "多规格(每个大小一个价)", fr: "Formats (un prix chacun)" },
+  // A 时价 dish's variants are cooking styles, not portions — the price column is
+  // optional there (blank = today's market price), so it gets its own heading.
+  stylesTitle: {
+    en: "Cooking styles (leave price blank = today's market price)",
+    zh: "做法(价格留空 = 按当日时价)",
+    fr: "Styles de cuisson (prix vide = prix du jour)",
+  },
+  marketPricePh: { en: "Market", zh: "时价", fr: "Prix du jour" },
+  addStyles: { en: "+ Cooking styles", zh: "＋ 做法(清蒸/姜葱…)", fr: "+ Styles de cuisson" },
   removeSize: { en: "Remove this size", zh: "删除这个规格", fr: "Retirer ce format" },
   addOneSize: { en: "+ Add a size", zh: "＋ 加一个规格", fr: "+ Ajouter un format" },
   del: { en: "Delete", zh: "删除", fr: "Supprimer" },
@@ -246,6 +255,27 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
       return prev;
     });
   const rmVariant = (d: MenuItem, i: number) => setVariants(d, (d.variants ?? []).filter((_: any, idx: number) => idx !== i));
+
+  /** 时价 checkbox. Rendered for EVERY dish, with or without 规格 — the two are
+   *  not mutually exclusive: a 时价 dish's variants are cooking STYLES
+   *  (生猛龙虾: 清蒸/姜葱/豉椒), priced from the dish's daily price rather than
+   *  per row (lib/dish.ts unitPrice). The editor used to show this control only
+   *  when a dish had NO variants, so a market dish with styles could only be set
+   *  up by hand in SQL — and its 5 empty "$0" rows looked like a mistake. */
+  const marketToggle = (d: MenuItem) => (
+    <label className="flex flex-none cursor-pointer items-center gap-1 text-xs text-ink-soft" title={t(T.marketCheckTitle)}>
+      <input
+        type="checkbox"
+        className="h-3.5 w-3.5 accent-amber-600"
+        checked={!!d.is_market}
+        onChange={(e) => {
+          patchLocal(d.id, { is_market: e.target.checked });
+          updateMenuItem(d.id, { is_market: e.target.checked });
+        }}
+      />
+      {t(T.marketLabel)}
+    </label>
+  );
 
   const changeImage = async (id: string, file: File | null) => {
     if (!file) return;
@@ -681,25 +711,19 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                           ) : (
                             <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">{t(T.marketTag)}</span>
                           )}
-                          {!d.is_market && (
-                            <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">{t(T.addSizes)}</button>
-                          )}
-                          <label className="flex cursor-pointer items-center gap-1 text-xs text-ink-soft" title={t(T.marketCheckTitle)}>
-                            <input
-                              type="checkbox"
-                              className="h-3.5 w-3.5 accent-amber-600"
-                              checked={!!d.is_market}
-                              onChange={(e) => {
-                                patchLocal(d.id, { is_market: e.target.checked });
-                                updateMenuItem(d.id, { is_market: e.target.checked });
-                              }}
-                            />
-                            {t(T.marketLabel)}
-                          </label>
+                          {/* A 时价 dish can take 做法 too (清蒸/姜葱/豉椒) — same
+                              control, named for what it adds in each case. */}
+                          <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">
+                            {d.is_market ? t(T.addStyles) : t(T.addSizes)}
+                          </button>
+                          {marketToggle(d)}
                         </div>
                       ) : (
                         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
-                          <div className="mb-1.5 text-xs font-medium text-ink-soft">{t(T.sizesTitle)}</div>
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="min-w-0 text-xs font-medium text-ink-soft">{d.is_market ? t(T.stylesTitle) : t(T.sizesTitle)}</span>
+                            {marketToggle(d)}
+                          </div>
                           <div className="space-y-1.5">
                             {d.variants.map((v: any, i: number) => (
                               <div key={i} className="flex items-center gap-1.5">
@@ -724,7 +748,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                                     type="number"
                                     step="0.01"
                                     value={v.price ?? ""}
-                                    placeholder="0.00"
+                                    // 时价 dish: blank means "today's price", which is
+                                    // why its styles legitimately sit at no price. A
+                                    // per-style price still wins if one is typed.
+                                    placeholder={d.is_market ? t(T.marketPricePh) : "0.00"}
                                     onChange={(e) => patchVariant(d, i, { price: e.target.value })}
                                     onBlur={() => saveVariants(d.id)}
                                   />
