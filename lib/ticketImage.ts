@@ -167,16 +167,14 @@ function newBuilder(mc: SKRSContext2D) {
       y += lineH;
     }
   };
-  // Dish line for the kitchen ticket: qty prefix, name hang-indented under itself.
+  // Dish line for the kitchen ticket: qty SUFFIX (菜名 ×2), single item → no ×1.
+  // Kitchen staff asked for the count after the name instead of a "2 x" prefix.
   const item = (qty: number, name: string) => {
-    const prefix = qty >= 2 ? `${qty} x ` : ""; // single item → no "1 x"
+    const label = qty >= 2 ? `${name} ×${qty}` : name;
     setFont(mc, BIG, true);
-    const hang = mc.measureText(prefix).width;
-    const lines = wrap(mc, name, BIG, true, MAXW - hang);
-    ops.push({ kind: "text", x: PAD, y, text: prefix + (lines[0] ?? ""), size: BIG, bold: true });
-    y += LH_BIG;
-    for (let i = 1; i < lines.length; i++) {
-      ops.push({ kind: "text", x: PAD + hang, y, text: lines[i], size: BIG, bold: true });
+    const lines = wrap(mc, label, BIG, true, MAXW);
+    for (const ln of lines) {
+      ops.push({ kind: "text", x: PAD, y, text: ln, size: BIG, bold: true });
       y += LH_BIG;
     }
   };

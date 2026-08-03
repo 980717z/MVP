@@ -119,7 +119,7 @@ export function buildEposXml(o: Order, shopName: string): string {
   for (const it of items) {
     const qty = Number(it.qty) || 1;
     const name = ascii(it.name_en) || ascii(it.name_zh) || "Item";
-    b.push(line(qty >= 2 ? `${qty} x ${name}` : name, { big: true }));
+    b.push(line(qty >= 2 ? `${name} x${qty}` : name, { big: true }));
   }
   b.push(line(RULE));
   b.push(line(`Items: ${count}`, { em: true }));
