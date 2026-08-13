@@ -4,16 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupReady, claimPickedUp, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
-import { postOrderSales, recordOrderSale, syncMemberFromOrder, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
+import { getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import { type OrderMode } from "@/lib/orderModes";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
 import StaffOrderPicker from "@/components/StaffOrderPicker";
+import OrderEditor from "@/components/OrderEditor";
+import MarketPriceSheet, { type MarketLine } from "@/components/MarketPriceSheet";
+import ConfirmSheet from "@/components/ConfirmSheet";
 import { supabase } from "@/lib/supabase";
 import { currentPushState, enablePush, disablePush, type PushState } from "@/lib/push";
 import { listMenuItems } from "@/lib/menu";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import KitchenTicket from "@/components/KitchenTicket";
+import OrderLineup from "@/components/OrderLineup";
+import { useFocus } from "@/components/FocusMode";
 import { useLang, type Dict } from "@/app/i18n";
 
 // Trilingual UI chrome (EN default, + 中 / FR). Merchant DATA (dish names, store
@@ -35,6 +40,12 @@ const T: Record<string, Dict> = {
   pendingPill: { en: "{n} pending", zh: "{n} 单待处理", fr: "{n} en attente" },
   enableSoundTitle: { en: "New-order sound alert", zh: "新订单提示音", fr: "Alerte sonore des nouvelles commandes" },
   enableSound: { en: "🔔 Enable sound", zh: "🔔 开启提示音", fr: "🔔 Activer le son" },
+  // Spoken new-order announcement (like Alipay's "到账" voice). Tap cycles the
+  // device through Off → 中文 → English; the selected language is spoken.
+  voiceTitle: { en: "Spoken new-order announcement", zh: "新订单语音播报", fr: "Annonce vocale des nouvelles commandes" },
+  voiceOff: { en: "🔊 Voice: Off", zh: "🔊 播报:关", fr: "🔊 Voix : Arrêt" },
+  voiceZh: { en: "🔊 Voice: 中文", zh: "🔊 播报:中文", fr: "🔊 Voix : 中文" },
+  voiceEn: { en: "🔊 Voice: English", zh: "🔊 播报:English", fr: "🔊 Voix : English" },
   pushTitle: {
     en: "Push notifications — get a system alert on new orders even when this app is closed",
     zh: "推送通知 — 即使关闭本应用,来新订单也会收到系统通知",
@@ -88,6 +99,7 @@ const T: Record<string, Dict> = {
   },
   // Campus order-ahead pickup (🚚) — distinct from fulai's takeout (自取)
   viewPickup: { en: "Order-ahead", zh: "取餐", fr: "Sur commande" },
+  scheduledFor: { en: "for", zh: "预约", fr: "prévu" },
   emptyPickup: { en: "No order-ahead pickups yet.", zh: "还没有取餐订单。", fr: "Aucune commande à ramasser." },
   puAcceptHint: { en: "Accept · prep time", zh: "接单 · 预计时间", fr: "Accepter · délai" },
   puReady: { en: "✅ Ready", zh: "✅ 可取餐", fr: "✅ Prêt" },
@@ -136,8 +148,25 @@ const T: Record<string, Dict> = {
   printTableBill: { en: "🧾 Print table bill", zh: "🧾 打印整桌账单", fr: "🧾 Imprimer l'addition de table" },
   printBill: { en: "🧾 Print bill", zh: "🧾 打印账单", fr: "🧾 Imprimer l'addition" },
   reprintKitchen: { en: "Reprint kitchen ticket", zh: "重打厨房单", fr: "Réimprimer le ticket cuisine" },
+  editOrder: { en: "✏️ Edit order", zh: "✏️ 编辑订单", fr: "✏️ Modifier" },
+  // 加菜到「已完成」的自取/取餐单(未完成的单用「编辑订单」加菜即可)。
+  addDishDone: { en: "＋ Add dish", zh: "＋ 加菜到本单", fr: "＋ Ajouter un plat" },
+  mergeOrder: { en: "🔗 Merge order", zh: "🔗 合并订单", fr: "🔗 Fusionner" },
   cancelOrder: { en: "Cancel order", zh: "取消订单", fr: "Annuler la commande" },
   deleteOrder: { en: "Delete", zh: "删除", fr: "Supprimer" },
+  // Merge picker
+  mergeTitle: { en: "Merge {no} into…", zh: "把 {no} 合并到…", fr: "Fusionner {no} dans…" },
+  mergeHint: {
+    en: "Its dishes move onto the order you pick; this one is then removed. Sales totals stay correct.",
+    zh: "这张单的菜会并入你选择的单,本单随后删除。营业额与菜品销量保持不变。",
+    fr: "Ses plats sont déplacés vers la commande choisie ; celle-ci est ensuite supprimée. Les totaux restent corrects.",
+  },
+  mergeNone: {
+    en: "No other order to merge into — need a same-type order in the same state (both done, or both open).",
+    zh: "没有可合并的另一张单 —— 需要同类型、且状态相同(都已完成,或都未完成)的单。",
+    fr: "Aucune commande compatible — même type et même état (toutes deux terminées ou toutes deux ouvertes).",
+  },
+  mergeFailed: { en: "Merge failed, retry: ", zh: "合并失败,请重试:", fr: "Échec de la fusion, réessayez : " },
   // Dialogs / alerts
   confirmRefund: {
     en: "This order was paid online for ${amt}. Cancelling will auto-refund the customer. Are you sure?",
@@ -146,13 +175,10 @@ const T: Record<string, Dict> = {
   },
   refundFailed: { en: "Refund failed, order not cancelled: ", zh: "退款失败,未取消订单:", fr: "Remboursement échoué, commande non annulée : " },
   refundRetry: { en: "please try again", zh: "请重试", fr: "veuillez réessayer" },
-  marketPrompt: {
-    en: "Market price: today's unit price for “{name}” ($)",
-    zh: "时价录入:「{name}」今日单价($)",
-    fr: "Prix du jour : prix unitaire d'aujourd'hui pour « {name} » ($)",
-  },
-  invalidPrice: { en: "Enter a valid price; order not completed.", zh: "请输入有效价格,订单未完成。", fr: "Saisissez un prix valide ; commande non terminée." },
-  savePriceFailed: { en: "Failed to save market price: ", zh: "保存时价失败:", fr: "Échec de l'enregistrement du prix : " },
+  // First-load states (the [] before the first fetch must never render as the
+  // real empty state — see firstLoaded).
+  loadFailedTitle: { en: "Couldn't load orders. Check the connection.", zh: "订单加载失败,请检查网络。", fr: "Impossible de charger les commandes. Vérifiez la connexion." },
+  loadRetry: { en: "Try again", zh: "重试", fr: "Réessayer" },
   statusFailed: { en: "Status update failed, please retry: ", zh: "状态更新失败,请重试:", fr: "Échec de la mise à jour du statut, réessayez : " },
   noActive: { en: "No in-progress orders", zh: "没有进行中的订单", fr: "Aucune commande en cours" },
   confirmReprintAll: {
@@ -166,6 +192,7 @@ const T: Record<string, Dict> = {
     fr: "{n} renvoyées ; l'imprimante les imprimera dans les prochaines secondes.",
   },
   printBillFailed: { en: "Print bill failed: ", zh: "打印账单失败:", fr: "Échec de l'impression de l'addition : " },
+  billQueued: { en: "Bill sent to the printer.", zh: "账单已送打印机。", fr: "Addition envoyée à l'imprimante." },
   confirmDelete: { en: "Delete this order?", zh: "确定删除这个订单?", fr: "Supprimer cette commande ?" },
 };
 
@@ -225,10 +252,40 @@ const SAMPLE_ORDER = {
 export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
   const { t } = useLang();
   const [orders, setOrders] = useState<Order[]>([]);
+  // First-load state: [] before the first fetch resolves must render as LOADING,
+  // never as the real "no orders yet" empty state (a truck on flaky LTE would
+  // read that as "no orders exist"). After the first success, errors keep the
+  // last good list silently (the poll recovers on its own).
+  const [firstLoaded, setFirstLoaded] = useState(false);
+  const [loadErr, setLoadErr] = useState(false);
   const [unread, setUnread] = useState(0);
   const [soundOn, setSoundOn] = useState(false);
+  const [voiceLang, setVoiceLang] = useState<"off" | "zh" | "en">("off"); // spoken new-order announcement
   const [preview, setPreview] = useState<Order | null>(null); // kitchen-ticket preview
   const [menuFor, setMenuFor] = useState<string | null>(null); // order id whose ⋯ overflow menu is open
+  const [editOrder, setEditOrder] = useState<Order | null>(null); // order open in the back-office editor
+  const [mergeFrom, setMergeFrom] = useState<Order | null>(null); // source order being merged INTO another
+  // 时价录入 sheet: the order being completed + its un-priced market lines
+  // (keys are item indexes). Replaces the old window.prompt-per-item loop.
+  const [pricing, setPricing] = useState<{ order: Order; lines: MarketLine[] } | null>(null);
+  // 专注模式 right rail: the time-ordered queue. Its open/closed state persists
+  // per device so a station iPad reopens the way staff left it.
+  const { focus, scale } = useFocus();
+  const [railOpen, setRailOpen] = useState(true);
+  useEffect(() => {
+    try { setRailOpen(localStorage.getItem("bento_lineup_open") !== "off"); } catch { /* ignore */ }
+  }, []);
+  const toggleRail = (v: boolean) => {
+    setRailOpen(v);
+    try { localStorage.setItem("bento_lineup_open", v ? "on" : "off"); } catch { /* ignore */ }
+  };
+  // Ticking clock so the rail's wait labels advance between the 8s polls.
+  const [railNow, setRailNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!focus) return;
+    const id = setInterval(() => setRailNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [focus]);
   // starts as the slug, replaced by the tenant's real name once fetched —
   // never default to one merchant's name inside another merchant's portal
   const [shopName, setShopName] = useState(slug);
@@ -240,10 +297,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   // freezes the whole portal behind an OS dialog staff must dismiss one-handed
   // mid-service (and Chrome then offers "suppress dialogs", which would hide
   // every future error). Inline + auto-dismissing per DESIGN-PLATFORM.md.
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ msg: string; kind: "err" | "ok" } | null>(null);
+  const toastErr = (msg: string) => setToast({ msg, kind: "err" });
+  const toastOk = (msg: string) => setToast({ msg, kind: "ok" });
+  // One pending in-app confirmation (replaces window.confirm — which froze the
+  // whole portal + its poll behind an OS dialog).
+  const [confirmAsk, setConfirmAsk] = useState<{ body: string; label: string; danger?: boolean; action: () => void | Promise<void> } | null>(null);
   useEffect(() => {
     if (!toast) return;
-    const id = setTimeout(() => setToast(""), 8000);
+    const id = setTimeout(() => setToast(null), 8000);
     return () => clearTimeout(id);
   }, [toast]);
   const [trackPay, setTrackPay] = useState(true); // record cash/EMT/card at checkout + method stats (tenant setting)
@@ -274,12 +336,15 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const audioCtx = useRef<AudioContext | null>(null);
   const baseTitle = useRef<string>("");
   const soundRef = useRef(false);
+  const voiceRef = useRef<"off" | "zh" | "en">("off"); // mirror of voiceLang for the poll callback
 
   useEffect(() => {
     try {
       const on = localStorage.getItem("bento_order_sound") === "on";
       setSoundOn(on);
       soundRef.current = on;
+      const v = localStorage.getItem("bento_order_voice");
+      if (v === "zh" || v === "en") { setVoiceLang(v); voiceRef.current = v; }
     } catch {
       /* ignore */
     }
@@ -299,8 +364,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     try {
       const next = pushState === "on" ? await disablePush() : await enablePush(slug);
       setPushState(next);
-      if (next === "denied") alert(t(T.pushDenied));
-      else if (next === "unsupported") alert(t(T.pushUnsupported));
+      if (next === "denied") toastErr(t(T.pushDenied));
+      else if (next === "unsupported") toastErr(t(T.pushUnsupported));
     } catch {
       /* surfaced via state; keep the screen alive */
     } finally {
@@ -326,10 +391,42 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     }
   }, []);
 
+  // Spoken announcement via the browser's built-in speech synthesis (no audio
+  // files, works offline with the OS voices). `lang` picks the utterance's
+  // language so the right voice + pronunciation is used.
+  const speak = useCallback((lang: "zh" | "en") => {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      synth.cancel(); // don't let announcements pile up if orders arrive in a burst
+      const phrase = lang === "zh" ? "叮咚，您有新订单" : "New order received";
+      const u = new SpeechSynthesisUtterance(phrase);
+      u.lang = lang === "zh" ? "zh-CN" : "en-US";
+      const match = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith(lang === "zh" ? "zh" : "en"));
+      if (match) u.voice = match;
+      synth.speak(u);
+    } catch {
+      /* speech can be blocked/unavailable — degrade silently */
+    }
+  }, []);
+
+  // Tap cycles Off → 中文 → English → Off. The click is also the user gesture
+  // iOS/Safari needs to unlock speech, so we speak the confirmation immediately.
+  const cycleVoice = () => {
+    const next = voiceLang === "off" ? "zh" : voiceLang === "zh" ? "en" : "off";
+    setVoiceLang(next);
+    voiceRef.current = next;
+    try { localStorage.setItem("bento_order_voice", next); } catch { /* ignore */ }
+    if (next !== "off") speak(next);
+    else try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+  };
+
   const load = useCallback(async () => {
     try {
-      const data = await listOrders(slug);
+      const data = await listOrders(slug, tenant?.dayStartHour ?? 0);
       setOrders(data);
+      setFirstLoaded(true);
+      setLoadErr(false);
       const ids = data.map((o) => o.id);
       if (!inited.current) {
         // seed from the FIRST successful fetch so mount doesn't alert for existing orders
@@ -343,11 +440,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       if (freshActive.length > 0) {
         setUnread((u) => u + freshActive.length);
         if (soundRef.current) beep();
+        if (voiceRef.current !== "off") speak(voiceRef.current);
       }
     } catch {
-      // Keep the last good list — a transient/auth error must not blank the kitchen screen.
+      // After the first successful load: keep the last good list — a transient
+      // error must not blank the kitchen screen. BEFORE it: flag the failure,
+      // because rendering the real "no orders yet" empty state while the fetch
+      // is failing tells staff on a flaky connection that no orders exist.
+      if (!inited.current) setLoadErr(true);
     }
-  }, [slug, beep]);
+  }, [slug, beep, speak, tenant?.dayStartHour]);
 
   // Poll while visible; pause when hidden; refetch immediately on return.
   useEffect(() => {
@@ -418,6 +520,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
 
   // orders with an advance() in flight — blocks double-tap double-posting
   const advancing = useRef<Set<string>>(new Set());
+  // paid orders whose refund-cancel the staff already confirmed in the sheet
+  const refundOk = useRef<Set<string>>(new Set());
 
   const advance = async (o: Order, to: Order["status"]) => {
     if (advancing.current.has(o.id)) return;
@@ -427,7 +531,20 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       // lets a paid order be cancelled, so an un-refunded cancel keeps the
       // diner's cash). Refund server-side, then fall through to set 'cancelled'.
       if (to === "cancelled" && o.payment_status === "paid" && (o.order_type === "togo" || o.order_type === "delivery")) {
-        if (!confirm(t(T.confirmRefund).replace("{amt}", Number(o.total).toFixed(2)))) return;
+        // In-app confirm (was window.confirm): first pass opens the sheet and
+        // returns; confirming marks the order and re-enters advance(), which
+        // then proceeds to the refund below. Same continuation pattern as the
+        // 时价 gate.
+        if (!refundOk.current.has(o.id)) {
+          setConfirmAsk({
+            body: t(T.confirmRefund).replace("{amt}", Number(o.total).toFixed(2)),
+            label: t(T.cancelOrder),
+            danger: true,
+            action: () => { refundOk.current.add(o.id); advance(o, "cancelled"); },
+          });
+          return;
+        }
+        refundOk.current.delete(o.id);
         const { data: sess } = await supabase.auth.getSession();
         const res = await fetch("/api/pay/refund", {
           method: "POST",
@@ -436,44 +553,34 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         });
         const rd = await res.json().catch(() => ({ ok: false }));
         if (!rd.ok) {
-          alert(t(T.refundFailed) + (rd.error ?? t(T.refundRetry)));
+          toastErr(t(T.refundFailed) + (rd.error ?? t(T.refundRetry)));
           return;
         }
       }
       // 时价 gate: an order can't be completed until every market-priced item has
-      // its actual price entered (today's 时价 from the menu prefills the prompt).
-      let items = o.items;
+      // its actual price entered. Un-priced items open the MarketPriceSheet (all
+      // dishes at once, today's board price prefilled) instead of the old
+      // window.prompt-per-item loop, which froze the iPad and the order poll.
+      // The sheet's save re-enters advance() with the priced items, so this gate
+      // passes on the second run and completion continues normally.
+      const items = o.items;
       if (to === "done" && o.status !== "done") {
         const needPricing = items.filter((it) => it.market && !(Number(it.price) > 0) && !(it as any).cancelled);
         if (needPricing.length > 0) {
           // today's reference prices from 菜单设置 (时价更新 panel)
           const menu = await listMenuItems(slug).catch(() => []);
           const menuPrice = new Map(menu.map((m) => [m.id, m.price]));
-          const updated = [...items];
-          for (const it of needPricing) {
-            const def = menuPrice.get(it.id);
-            const raw = window.prompt(
-              t(T.marketPrompt).replace("{name}", it.name_zh),
-              def != null && def > 0 ? String(def) : "",
-            );
-            if (raw == null) return; // staff cancelled — abort completion
-            const p = parseFloat(raw);
-            if (!(p > 0)) {
-              alert(t(T.invalidPrice));
-              return;
-            }
-            const idx = updated.indexOf(it);
-            updated[idx] = { ...it, price: Math.round(p * 100) / 100 };
-          }
-          const newTotal = updated
-            .filter((it: any) => !it.cancelled)
-            .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
-          const res = await updateOrderItems(o.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
-          if (res.error) {
-            alert(t(T.savePriceFailed) + res.error);
-            return;
-          }
-          items = updated;
+          setPricing({
+            order: o,
+            lines: needPricing.map((it) => ({
+              key: `${items.indexOf(it)}`,
+              name_zh: it.name_zh,
+              name_en: it.name_en,
+              qty: it.qty,
+              prefill: menuPrice.get(it.id),
+            })),
+          });
+          return; // completion resumes from the sheet's onSave
         }
       }
 
@@ -485,7 +592,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           ? await claimPickedUp(o.id)
           : await claimOrderDone(o.id);
         if (error) {
-          setToast(t(T.statusFailed) + error);
+          toastErr(t(T.statusFailed) + error);
           return;
         }
         if (claimed) {
@@ -495,18 +602,31 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           const activeItems = items.filter((it: any) => !it.cancelled);
           const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
           try {
-            await Promise.all([
-              postOrderSales(slug, activeItems),
-              recordOrderSale(slug, { id: o.id, total: activeTotal, items: activeItems, source: "qr" }),
-              o.phone ? syncMemberFromOrder(slug, o.phone, "", activeTotal) : Promise.resolve(),
-            ]);
+            // Goes through /api/orders/post-ledger (service-role) rather than a
+            // direct records write — see supabase/campus-lock.sql section 2 for
+            // why: this is an automatic side effect of completing an order, not
+            // a manual content edit, so it must not be subject to the campus
+            // records lock.
+            const { data: sess } = await supabase.auth.getSession();
+            await fetch("/api/orders/post-ledger", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
+              body: JSON.stringify({
+                slug,
+                action: "complete",
+                orderId: o.id,
+                total: activeTotal,
+                items: activeItems,
+                phone: o.phone || undefined,
+              }),
+            });
           } catch (e) {
             console.error("post order sale", e);
           }
         }
       } else {
         const { error } = await setOrderStatus(o.id, to);
-        if (error) setToast(t(T.statusFailed) + error);
+        if (error) toastErr(t(T.statusFailed) + error);
         // Tell the student their pickup order died — otherwise the tracker
         // shows "Order received" forever (design review 5A).
         if (!error && to === "cancelled" && o.order_type === "pickup") await notifyPickup(o.id, "cancelled");
@@ -525,7 +645,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     advancing.current.add(o.id);
     try {
       const { error } = await acceptPickup(o.id, eta);
-      if (error) setToast(t(T.statusFailed) + error);
+      if (error) toastErr(t(T.statusFailed) + error);
       load();
     } finally {
       advancing.current.delete(o.id);
@@ -553,7 +673,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     advancing.current.add(o.id);
     try {
       const { readied, error } = await markPickupReady(o.id);
-      if (error) setToast(t(T.statusFailed) + error);
+      if (error) toastErr(t(T.statusFailed) + error);
       // Only the CAS winner pushes, so the diner gets the "ready" alert once.
       if (readied) await notifyPickup(o.id, "ready");
       load();
@@ -565,6 +685,62 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const orderLabel = (o: Order) => (o.order_no ? `#${o.order_no}` : `#${o.id.slice(0, 4)}`);
+
+  // Orders `src` can merge into: SAME order_type, not cancelled, and the SAME
+  // posted-state (both 已完成, or both still open). That restriction is exactly
+  // when the merge needs NO sales rewrite — a done order already posted its own
+  // dishes + revenue, an open one posts the union at completion — so combining
+  // never double-counts or drops a sale (see doMerge).
+  const mergeCandidates = (src: Order) =>
+    orders.filter(
+      (o) =>
+        o.id !== src.id &&
+        o.order_type === src.order_type &&
+        o.status !== "cancelled" &&
+        (o.status === "done") === (src.status === "done"),
+    );
+
+  // Merge `src` INTO `target`: fold src's active items onto target (summing
+  // identical lines so the bill stays tidy), rewrite target's items + total, then
+  // delete src. No sales writes — see mergeCandidates for why that's correct.
+  const doMerge = async (src: Order, target: Order) => {
+    const keyOf = (it: any) => `${it.id}#${it.vi ?? ""}#${it.note ?? ""}`;
+    const merged: OrderItem[] = [];
+    const idx = new Map<string, number>();
+    for (const it of [...(target.items ?? []), ...(src.items ?? [])] as any[]) {
+      if (it.cancelled) continue;
+      const k = keyOf(it);
+      const at = idx.get(k);
+      if (at != null) merged[at] = { ...merged[at], qty: merged[at].qty + it.qty };
+      else { idx.set(k, merged.length); merged.push({ ...it }); }
+    }
+    const total = Math.round(merged.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0) * 100) / 100;
+    const { error } = await updateOrderItems(target.id, merged, total);
+    if (error) { toastErr(t(T.mergeFailed) + error); return; }
+    // Fold the sales ledger when merging two ALREADY-DONE orders (candidates are
+    // same-state, so if src is done, target is too): rewrite the survivor's sale
+    // row to the merged total and drop src's row — otherwise the day double-counts
+    // src's revenue. 菜品销量 is left alone (both dish sets already counted once).
+    // Two OPEN orders have no sale rows yet; the survivor posts the union when it
+    // completes, so nothing to fold there.
+    if (target.status === "done") {
+      try {
+        // See the "complete" branch above — goes through the service-role
+        // ledger route so the campus records lock doesn't block this.
+        const { data: sess } = await supabase.auth.getSession();
+        await fetch("/api/orders/post-ledger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
+          body: JSON.stringify({ slug, action: "merge", targetId: target.id, srcId: src.id, total, items: merged }),
+        });
+      } catch { /* non-blocking: items already merged; ledger self-heals on next edit */ }
+    }
+    await deleteOrder(src.id);
+    setMergeFrom(null);
+    load();
   };
 
   const active = orders.filter((o) => o.status === "new" || o.status === "preparing");
@@ -714,6 +890,9 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
       <div key={o.id} className="card p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="flex flex-wrap items-center gap-2">
+            {o.order_no && (
+              <span className="pill bg-ink text-base font-bold tracking-wider text-white">#{o.order_no}</span>
+            )}
             <span className={`pill ${STATUS[o.status].cls}`}>{t(T[STATUS[o.status].key])}</span>
             {o.order_type === "pickup" && o.pickup_code && (
               <span className="pill bg-emerald-50 font-bold tracking-wider text-emerald-700">🎫 {o.pickup_code}</span>
@@ -730,6 +909,12 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
             )}
             {o.order_type === "pickup" && o.status === "preparing" && !o.ready_at && o.eta_minutes && (
               <span className="text-xs text-ink-faint">{t(T.puEta).replace("{n}", String(o.eta_minutes))}</span>
+            )}
+            {/* Scheduled togo/delivery time (null = ASAP → no badge). Have it ready by then. */}
+            {(o.order_type === "togo" || o.order_type === "delivery") && o.requested_pickup_at && (
+              <span className="pill bg-amber-100 font-bold text-amber-700" title={t(T.puWhenTitle)}>
+                🕐 {t(T.scheduledFor)} {new Date(o.requested_pickup_at).toLocaleString("en-CA", { timeZone: "America/Toronto", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}
+              </span>
             )}
             {o.table_no && <span className="text-sm font-medium text-ink">{t(T.table)} {displayTable(o.table_no)}</span>}
             {o.phone && o.phone !== "N/A" ? (
@@ -777,8 +962,20 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                   <div className="fixed inset-0 z-30" onClick={() => setMenuFor(null)} />
                   <div className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
                     <MenuItem onClick={() => setPreview(o)}>{t(T.ticketPreview)}</MenuItem>
+                    {o.status !== "cancelled" && o.status !== "done" && (
+                      <MenuItem onClick={() => setEditOrder(o)}>{t(T.editOrder)}</MenuItem>
+                    )}
+                    {/* 加菜到「已完成」的自取/取餐单:同一张单继续加菜,补计入统计
+                        (见 OrderEditor)。未完成的单用上面的「编辑订单」即可加菜。 */}
+                    {(o.order_type === "togo" || o.order_type === "pickup") && o.status === "done" && (
+                      <MenuItem onClick={() => setEditOrder(o)}>{t(T.addDishDone)}</MenuItem>
+                    )}
+                    {/* 合并订单:把顾客拆成两张的自取/取餐/外送单并成一张。 */}
+                    {(o.order_type === "togo" || o.order_type === "pickup" || o.order_type === "delivery") && o.status !== "cancelled" && (
+                      <MenuItem onClick={() => setMergeFrom(o)}>{t(T.mergeOrder)}</MenuItem>
+                    )}
                     {o.status !== "cancelled" && (
-                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) alert(t(T.printBillFailed) + r.error); }}>
+                      <MenuItem onClick={async () => { const r = await requestBill(sibs.map((s) => s.id)); if (r.error) toastErr(t(T.printBillFailed) + r.error); else toastOk(t(T.billQueued)); }}>
                         {multi ? t(T.printTableBill) : t(T.printBill)}
                       </MenuItem>
                     )}
@@ -786,7 +983,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                     {o.status !== "cancelled" && o.status !== "done" && (
                       <MenuItem danger onClick={() => advance(o, "cancelled")}>{t(T.cancelOrder)}</MenuItem>
                     )}
-                    <MenuItem danger onClick={async () => { if (confirm(t(T.confirmDelete))) { await deleteOrder(o.id); load(); } }}>{t(T.deleteOrder)}</MenuItem>
+                    <MenuItem danger onClick={() => setConfirmAsk({ body: t(T.confirmDelete), label: t(T.deleteOrder), danger: true, action: async () => { await deleteOrder(o.id); load(); } })}>{t(T.deleteOrder)}</MenuItem>
                   </div>
                 </>
               )}
@@ -797,9 +994,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     );
   };
 
-  return (
-    <main className="px-6 py-8 lg:px-10">
-      <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t(T.overview)}</Link>
+  const body = (
+    <main className={focus ? "min-w-0 flex-1 overflow-y-auto px-6 py-6 lg:px-8" : "px-6 py-8 lg:px-10"}>
+      {/* the shell's back-link is redundant in 专注模式 (there's no nav to go back
+          to on screen); the exit-fullscreen button is the way out */}
+      {!focus && <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">← {t(T.overview)}</Link>}
       <header className="mt-3 mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ink">{mod.icon} {mod.label.zh}</h1>
@@ -813,6 +1012,13 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
               {t(T.enableSound)}
             </button>
           )}
+          <button
+            onClick={cycleVoice}
+            title={t(T.voiceTitle)}
+            className={`text-sm ${voiceLang !== "off" ? "btn-ghost border border-brand bg-brand-wash text-brand-ink" : "btn-ghost border border-slate-300"}`}
+          >
+            {voiceLang === "zh" ? t(T.voiceZh) : voiceLang === "en" ? t(T.voiceEn) : t(T.voiceOff)}
+          </button>
           {pushState !== "unsupported" && (
             <button
               onClick={togglePush}
@@ -856,11 +1062,16 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
                   <button
                     onClick={async () => {
                       setHeaderMenu(false);
-                      if (active.length === 0) { alert(t(T.noActive)); return; }
-                      if (!confirm(t(T.confirmReprintAll).replace("{n}", String(active.length)))) return;
-                      const n = await reprintActiveOrders(slug);
-                      load();
-                      alert(t(T.reprintedN).replace("{n}", String(n)));
+                      if (active.length === 0) { toastOk(t(T.noActive)); return; }
+                      setConfirmAsk({
+                        body: t(T.confirmReprintAll).replace("{n}", String(active.length)),
+                        label: t(T.reprintAll),
+                        action: async () => {
+                          const n = await reprintActiveOrders(slug);
+                          load();
+                          toastOk(t(T.reprintedN).replace("{n}", String(n)));
+                        },
+                      });
                     }}
                     className="flex w-full items-center px-3.5 py-3 text-left text-sm text-ink hover:bg-slate-50"
                   >
@@ -898,11 +1109,35 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )}
       </div>
 
-      {view === "dine" && (
+      {/* FIRST LOAD: skeleton, not the real empty states — and a failed first
+          load says so with a retry, instead of masquerading as "no orders". */}
+      {!firstLoaded && (
+        loadErr ? (
+          <div className="card flex flex-col items-center px-6 py-16 text-center">
+            <p className="text-sm text-ink-soft">{t(T.loadFailedTitle)}</p>
+            <button onClick={() => { setLoadErr(false); load(); }} className="btn-primary mt-4 min-h-11 px-6 text-sm">
+              {t(T.loadRetry)}
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2" aria-label="loading" aria-busy>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="card p-4">
+                <div className="mb-3 h-5 w-32 animate-pulse rounded bg-slate-100" />
+                <div className="mb-2 h-4 w-full animate-pulse rounded bg-slate-100" />
+                <div className="mb-2 h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+                <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-100" />
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {firstLoaded && view === "dine" && (
         <TableFloor slug={slug} orders={orders} tables={tenant?.tables ?? []} layout={tenant?.tableLayout ?? []} trackPayments={trackPay} dayStartHour={tenant?.dayStartHour ?? 0} onChanged={load} />
       )}
 
-      {view === "togo" && (
+      {firstLoaded && view === "togo" && (
         togoOrders.length === 0 ? (
           renderEmptyWithCta(t(T.emptyTogoTitle))
         ) : (
@@ -910,7 +1145,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {view === "delivery" && (
+      {firstLoaded && view === "delivery" && (
         deliveryOrders.length === 0 ? (
           renderEmptyWithCta(t(T.emptyDeliveryTitle))
         ) : (
@@ -918,7 +1153,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {view === "pickup" && (
+      {firstLoaded && view === "pickup" && (
         pickupOrders.length === 0 ? (
           <div className="card p-10 text-center text-sm text-ink-faint">{t(T.emptyPickup)}</div>
         ) : (
@@ -926,7 +1161,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {view === "market" && <MarketPricePanel slug={slug} />}
+      {firstLoaded && view === "market" && <MarketPricePanel slug={slug} />}
 
       {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
 
@@ -934,6 +1169,82 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           use for table orders (design review D2) — one ordering surface, so what
           staff see matches what the diner sees. The menu pings us via postMessage
           when the order lands; we close and refresh. */}
+      {/* 时价录入 — all un-priced market dishes of the completing order in one
+          sheet, prefilled from today's board prices. Save applies the prices and
+          re-enters advance(), which now passes the gate and completes the order. */}
+      {pricing && (
+        <MarketPriceSheet
+          lines={pricing.lines}
+          onCancel={() => setPricing(null)}
+          onSave={async (prices) => {
+            const p = pricing;
+            const updated = (p.order.items ?? []).map((it, i) =>
+              prices[String(i)] != null ? { ...it, price: prices[String(i)] } : it,
+            );
+            const newTotal = updated
+              .filter((it: any) => !it.cancelled)
+              .reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
+            const res = await updateOrderItems(p.order.id, updated as OrderItem[], Math.round(newTotal * 100) / 100);
+            if (res.error) throw new Error(res.error); // sheet shows it inline, stays open
+            setPricing(null);
+            await advance({ ...p.order, items: updated as OrderItem[] }, "done");
+          }}
+        />
+      )}
+
+      {editOrder && (
+        <OrderEditor
+          slug={slug}
+          order={editOrder}
+          onClose={() => setEditOrder(null)}
+          onSaved={() => { setEditOrder(null); load(); }}
+        />
+      )}
+
+      {/* Merge picker: pick which order to fold `mergeFrom` INTO. Candidates are
+          same-type + same-state so no sales rewrite is needed (see doMerge). */}
+      {mergeFrom && (() => {
+        const cands = mergeCandidates(mergeFrom);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center md:justify-center" onClick={() => setMergeFrom(null)}>
+            <div className="max-h-[85vh] w-full overflow-hidden rounded-t-2xl bg-white md:max-w-lg md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <h3 className="text-lg font-bold text-ink">{t(T.mergeTitle).replace("{no}", orderLabel(mergeFrom))}</h3>
+                <button onClick={() => setMergeFrom(null)} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-full text-ink-faint hover:bg-slate-100">✕</button>
+              </div>
+              <p className="px-5 pt-3 text-sm text-ink-soft">{t(T.mergeHint)}</p>
+              <div className="max-h-[60vh] overflow-y-auto px-5 py-3">
+                {cands.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-ink-faint">{t(T.mergeNone)}</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {cands.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => doMerge(mergeFrom, c)}
+                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-left transition hover:border-brand hover:bg-brand-wash"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            {c.order_no && <span className="pill bg-ink text-sm font-bold tracking-wider text-white">#{c.order_no}</span>}
+                            <span className={`pill ${STATUS[c.status].cls}`}>{t(T[STATUS[c.status].key])}</span>
+                            <span className="text-xs text-ink-faint">{fmtTime(c.created_at)}</span>
+                          </span>
+                          <span className="font-semibold text-ink">{fmtPrice(c.total)}</span>
+                        </div>
+                        <div className="mt-1 truncate text-sm text-ink-soft">
+                          {(c.items ?? []).filter((it: any) => !it.cancelled).map((it: any) => `${it.name_zh}×${it.qty}`).join("、")}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {newOrder && (
         <StaffOrderPicker
           slug={slug}
@@ -956,19 +1267,44 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           announced to screen readers. Staff can keep working while it's up. */}
       {toast && (
         <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex justify-center px-4">
-          <div className="pointer-events-auto flex max-w-lg items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg">
-            <span aria-hidden className="text-lg leading-none">⚠️</span>
-            <p className="flex-1 text-sm text-red-700">{toast}</p>
+          <div className={`pointer-events-auto flex max-w-lg items-start gap-3 rounded-xl border px-4 py-3 shadow-lg ${toast.kind === "err" ? "border-red-200 bg-red-50" : "border-brand/30 bg-brand-wash"}`}>
+            <span aria-hidden className="text-lg leading-none">{toast.kind === "err" ? "⚠️" : "✅"}</span>
+            <p className={`flex-1 text-sm ${toast.kind === "err" ? "text-red-700" : "text-brand-ink"}`}>{toast.msg}</p>
             <button
-              onClick={() => setToast("")}
+              onClick={() => setToast(null)}
               aria-label={t(T.close)}
-              className="-my-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg leading-none text-red-700 hover:bg-red-100"
+              className={`-my-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg leading-none ${toast.kind === "err" ? "text-red-700 hover:bg-red-100" : "text-brand-ink hover:bg-brand-wash"}`}
             >
               ✕
             </button>
           </div>
         </div>
       )}
+
+      {/* In-app confirmation (was window.confirm) — blocks only the guarded
+          action, never the screen or the order poll behind it. */}
+      {confirmAsk && (
+        <ConfirmSheet
+          body={confirmAsk.body}
+          confirmLabel={confirmAsk.label}
+          danger={confirmAsk.danger}
+          onCancel={() => setConfirmAsk(null)}
+          onConfirm={() => { const a = confirmAsk; setConfirmAsk(null); a.action(); }}
+        />
+      )}
     </main>
+  );
+
+  // Normal mode: unchanged. 专注模式: content + the time-ordered queue rail,
+  // side by side, filling the viewport the shell just freed up.
+  if (!focus) return body;
+  return (
+    // Height is divided by the 大字 zoom: the shell zooms this subtree, so a
+    // plain 100% would render at 118% of the viewport and force a scrollbar.
+    // Dividing first means it lands at exactly one screen either way.
+    <div className="flex min-h-0 w-full" style={{ height: `${100 / scale}dvh` }}>
+      {body}
+      <OrderLineup orders={orders} now={railNow} open={railOpen} onToggle={toggleRail} />
+    </div>
   );
 }

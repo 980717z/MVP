@@ -5,6 +5,7 @@
 //  tenants they own or are a member of, so the client never filters by user.
 // ─────────────────────────────────────────────────────────────────────────
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
 import { computeTax } from "./tax";
@@ -52,8 +53,20 @@ export interface Tenant {
   campus: boolean; // campus-only merchant (e.g. Pita Express) → campus branding/flows
   menuLangs: string[]; // customer-menu languages offered (ordered; first = primary). [] = unset → bilingual
   orderModes: OrderMode[]; // which ordering flows this vendor offers; campus truck = ['pickup']
+  orderHours: OrderHours; // per-weekday accept-order windows for pickup + delivery (America/Toronto)
   users: User[];
   records: Record<string, RecordRow[]>;
+}
+
+/** Per-weekday ranges per channel — same shape as lib/hours' Hours. Empty/missing
+ *  ⇒ unconfigured ⇒ that channel isn't time-gated (see lib/orderHours). */
+export type DayHours = Record<string, [string, string][]>;
+export interface OrderHours { pickup: DayHours; delivery: DayHours }
+const emptyOrderHours = (): OrderHours => ({ pickup: {}, delivery: {} });
+function parseOrderHours(v: unknown): OrderHours {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const pick = (x: unknown): DayHours => (x && typeof x === "object" ? (x as DayHours) : {});
+  return { pickup: pick(o.pickup), delivery: pick(o.delivery) };
 }
 
 // keep enabled in canonical catalog order
@@ -76,9 +89,17 @@ function rowToTenant(row: any, users: User[] = [], records: Record<string, Recor
     campus: !!row.campus,
     menuLangs: Array.isArray(row.menu_langs) ? row.menu_langs : [],
     orderModes: resolveOrderModes(row.order_modes),
+    orderHours: parseOrderHours(row.order_hours),
     users,
     records,
   };
+}
+
+/** Save a tenant's pickup/delivery accept-order windows (settings screen). */
+export async function saveOrderHours(slug: string, hours: OrderHours): Promise<{ error?: string }> {
+  const { error } = await supabase.from("tenants").update({ order_hours: hours }).eq("slug", slug);
+  if (error) { console.error("saveOrderHours", error); return { error: error.message }; }
+  return {};
 }
 
 // ── reads ──────────────────────────────────────────────────────────────────
@@ -406,10 +427,11 @@ export async function syncMemberFromOrder(
   phone: string,
   customerName: string,
   amount: number,
+  db: SupabaseClient = supabase,
 ): Promise<void> {
   if (!phone) return;
   const [{ data: existing }, tiers] = await Promise.all([
-    supabase
+    db
       .from("records")
       .select("*")
       .eq("tenant_slug", slug)
@@ -424,7 +446,7 @@ export async function syncMemberFromOrder(
     const visits = (parseInt(prev.visits) || 0) + 1;
     const spend = (parseFloat(prev.spend) || 0) + amount;
     const tier = tierForSpend(spend, tiers);
-    const { error } = await supabase
+    const { error } = await db
       .from("records")
       .update({ data: { ...prev, visits: String(visits), spend: String(Math.round(spend * 100) / 100), tier } })
       .eq("id", match.id);
@@ -432,7 +454,7 @@ export async function syncMemberFromOrder(
   } else {
     const spend = amount || 0;
     const tier = tierForSpend(spend, tiers);
-    const { error } = await supabase.from("records").insert({
+    const { error } = await db.from("records").insert({
       tenant_slug: slug,
       module_id: "members",
       data: { phone, name: customerName || "", visits: "1", spend: String(spend), tier, note: "" },
@@ -483,8 +505,9 @@ export async function listRecords(slug: string, moduleId: string): Promise<Recor
 export async function recordOrderSale(
   slug: string,
   order: { id: string; total: number; items: { name_zh: string; qty: number }[]; source?: string },
+  db: SupabaseClient = supabase,
 ): Promise<void> {
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from("records")
     .select("id,data")
     .eq("tenant_slug", slug)
@@ -492,12 +515,15 @@ export async function recordOrderSale(
   if ((existing ?? []).some((r) => r.data?.orderId === order.id)) return;
 
   const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
+  // Stamp the sale in the shop's fixed timezone (Toronto), NOT the device's local
+  // time — otherwise a phone/tablet set to another tz files the sale under the
+  // wrong business day and the daily close won't match lib/orders' Toronto window.
   const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); // YYYY-MM-DD
+  const ts = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hour12: false }).format(now); // HH:mm
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
 
-  const { error } = await supabase.from("records").insert({
+  const { error } = await db.from("records").insert({
     tenant_slug: slug,
     module_id: "sales",
     data: {
@@ -516,6 +542,56 @@ export async function recordOrderSale(
 }
 
 /**
+ * Rewrite the 销售流水 (sales) ledger row for an order to a NEW total — used when
+ * staff 加菜 to an already-completed order (补计入营业额). recordOrderSale is
+ * idempotent-per-order so it CAN'T grow a done order's revenue; this updates the
+ * existing row in place, recomputing the Ontario tax split from the new total. If
+ * no sale row exists yet (e.g. the original post failed), it inserts one. 菜品销量
+ * is handled separately by postOrderSales(deltaItems) so only the ADDED dishes get
+ * counted — the original dishes were already posted when the order first completed.
+ */
+export async function adjustOrderSale(
+  slug: string,
+  order: { id: string; total: number; items: { name_zh: string; qty: number }[]; source?: string },
+  db: SupabaseClient = supabase,
+): Promise<void> {
+  const { data: existing } = await db
+    .from("records")
+    .select("id,data")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "sales");
+  const row = (existing ?? []).find((r) => r.data?.orderId === order.id);
+  if (!row) {
+    await recordOrderSale(slug, order, db);
+    return;
+  }
+  const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
+  const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
+  const { error } = await db
+    .from("records")
+    .update({ data: { ...(row.data ?? {}), desc, subtotal: String(subtotal), gst: String(gst), pst: String(pst), total: String(total) } })
+    .eq("id", row.id);
+  if (error) console.error("adjustOrderSale", error);
+}
+
+/** Remove the 销售流水 (sales) ledger row for an order. Used when a completed
+ *  order is MERGED into another: its revenue is folded into the survivor (via
+ *  adjustOrderSale) so its own row must go, or the day's total double-counts it.
+ *  菜品销量 is left untouched — both orders' dishes were already counted once and
+ *  the merge doesn't change the dish totals. */
+export async function deleteOrderSale(slug: string, orderId: string, db: SupabaseClient = supabase): Promise<void> {
+  const { data: existing } = await db
+    .from("records")
+    .select("id,data")
+    .eq("tenant_slug", slug)
+    .eq("module_id", "sales");
+  const row = (existing ?? []).find((r) => r.data?.orderId === orderId);
+  if (!row) return;
+  const { error } = await db.from("records").delete().eq("id", row.id);
+  if (error) console.error("deleteOrderSale", error);
+}
+
+/**
  * When an order is completed, add each dish's quantity to 菜品销量与毛利
  * (dish-margin) so sales figures update automatically. Matches by Chinese dish
  * name; creates the dish row if it doesn't exist yet. Call exactly once per
@@ -524,6 +600,7 @@ export async function recordOrderSale(
 export async function postOrderSales(
   slug: string,
   items: { name_zh: string; qty: number; price: number | null }[],
+  db: SupabaseClient = supabase,
 ): Promise<void> {
   // aggregate qty per dish first (an order may list the same dish twice)
   const want = new Map<string, { qty: number; price?: string }>();
@@ -538,7 +615,7 @@ export async function postOrderSales(
   }
   if (want.size === 0) return;
 
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from("records")
     .select("*")
     .eq("tenant_slug", slug)
@@ -551,10 +628,10 @@ export async function postOrderSales(
       const prev = match.data ?? {};
       const sold = (parseFloat(prev.soldMonth) || 0) + qty;
       const data = { ...prev, soldMonth: String(sold), price: prev.price && prev.price !== "" ? prev.price : price ?? "" };
-      const { error } = await supabase.from("records").update({ data }).eq("id", match.id);
+      const { error } = await db.from("records").update({ data }).eq("id", match.id);
       if (error) console.error("postOrderSales/update", error);
     } else {
-      const { error } = await supabase.from("records").insert({
+      const { error } = await db.from("records").insert({
         tenant_slug: slug,
         module_id: "dish-margin",
         data: { dish, price: price ?? "", cost: "", soldMonth: String(qty) },
@@ -601,9 +678,12 @@ async function _syncMenuToMarginImpl(slug: string): Promise<{ added: number; upd
     const match = byDish.get(name);
     if (match) {
       const prev = match.data ?? {};
-      const price = d.price != null ? String(d.price) : prev.price ?? "";
-      if (prev.price !== price) {
-        await supabase.from("records").update({ data: { ...prev, price } }).eq("id", match.id);
+      // Only BACKFILL a missing price from the menu — never overwrite a price the
+      // owner set by hand in the margin table (e.g. a promo / true sale price),
+      // which the old unconditional sync clobbered on every menu edit.
+      const hasPrice = prev.price != null && String(prev.price).trim() !== "";
+      if (!hasPrice && d.price != null) {
+        await supabase.from("records").update({ data: { ...prev, price: String(d.price) } }).eq("id", match.id);
         updated++;
       }
     } else {
