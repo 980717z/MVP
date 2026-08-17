@@ -159,6 +159,19 @@ describe("tableOccupancy", () => {
     const cx = tableOccupancy([mk({ id: "c", table_no: "8", items: [item("鱼", 30, 1, { served: true, cancelled: true })] as any })]);
     expect(cx.get("8")!.served).toBe(false);
   });
+
+  it("allServed = true only when EVERY active dish is served (→ red)", () => {
+    const partial = tableOccupancy([mk({ id: "a", table_no: "5", items: [item("鱼", 30, 1, { served: true }), item("饭", 2)] as any })]);
+    expect(partial.get("5")!.allServed).toBe(false); // 饭 not served yet
+    const all = tableOccupancy([mk({ id: "b", table_no: "6", items: [item("鱼", 30, 1, { served: true }), item("饭", 2, 1, { served: true })] as any })]);
+    expect(all.get("6")!.allServed).toBe(true);
+    // cancelled dishes are ignored: every NON-cancelled dish served → allServed
+    const withCancel = tableOccupancy([mk({ id: "c", table_no: "7", items: [item("鱼", 30, 1, { served: true }), item("饭", 2, 1, { cancelled: true })] as any })]);
+    expect(withCancel.get("7")!.allServed).toBe(true);
+    // nothing served → not allServed (and not served)
+    const none = tableOccupancy([mk({ id: "d", table_no: "9", items: [item("鱼", 30)] as any })]);
+    expect(none.get("9")!.allServed).toBe(false);
+  });
 });
 
 describe("tableOccupancy — oldestAt (the table's total wait)", () => {

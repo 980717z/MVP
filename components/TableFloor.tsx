@@ -50,7 +50,8 @@ const T: Record<string, Dict> = {
   confirmDel: { zh: "删除这一单？", en: "Delete this order?", fr: "Supprimer cette commande ?" },
   legendEmpty: { zh: "空闲", en: "Empty", fr: "Vide" },
   legendBusy: { zh: "用餐中", en: "Occupied", fr: "Occupée" },
-  legendServed: { zh: "已出餐", en: "Served", fr: "Servi" },
+  legendServed: { zh: "部分出餐", en: "Serving", fr: "En service" },
+  legendDone: { zh: "已上齐", en: "All served", fr: "Tout servi" },
   serveItem: { zh: "出餐", en: "Serve", fr: "Servir" },
   unserve: { zh: "撤销", en: "Undo", fr: "Annuler" },
   serveOrder: { zh: "整单出餐", en: "Serve round", fr: "Servir la tournée" },
@@ -273,9 +274,11 @@ export default function TableFloor({
   const nodeClasses = (s?: TableState) =>
     !s?.hasOrder
       ? "border-slate-200 bg-white text-ink-faint"
-      : s.served
-        ? "border-amber-400 bg-white text-ink" // 已出餐: some food is out
-        : "border-brand bg-white text-ink"; // 用餐中: ordered, nothing served yet
+      : s.allServed
+        ? "border-red-500 bg-white text-ink" // 全部出完: every dish is out
+        : s.served
+          ? "border-amber-400 bg-white text-ink" // 部分出餐: some food is out
+          : "border-brand bg-white text-ink"; // 用餐中: ordered, nothing served yet
 
   return (
     <>
@@ -285,6 +288,7 @@ export default function TableFloor({
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-slate-200 bg-white" />{t(T.legendEmpty)}</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-brand bg-white" />{t(T.legendBusy)}</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-amber-400 bg-white" />{t(T.legendServed)}</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-red-500 bg-white" />{t(T.legendDone)}</span>
       </div>
 
       {/* UNKNOWN-TABLE RESCUE — orders whose scanned ?t= label isn't a configured
@@ -411,8 +415,8 @@ export default function TableFloor({
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div className="flex items-baseline gap-2">
                 <span className="text-lg font-bold text-ink">{displayTable(sel)}</span>
-                <span className={`text-xs font-medium ${!state(sel)?.hasOrder ? "text-ink-faint" : state(sel)?.served ? "text-amber-600" : "text-brand-ink"}`}>
-                  {!state(sel)?.hasOrder ? t(T.legendEmpty) : `${t(state(sel)!.served ? T.legendServed : T.legendBusy)} · ${nOrders(state(sel)!.orders.length)}`}
+                <span className={`text-xs font-medium ${!state(sel)?.hasOrder ? "text-ink-faint" : state(sel)?.allServed ? "text-red-600" : state(sel)?.served ? "text-amber-600" : "text-brand-ink"}`}>
+                  {!state(sel)?.hasOrder ? t(T.legendEmpty) : `${t(state(sel)!.allServed ? T.legendDone : state(sel)!.served ? T.legendServed : T.legendBusy)} · ${nOrders(state(sel)!.orders.length)}`}
                 </span>
               </div>
               <button onClick={() => setSel(null)} aria-label={t(T.close)} className="grid h-9 w-9 place-items-center rounded-lg text-ink-faint hover:bg-slate-50">✕</button>

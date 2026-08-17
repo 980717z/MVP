@@ -18,7 +18,8 @@ export interface TableState {
   orders: Order[]; // unpaid dine-in rounds at this table
   total: number; // running total across rounds
   hasOrder: boolean;
-  served: boolean; // 已出餐: ≥1 active dish marked served (any-served → orange)
+  served: boolean; // 已出餐: ≥1 active dish marked served (any-served → amber)
+  allServed: boolean; // 全部出完: ≥1 active dish AND every active dish served (→ red)
   newestAt: number; // ms of the most recent order (for the "new" cue)
   /** ms of the FIRST unpaid round at this table — the table's total wait.
    *  The floor plan shows this (not newestAt) so a table seated 40 minutes ago
@@ -94,7 +95,7 @@ export function tableOccupancy(orders: Order[], tables: string[] = []): Map<stri
     // exact configured label wins; else resolve a zero-pad/case variant; else
     // keep the raw label (legacy behaviour, and what the rescue list catches).
     const k = known.has(raw) ? raw : resolver.get(tableKey(raw)) ?? raw;
-    const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, served: false, newestAt: 0, oldestAt: 0 };
+    const cur = map.get(k) ?? { tableNo: k, orders: [], total: 0, hasOrder: true, served: false, allServed: false, newestAt: 0, oldestAt: 0 };
     cur.orders.push(o);
     cur.total = money(cur.total + activeTotal(o));
     cur.served = cur.served || (o.items ?? []).some((it) => !(it as { cancelled?: boolean }).cancelled && (it as { served?: boolean }).served);
@@ -106,6 +107,11 @@ export function tableOccupancy(orders: Order[], tables: string[] = []): Map<stri
       cur.oldestAt = cur.oldestAt === 0 ? at : Math.min(cur.oldestAt, at);
     }
     map.set(k, cur);
+  }
+  // 全部出完: every active (non-cancelled) dish across the table's rounds is served.
+  for (const cur of map.values()) {
+    const active = cur.orders.flatMap((o) => (o.items ?? []).filter((it) => !(it as { cancelled?: boolean }).cancelled));
+    cur.allServed = active.length > 0 && active.every((it) => (it as { served?: boolean }).served);
   }
   return map;
 }
