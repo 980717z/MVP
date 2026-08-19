@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listMenuItems, updateMenuItem, type MenuItem } from "@/lib/menu";
 import { price as fmtPrice } from "@/lib/format";
+import { useAuth } from "@/lib/useAuth";
 import { useLang, type Dict } from "@/app/i18n";
 
 const T: Record<string, Dict> = {
@@ -16,10 +17,22 @@ const T: Record<string, Dict> = {
   saved: { zh: "已保存", en: "Saved", fr: "Enregistré" },
   today: { zh: "今日价", en: "Today's price", fr: "Prix du jour" },
   clear: { zh: "清空", en: "Clear", fr: "Effacer" },
+  campusLockedBanner: {
+    zh: "今日时价由 BentoOS 团队统一管理，需要修改请联系我们。",
+    en: "Today's market prices are managed by the BentoOS team — contact us to make changes.",
+    fr: "Les prix du jour sont gérés par l'équipe BentoOS — contactez-nous pour les modifier.",
+  },
+  checkingAccess: { zh: "载入中…", en: "Loading…", fr: "Chargement…" },
 };
 
-export default function MarketPricePanel({ slug }: { slug: string }) {
+export default function MarketPricePanel({ slug, campus = false }: { slug: string; campus?: boolean }) {
   const { t } = useLang();
+  const { isAdmin, loading: authLoading } = useAuth();
+  // See supabase/campus-lock.sql section 1 — market price is part of menu_items,
+  // locked the same way as the rest of the menu for campus tenants. Only wait
+  // on the async admin check for campus tenants — non-campus is instant.
+  const checkingAdmin = campus && authLoading;
+  const locked = campus && !isAdmin;
   const [items, setItems] = useState<MenuItem[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -73,6 +86,7 @@ export default function MarketPricePanel({ slug }: { slug: string }) {
   }, [load]);
 
   const save = async (m: MenuItem) => {
+    if (locked) return;
     const raw = (draft[m.id] ?? "").trim();
     // Nothing changed since the last write — blur fires on every field you tab
     // through, so bail before hitting the network.
@@ -87,9 +101,18 @@ export default function MarketPricePanel({ slug }: { slug: string }) {
     setTimeout(() => setSavedId((s) => (s === m.id ? null : s)), 1500);
   };
 
+  if (checkingAdmin) {
+    return <div className="grid min-h-[30vh] place-items-center text-sm text-ink-faint">{t(T.checkingAccess)}</div>;
+  }
+
   return (
     <div>
       <div className="mb-4 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">💰 {t(T.hint)}</div>
+      {locked && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {t(T.campusLockedBanner)}
+        </div>
+      )}
       {items.length === 0 ? (
         <div className="card p-10 text-center text-sm text-ink-faint">{t(T.none)}</div>
       ) : (
@@ -113,9 +136,10 @@ export default function MarketPricePanel({ slug }: { slug: string }) {
                   onBlur={() => save(m)}
                   onKeyDown={(e) => e.key === "Enter" && save(m)}
                   placeholder={t(T.today)}
-                  className="input min-h-11 w-28"
+                  disabled={locked}
+                  className="input min-h-11 w-28 disabled:cursor-not-allowed disabled:opacity-40"
                 />
-                <button onClick={() => save(m)} disabled={savingId === m.id} className="btn-primary min-h-11 px-4 text-sm disabled:opacity-50">
+                <button onClick={() => save(m)} disabled={savingId === m.id || locked} className="btn-primary min-h-11 px-4 text-sm disabled:opacity-50">
                   {savedId === m.id ? `✓ ${t(T.saved)}` : t(T.save)}
                 </button>
               </div>

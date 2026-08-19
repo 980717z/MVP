@@ -209,7 +209,7 @@ const T: Record<string, Dict> = {
 };
 
 /** Custom portals keyed by module id (modules with `portal: true`). */
-const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef }) => ReactElement> = {
+const PORTALS: Record<string, (p: { slug: string; mod: ModuleDef; tenant?: Tenant }) => ReactElement> = {
   "menu-generator": MenuGeneratorPortal,
   "qr-menu": QrMenuPortal,
   "online-orders": OrdersPortal,
@@ -1242,7 +1242,7 @@ export default function ModulePage() {
 
   if (mod.portal && PORTALS[moduleId]) {
     const Portal = PORTALS[moduleId];
-    return <Portal slug={slug} mod={mod} />;
+    return <Portal slug={slug} mod={mod} tenant={tenant} />;
   }
 
   const enabled = tenant.enabled.includes(moduleId);

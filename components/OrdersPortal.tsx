@@ -1161,7 +1161,7 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
         )
       )}
 
-      {firstLoaded && view === "market" && <MarketPricePanel slug={slug} />}
+      {firstLoaded && view === "market" && <MarketPricePanel slug={slug} campus={!!tenant?.campus} />}
 
       {preview && <KitchenTicket order={preview} shopName={shopName} onClose={() => setPreview(null)} />}
 

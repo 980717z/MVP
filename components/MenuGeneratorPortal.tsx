@@ -6,12 +6,21 @@ import type { ModuleDef } from "@/lib/catalog";
 import { displayPrice, normVariants, addMenuItem, deleteMenuItem, getCatOrder, getMenuLangs, listMenuItemsRaw, orderedCategories, saveCatOrder, updateMenuItem, uploadMenuImage, type MenuItem } from "@/lib/menu";
 import { resolveOfferedLangs } from "@/lib/menuLangs";
 import { pinyinInitials } from "@/lib/pinyin";
+import { cleanDishNo, dishNoMatches } from "@/lib/dishNo";
 import { price as fmtPrice } from "@/lib/format";
+import { useAuth } from "@/lib/useAuth";
 import { useLang, type Dict } from "@/app/i18n";
+import type { Tenant } from "@/lib/store";
 
 // Trilingual UI chrome (EN / 中 / FR). Dish DATA (name_zh/name_en, category
 // names) stays as entered — this only translates the editor's own labels.
 const T = {
+  campusLockedBanner: {
+    en: "Your menu is managed by the BentoOS team — contact us to make changes.",
+    zh: "你的菜单由 BentoOS 团队统一管理，需要修改请联系我们。",
+    fr: "Votre menu est géré par l'équipe BentoOS — contactez-nous pour le modifier.",
+  },
+  checkingAccess: { en: "Loading…", zh: "载入中…", fr: "Chargement…" },
   back: { en: "Overview", zh: "总览", fr: "Aperçu" },
   dishesPill: { en: "dishes", zh: "道菜", fr: "plats" },
   catOrder: { en: "Category order", zh: "分类顺序", fr: "Ordre des catégories" },
@@ -35,6 +44,16 @@ const T = {
   nameEnPh: { en: "Steam Pot Chicken", zh: "Steam Pot Chicken", fr: "Steam Pot Chicken" },
   price: { en: "Price", zh: "价格", fr: "Prix" },
   category: { en: "Category", zh: "分类", fr: "Catégorie" },
+  // 菜号 — optional paper-menu code. Searchable, never shown to diners.
+  dishNo: { en: "Dish no. (optional)", zh: "菜号(选填)", fr: "N° du plat (facultatif)" },
+  dishNoPh: { en: "e.g. 115 / 48A", zh: "如 115 / 48A", fr: "ex. 115 / 48A" },
+  dishNoHint: {
+    en: "The number on your paper menu. Hidden from the QR menu — customers and staff can search by it.",
+    zh: "纸质菜单上的编号。二维码菜单上不显示,但可以用它搜索到这道菜。",
+    fr: "Le numéro de votre menu papier. Masqué sur le menu QR, mais utilisable pour la recherche.",
+  },
+  dishNoShort: { en: "No.", zh: "菜号", fr: "N°" },
+  uncategorized: { en: "Uncategorized", zh: "未分类", fr: "Sans catégorie" },
   // VT3: merchant-defined categories. The dropdown offers the shop's OWN
   // categories (derived from its dishes), not a hardcoded Chinese-restaurant list.
   newCategory: { en: "+ New category", zh: "+ 新分类", fr: "+ Nouvelle catégorie" },
@@ -65,6 +84,15 @@ const T = {
   marketCheckTitle: { en: "Market-price dish: the menu shows a gold “Market” tag and hides the price; customers can still order, and staff enter the actual price before completing.", zh: "时价菜:菜单显示金色「时价」标签、隐藏价格;顾客可下单,标记完成前店员录入当日实价", fr: "Plat à prix du jour : le menu affiche une étiquette dorée et masque le prix; le personnel saisit le prix réel avant de terminer." },
   marketLabel: { en: "Market", zh: "时价", fr: "Prix du jour" },
   sizesTitle: { en: "Sizes (one price each)", zh: "多规格(每个大小一个价)", fr: "Formats (un prix chacun)" },
+  // A 时价 dish's variants are cooking styles, not portions — the price column is
+  // optional there (blank = today's market price), so it gets its own heading.
+  stylesTitle: {
+    en: "Cooking styles (leave price blank = today's market price)",
+    zh: "做法(价格留空 = 按当日时价)",
+    fr: "Styles de cuisson (prix vide = prix du jour)",
+  },
+  marketPricePh: { en: "Market", zh: "时价", fr: "Prix du jour" },
+  addStyles: { en: "+ Cooking styles", zh: "＋ 做法(清蒸/姜葱…)", fr: "+ Styles de cuisson" },
   removeSize: { en: "Remove this size", zh: "删除这个规格", fr: "Retirer ce format" },
   addOneSize: { en: "+ Add a size", zh: "＋ 加一个规格", fr: "+ Ajouter un format" },
   del: { en: "Delete", zh: "删除", fr: "Supprimer" },
@@ -107,8 +135,16 @@ const CATEGORIES = [
 
 type Tab = "manual" | "photo";
 
-export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: ModuleDef }) {
+export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: string; mod: ModuleDef; tenant?: Tenant }) {
   const { t } = useLang();
+  const { isAdmin, loading: authLoading } = useAuth();
+  // Campus tenants' menus are configured only by the BentoOS team — see
+  // supabase/campus-lock.sql section 1. Mirrors that DB-level lock in the UI.
+  // Only a campus tenant needs to wait on the async admin check — non-campus
+  // tenants (the common case) render instantly, locked always false for them.
+  const isCampus = !!tenant?.campus;
+  const checkingAdmin = isCampus && authLoading;
+  const locked = isCampus && !isAdmin;
   const [tab, setTab] = useState<Tab>("manual");
   const [dishes, setDishes] = useState<MenuItem[]>([]);
   const [tick, setTick] = useState(0);
@@ -122,6 +158,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   const [zh, setZh] = useState("");
   const [en, setEn] = useState("");
   const [price, setPrice] = useState("");
+  const [dishNo, setDishNo] = useState(""); // 菜号 — optional paper-menu code
   const [category, setCategory] = useState("");
   // "+ New category" mode: the category field becomes a free text input.
   const [newCatMode, setNewCatMode] = useState(false);
@@ -155,11 +192,13 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     setZh("");
     setEn("");
     setPrice("");
+    setDishNo("");
     pickImage(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 
   const add = async () => {
+    if (locked) return;
     // Require the PRIMARY-language name (English for an English-first vendor),
     // not Chinese specifically.
     const primaryName = (primaryLang === "en" ? en : zh).trim();
@@ -186,7 +225,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     // English-only vendor who left Chinese blank still gets a real ticket name:
     // fall back name_zh to the English name. name_en stays as typed.
     const name_zh = zh.trim() || (primaryLang === "en" ? en.trim() : "");
-    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url, search_initials: pinyinInitials(name_zh) });
+    const { error } = await addMenuItem(slug, { name_zh, name_en: en.trim(), price, category: category.trim(), image_url, search_initials: pinyinInitials(name_zh), dish_no: cleanDishNo(dishNo) });
     setBusy(false);
     if (error) {
       alert(t(T.errAdd) + error);
@@ -202,6 +241,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   };
 
   const remove = async (id: string) => {
+    if (locked) return;
     await deleteMenuItem(id);
     setDishes((prev) => prev.filter((d) => d.id !== id));
   };
@@ -211,6 +251,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     setDishes((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
 
   const saveField = (id: string, patch: Record<string, any>) => {
+    if (locked) return;
     // Keep the pinyin search key in sync whenever the Chinese name changes.
     const next = "name_zh" in patch ? { ...patch, search_initials: pinyinInitials(patch.name_zh) } : patch;
     updateMenuItem(id, next);
@@ -218,6 +259,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
 
   // ── 多规格 (size variants) editing ──────────────────────────────────────
   const setVariants = (d: MenuItem, next: any[]) => {
+    if (locked) return;
     patchLocal(d.id, { variants: next });
     updateMenuItem(d.id, { variants: next });
   };
@@ -228,14 +270,38 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   // captured in the row's onBlur closure — the cause of sizes not saving).
   const saveVariants = (id: string) =>
     setDishes((prev) => {
+      if (locked) return prev;
       const d = prev.find((x) => x.id === id);
       if (d) updateMenuItem(id, { variants: d.variants ?? [] });
       return prev;
     });
   const rmVariant = (d: MenuItem, i: number) => setVariants(d, (d.variants ?? []).filter((_: any, idx: number) => idx !== i));
 
+  /** 时价 checkbox. Rendered for EVERY dish, with or without 规格 — the two are
+   *  not mutually exclusive: a 时价 dish's variants are cooking STYLES
+   *  (生猛龙虾: 清蒸/姜葱/豉椒), priced from the dish's daily price rather than
+   *  per row (lib/dish.ts unitPrice). The editor used to show this control only
+   *  when a dish had NO variants, so a market dish with styles could only be set
+   *  up by hand in SQL — and its 5 empty "$0" rows looked like a mistake. */
+  const marketToggle = (d: MenuItem) => (
+    <label className="flex flex-none cursor-pointer items-center gap-1 text-xs text-ink-soft" title={t(T.marketCheckTitle)}>
+      <input
+        type="checkbox"
+        className="h-3.5 w-3.5 accent-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+        checked={!!d.is_market}
+        disabled={locked}
+        onChange={(e) => {
+          if (locked) return;
+          patchLocal(d.id, { is_market: e.target.checked });
+          updateMenuItem(d.id, { is_market: e.target.checked });
+        }}
+      />
+      {t(T.marketLabel)}
+    </label>
+  );
+
   const changeImage = async (id: string, file: File | null) => {
-    if (!file) return;
+    if (!file || locked) return;
     const up = await uploadMenuImage(slug, file);
     if (up.error) {
       alert(t(T.errUpload) + up.error);
@@ -246,6 +312,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   };
 
   const removeImage = (id: string) => {
+    if (locked) return;
     patchLocal(id, { image_url: "" });
     saveField(id, { image_url: "" });
   };
@@ -274,10 +341,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
     items: dishes.filter((d) => d.category === c),
   }));
 
-  // back-office search: filter by zh/en name (365 dishes is a lot to scroll)
+  // back-office search: filter by zh/en name or 菜号 (365 dishes is a lot to scroll)
   const sq = search.trim().toLowerCase();
   const visibleDishes = sq
-    ? dishes.filter((d) => d.name_zh.toLowerCase().includes(sq) || (d.name_en || "").toLowerCase().includes(sq))
+    ? dishes.filter((d) => d.name_zh.toLowerCase().includes(sq) || (d.name_en || "").toLowerCase().includes(sq) || dishNoMatches(d.dish_no, sq))
     : dishes;
 
   // editable list grouped by category in the saved order; search filters within.
@@ -287,12 +354,13 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
   ].filter((g) => g.items.length > 0);
 
   const toggleSoldOut = (d: MenuItem, next: boolean) => {
+    if (locked) return;
     patchLocal(d.id, { sold_out: next });
     updateMenuItem(d.id, { sold_out: next });
   };
 
   const reorderCat = (from: number, to: number) => {
-    if (from === to) return;
+    if (from === to || locked) return;
     const next = [...presentCats];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
@@ -329,7 +397,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 {grouped.map((g, i) => (
                   <div
                     key={g.category}
-                    draggable
+                    draggable={!locked}
                     onDragStart={() => setDragIdx(i)}
                     onDragOver={(e) => {
                       e.preventDefault();
@@ -359,8 +427,20 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
         </div>
       )}
 
+      {checkingAdmin ? (
+        <div className="grid min-h-[40vh] place-items-center text-sm text-ink-faint">{t(T.checkingAccess)}</div>
+      ) : (
+      <>
+      {locked && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {t(T.campusLockedBanner)}
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* left: input */}
+        {/* left: input — hidden entirely when locked, not just disabled, per
+            the "no edit entry points visible" requirement */}
+        {!locked && (
         <section className="lg:col-span-3">
           <div className="mb-4 flex rounded-lg bg-slate-100 p-1 text-sm">
             <button
@@ -425,6 +505,18 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                       />
                     </div>
                   )}
+                </div>
+                <div>
+                  <label className="label">{t(T.dishNo)}</label>
+                  <input
+                    className="input"
+                    value={dishNo}
+                    onChange={(e) => setDishNo(e.target.value)}
+                    placeholder={t(T.dishNoPh)}
+                    inputMode="text"
+                    autoCapitalize="characters"
+                  />
+                  <p className="mt-1 text-xs text-ink-faint">{t(T.dishNoHint)}</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -534,7 +626,7 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                 {visibleGrouped.map((g) => (
                   <div key={g.category || "_uncat"} className="space-y-2">
                     <div className="sticky top-0 z-10 -mx-1 flex items-baseline gap-2 bg-[#FBFAF8]/90 px-1 py-1.5 backdrop-blur">
-                      <span className="text-sm font-bold text-ink">{g.category || "未分类"}</span>
+                      <span className="text-sm font-bold text-ink">{g.category || t(T.uncategorized)}</span>
                       <span className="text-xs text-ink-faint">{g.items.length}</span>
                     </div>
                     {g.items.map((d) => (
@@ -615,6 +707,28 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                         onChange={(e) => patchLocal(d.id, { name_en: e.target.value })}
                         onBlur={(e) => saveField(d.id, { name_en: e.target.value })}
                       />
+                      {/* 菜号 — optional paper-menu code. Never rendered on the
+                          customer menu; it only makes the dish findable by number
+                          in the search box (lib/dishNo). Normalized on blur so
+                          "f 12" and "F12" store identically. */}
+                      <div className="flex w-40 items-center gap-1.5 rounded-lg border border-slate-300 px-2">
+                        <span className="flex-none text-xs font-medium text-ink-faint">{t(T.dishNoShort)}</span>
+                        <input
+                          className="w-full bg-transparent py-1.5 text-sm outline-none"
+                          value={d.dish_no ?? ""}
+                          placeholder={t(T.dishNoPh)}
+                          autoCapitalize="characters"
+                          title={t(T.dishNoHint)}
+                          onChange={(e) => patchLocal(d.id, { dish_no: e.target.value })}
+                          onBlur={(e) => {
+                            // Normalize locally too, or the field keeps showing the
+                            // raw "f 12" while the DB holds "F12" until a reload.
+                            const v = cleanDishNo(e.target.value);
+                            patchLocal(d.id, { dish_no: v });
+                            saveField(d.id, { dish_no: v });
+                          }}
+                        />
+                      </div>
                       {(d.variants?.length ?? 0) === 0 ? (
                         <div className="flex items-center gap-3">
                           {/* 时价 dishes have no fixed price — hide the field; use the 今日时价 panel below */}
@@ -634,25 +748,19 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                           ) : (
                             <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">{t(T.marketTag)}</span>
                           )}
-                          {!d.is_market && (
-                            <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">{t(T.addSizes)}</button>
-                          )}
-                          <label className="flex cursor-pointer items-center gap-1 text-xs text-ink-soft" title={t(T.marketCheckTitle)}>
-                            <input
-                              type="checkbox"
-                              className="h-3.5 w-3.5 accent-amber-600"
-                              checked={!!d.is_market}
-                              onChange={(e) => {
-                                patchLocal(d.id, { is_market: e.target.checked });
-                                updateMenuItem(d.id, { is_market: e.target.checked });
-                              }}
-                            />
-                            {t(T.marketLabel)}
-                          </label>
+                          {/* A 时价 dish can take 做法 too (清蒸/姜葱/豉椒) — same
+                              control, named for what it adds in each case. */}
+                          <button onClick={() => addVariant(d)} className="text-xs font-medium text-brand hover:underline">
+                            {d.is_market ? t(T.addStyles) : t(T.addSizes)}
+                          </button>
+                          {marketToggle(d)}
                         </div>
                       ) : (
                         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
-                          <div className="mb-1.5 text-xs font-medium text-ink-soft">{t(T.sizesTitle)}</div>
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="min-w-0 text-xs font-medium text-ink-soft">{d.is_market ? t(T.stylesTitle) : t(T.sizesTitle)}</span>
+                            {marketToggle(d)}
+                          </div>
                           <div className="space-y-1.5">
                             {d.variants.map((v: any, i: number) => (
                               <div key={i} className="flex items-center gap-1.5">
@@ -677,7 +785,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
                                     type="number"
                                     step="0.01"
                                     value={v.price ?? ""}
-                                    placeholder="0.00"
+                                    // 时价 dish: blank means "today's price", which is
+                                    // why its styles legitimately sit at no price. A
+                                    // per-style price still wins if one is typed.
+                                    placeholder={d.is_market ? t(T.marketPricePh) : "0.00"}
                                     onChange={(e) => patchVariant(d, i, { price: e.target.value })}
                                     onBlur={() => saveVariants(d.id)}
                                   />
@@ -713,9 +824,10 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
             </div>
           )}
         </section>
+        )}
 
         {/* right: live preview */}
-        <section className="lg:col-span-2">
+        <section className={locked ? "lg:col-span-5" : "lg:col-span-2"}>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t(T.menuPreview)}</div>
             <button disabled className="text-xs text-ink-faint opacity-50">{t(T.exportPdf)}</button>
@@ -770,6 +882,8 @@ export default function MenuGeneratorPortal({ slug, mod }: { slug: string; mod: 
           </div>
         </section>
       </div>
+      </>
+      )}
     </main>
   );
 }
