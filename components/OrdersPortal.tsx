@@ -213,7 +213,12 @@ function nextStep(o: Order): { to: Order["status"]; key: string } | null {
   return null;
 }
 
-const POLL_MS = 8000;
+// Poll interval for the live order list. Kept slow to cut Supabase egress —
+// each poll re-fetches today's orders (items jsonb included). New orders already
+// alert instantly via sound/voice/push and the Epson prints within ~3s, so the
+// on-screen list refreshing every 20s (vs 8s) costs no real responsiveness but
+// roughly cuts this (dominant) egress source by ~60%.
+const POLL_MS = 20000;
 
 /** Display phone as (XXX) XXX-XXXX; falls back to raw if not 10 digits. */
 function fmtPhone(p: string) {
