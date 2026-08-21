@@ -9,8 +9,8 @@ import { pinyinInitials } from "@/lib/pinyin";
 import { cleanDishNo, dishNoMatches } from "@/lib/dishNo";
 import { price as fmtPrice } from "@/lib/format";
 import { useAuth } from "@/lib/useAuth";
-import { useLang, type Dict } from "@/app/i18n";
 import type { Tenant } from "@/lib/store";
+import { useLang, type Dict } from "@/app/i18n";
 
 // Trilingual UI chrome (EN / 中 / FR). Dish DATA (name_zh/name_en, category
 // names) stays as entered — this only translates the editor's own labels.
@@ -140,8 +140,8 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
   const { isAdmin, loading: authLoading } = useAuth();
   // Campus tenants' menus are configured only by the BentoOS team — see
   // supabase/campus-lock.sql section 1. Mirrors that DB-level lock in the UI.
-  // Only a campus tenant needs to wait on the async admin check — non-campus
-  // tenants (the common case) render instantly, locked always false for them.
+  // Only a campus tenant waits on the async admin check — non-campus renders
+  // instantly (locked always false for them).
   const isCampus = !!tenant?.campus;
   const checkingAdmin = isCampus && authLoading;
   const locked = isCampus && !isAdmin;
@@ -287,11 +287,9 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
     <label className="flex flex-none cursor-pointer items-center gap-1 text-xs text-ink-soft" title={t(T.marketCheckTitle)}>
       <input
         type="checkbox"
-        className="h-3.5 w-3.5 accent-amber-600 disabled:cursor-not-allowed disabled:opacity-40"
+        className="h-3.5 w-3.5 accent-amber-600"
         checked={!!d.is_market}
-        disabled={locked}
         onChange={(e) => {
-          if (locked) return;
           patchLocal(d.id, { is_market: e.target.checked });
           updateMenuItem(d.id, { is_market: e.target.checked });
         }}
@@ -301,7 +299,7 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
   );
 
   const changeImage = async (id: string, file: File | null) => {
-    if (!file || locked) return;
+    if (!file) return;
     const up = await uploadMenuImage(slug, file);
     if (up.error) {
       alert(t(T.errUpload) + up.error);
@@ -312,7 +310,6 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
   };
 
   const removeImage = (id: string) => {
-    if (locked) return;
     patchLocal(id, { image_url: "" });
     saveField(id, { image_url: "" });
   };
@@ -354,18 +351,21 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
   ].filter((g) => g.items.length > 0);
 
   const toggleSoldOut = (d: MenuItem, next: boolean) => {
-    if (locked) return;
     patchLocal(d.id, { sold_out: next });
     updateMenuItem(d.id, { sold_out: next });
   };
 
   const reorderCat = (from: number, to: number) => {
-    if (from === to || locked) return;
+    if (from === to) return;
     const next = [...presentCats];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     setCatOrder(next);
   };
+
+  if (checkingAdmin) {
+    return <main className="grid min-h-[40vh] place-items-center px-6 py-8 text-sm text-ink-faint">{t(T.checkingAccess)}</main>;
+  }
 
   return (
     <main className="px-6 py-8 lg:px-10">
@@ -379,8 +379,12 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
         <span className="pill bg-brand-wash text-brand">{dishes.length} {t(T.dishesPill)}</span>
       </header>
 
+      {locked && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{t(T.campusLockedBanner)}</div>
+      )}
+
       {/* category order */}
-      {presentCats.length > 1 && (
+      {!locked && presentCats.length > 1 && (
         <div className="card mb-6 p-4">
           <button
             className="flex w-full items-center justify-between text-left"
@@ -397,7 +401,7 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
                 {grouped.map((g, i) => (
                   <div
                     key={g.category}
-                    draggable={!locked}
+                    draggable
                     onDragStart={() => setDragIdx(i)}
                     onDragOver={(e) => {
                       e.preventDefault();
@@ -427,19 +431,8 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
         </div>
       )}
 
-      {checkingAdmin ? (
-        <div className="grid min-h-[40vh] place-items-center text-sm text-ink-faint">{t(T.checkingAccess)}</div>
-      ) : (
-      <>
-      {locked && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {t(T.campusLockedBanner)}
-        </div>
-      )}
-
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* left: input — hidden entirely when locked, not just disabled, per
-            the "no edit entry points visible" requirement */}
+        {/* left: input — hidden for locked campus tenants (view-only) */}
         {!locked && (
         <section className="lg:col-span-3">
           <div className="mb-4 flex rounded-lg bg-slate-100 p-1 text-sm">
@@ -826,7 +819,7 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
         </section>
         )}
 
-        {/* right: live preview */}
+        {/* right: live preview — full width when the editor is hidden (locked) */}
         <section className={locked ? "lg:col-span-5" : "lg:col-span-2"}>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t(T.menuPreview)}</div>
@@ -882,8 +875,6 @@ export default function MenuGeneratorPortal({ slug, mod, tenant }: { slug: strin
           </div>
         </section>
       </div>
-      </>
-      )}
     </main>
   );
 }

@@ -130,5 +130,15 @@ describe("lineName / isNoCookDish", () => {
     expect(isNoCookDish({ name_zh: "白饭", price: 2 })).toBe(true);
     expect(isNoCookDish({ name_zh: "白米饭", price: 2 })).toBe(true);
     expect(isNoCookDish({ name_zh: "红烧肉", price: 20 })).toBe(false);
+    // 富来's live menu bakes the paper-menu dish number into name_zh (and F15 has
+    // a stray "]"), which defeated the old exact-match rule → 白饭 kept printing.
+    expect(isNoCookDish({ name_zh: "F15. ]白饭", category: "炒饭", price: 3 })).toBe(true);
+    expect(isNoCookDish({ name_zh: "R1. 米饭", price: 3 })).toBe(true);
+    expect(isNoCookDish({ name_zh: "丝苗白饭 (大)", price: 4 })).toBe(true);
+    // dishes that merely END in 饭 are cooked and must still print
+    expect(isNoCookDish({ name_zh: "F14. 蛋炒饭", category: "炒饭", price: 12 })).toBe(false);
+    expect(isNoCookDish({ name_zh: "184. 腊味煲仔饭", category: "煲仔饭", price: 16 })).toBe(false);
+    expect(isNoCookDish({ name_zh: "R22. 咖喱鸡片饭", category: "饭类", price: 14 })).toBe(false);
+    expect(isNoCookDish({ name_zh: "干烧白饭鱼菜甫", category: "招牌精选", price: 30.99 })).toBe(false);
   });
 });

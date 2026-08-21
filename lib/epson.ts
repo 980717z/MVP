@@ -108,6 +108,7 @@ export function buildEposXml(o: Order, shopName: string): string {
   // so guard it and fall back to the slug-ish header.
   const b: string[] = [];
   const sn = ascii(shopName);
+  if (o.order_no) b.push(line(`#${o.order_no}`, { big: true, em: true })); // 左上角大字订单号
   b.push(line(sn || "KITCHEN", { big: true, align: "center" }));
   b.push(line(DBL));
   b.push(line(t.badge, { big: true, em: true }));
@@ -118,7 +119,7 @@ export function buildEposXml(o: Order, shopName: string): string {
   for (const it of items) {
     const qty = Number(it.qty) || 1;
     const name = ascii(it.name_en) || ascii(it.name_zh) || "Item";
-    b.push(line(qty >= 2 ? `${qty} x ${name}` : name, { big: true }));
+    b.push(line(qty >= 2 ? `${name} x${qty}` : name, { big: true }));
   }
   b.push(line(RULE));
   b.push(line(`Items: ${count}`, { em: true }));

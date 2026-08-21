@@ -170,14 +170,12 @@ export default function Settings() {
   const [genBusy, setGenBusy] = useState(false);
 
   const { email: ownerEmail, isAdmin, loading: authLoading } = useAuth();
-  // Campus tenants are configured only by the BentoOS team — everything below
-  // except staff accounts (already owner-only via RLS) goes read-only for
-  // anyone who isn't a confirmed admin. See supabase/campus-lock.sql. Only a
-  // campus tenant needs to wait on the async admin check — non-campus
-  // tenants (the common case) render immediately, same as before this lock.
-  const isCampus = !!tenant?.campus;
-  const checkingAdmin = isCampus && authLoading;
-  const locked = isCampus && !isAdmin;
+  // Campus tenants' config is managed by the BentoOS team — see
+  // supabase/campus-lock.sql. Merchant staff view a banner; the editable
+  // sections (menu/ordering, ops, accept-order hours, modules) are hidden.
+  // Staff accounts + account-login stay (already owner-only via RLS).
+  const campusLocked = !!tenant?.campus && !isAdmin;
+  const checkingAdmin = !!tenant?.campus && authLoading;
 
   // invite-staff form
   const [uName, setUName] = useState("");
@@ -195,7 +193,7 @@ export default function Settings() {
     });
   }, [slug, tick]);
 
-  if (!tenant || checkingAdmin) return null;
+  if (!tenant) return null;
 
   const reload = () => setTick((x) => x + 1);
 
@@ -279,22 +277,26 @@ export default function Settings() {
       <Link href={`/${slug}`} className="text-sm text-ink-faint hover:text-ink">{t(T.back)}</Link>
       <h1 className="mt-3 mb-6 text-2xl font-bold text-ink">{t(T.title)}</h1>
 
-      {locked && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {t(T.campusLockedBanner)}
-        </div>
+      {campusLocked && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{t(T.campusLockedBanner)}</div>
       )}
 
       {/* ── Account & login ─────────────────────────────────── */}
       <AccountLogin />
 
-      {/* ── Operations (business-day cutoff + payment tracking) ── */}
-      <MenuConfigSettings slug={slug} tenant={tenant} locked={locked} />
+      {/* Config sections — hidden for locked campus tenants (view-only). Also
+          hidden briefly while the admin check resolves, to avoid a flash. */}
+      {!campusLocked && !checkingAdmin && (
+        <>
+          {/* ── Operations (business-day cutoff + payment tracking) ── */}
+          <MenuConfigSettings slug={slug} tenant={tenant} />
 
-      <OpsSettings slug={slug} tenant={tenant} locked={locked} />
+          <OpsSettings slug={slug} tenant={tenant} />
 
-      {/* ── Accept-order hours (pickup + delivery scheduling) ── */}
-      <OrderHoursSettings slug={slug} tenant={tenant} locked={locked} />
+          {/* ── Accept-order hours (pickup + delivery scheduling) ── */}
+          <OrderHoursSettings slug={slug} tenant={tenant} />
+        </>
+      )}
 
       {/* ── Users ─────────────────────────────────────────── */}
       <section className="card mb-8 p-5">
@@ -398,7 +400,8 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ── Modules ───────────────────────────────────────── */}
+      {/* ── Modules ── (hidden for locked campus tenants) ──── */}
+      {!campusLocked && !checkingAdmin && (
       <section className="card p-5">
         <h2 className="mb-1 text-lg font-semibold text-ink">{t(T.modules)}</h2>
         <p className="mb-4 text-sm text-ink-soft">
@@ -427,7 +430,7 @@ export default function Settings() {
                         on ? "border-brand bg-brand-wash" : "border-slate-200 hover:border-slate-300"
                       }`}
                     >
-                      <input type="checkbox" checked={on} onChange={() => togglePick(m.id)} disabled={locked} className="h-4 w-4 accent-brand" />
+                      <input type="checkbox" checked={on} onChange={() => togglePick(m.id)} className="h-4 w-4 accent-brand" />
                       <span className="text-ink">{m.icon} {moduleLabel(m.label, lang)}</span>
                     </label>
                   );
@@ -449,12 +452,13 @@ export default function Settings() {
           <button
             className="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={generate}
-            disabled={!dirty || genBusy || locked}
+            disabled={!dirty || genBusy}
           >
             {genBusy ? t(T.generating) : t(T.generate)}
           </button>
         </div>
       </section>
+      )}
     </main>
   );
 }
@@ -463,7 +467,7 @@ export default function Settings() {
  *  languages and ordering flows on/off (VT4). Enabling a language here is what
  *  actually shows it to diners (adding a translation in Menu Settings only stores
  *  data — design review D3=B). */
-function MenuConfigSettings({ slug, tenant, locked = false }: { slug: string; tenant?: Tenant; locked?: boolean }) {
+function MenuConfigSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
   const { t } = useLang();
   const [langs, setLangs] = useState<string[]>(["en"]);
   const [modes, setModes] = useState<OrderMode[]>(["dine", "togo", "delivery", "pickup", "market"]);
@@ -481,7 +485,6 @@ function MenuConfigSettings({ slug, tenant, locked = false }: { slug: string; te
   // languages append to the end; at least one must stay on. (French menu isn't
   // wired for dish names yet.)
   const toggleLang = (l: string) => {
-    if (locked) return;
     const next = langs.includes(l) ? langs.filter((x) => x !== l) : [...langs, l];
     if (next.length === 0) return; // keep at least one
     setLangs(next);
@@ -497,7 +500,6 @@ function MenuConfigSettings({ slug, tenant, locked = false }: { slug: string; te
     { key: "market", label: t(T.modeMarket) },
   ];
   const toggleMode = (m: OrderMode) => {
-    if (locked) return;
     const next = MODE_ORDER.map((x) => x.key).filter((k) => (k === m ? !modes.includes(m) : modes.includes(k)));
     if (next.length === 0) return; // keep at least one
     setModes(next);
@@ -510,11 +512,10 @@ function MenuConfigSettings({ slug, tenant, locked = false }: { slug: string; te
       <span className="text-sm text-ink">{label}</span>
       <button
         onClick={onClick}
-        disabled={locked}
         role="switch"
         aria-checked={on}
         aria-label={label}
-        className={`relative h-6 w-11 flex-none rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${on ? "bg-brand" : "bg-slate-300"}`}
+        className={`relative h-6 w-11 flex-none rounded-full transition ${on ? "bg-brand" : "bg-slate-300"}`}
       >
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-[22px]" : "left-0.5"}`} />
       </button>
@@ -553,7 +554,7 @@ function MenuConfigSettings({ slug, tenant, locked = false }: { slug: string; te
 }
 
 /** Account & login: shows the current login and lets the user change the password anytime. */
-function OpsSettings({ slug, tenant, locked = false }: { slug: string; tenant?: Tenant; locked?: boolean }) {
+function OpsSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
   const { t } = useLang();
   const [hour, setHour] = useState(0);
   const [track, setTrack] = useState(true);
@@ -564,8 +565,8 @@ function OpsSettings({ slug, tenant, locked = false }: { slug: string; tenant?: 
     setTrack(tenant.trackPayments ?? true);
   }, [tenant]);
   const flash = () => { setSavedTag(true); setTimeout(() => setSavedTag(false), 1600); };
-  const onHour = (h: number) => { if (locked) return; setHour(h); setDayStartHour(slug, h); flash(); };
-  const onTrack = (on: boolean) => { if (locked) return; setTrack(on); setTrackPayments(slug, on); flash(); };
+  const onHour = (h: number) => { setHour(h); setDayStartHour(slug, h); flash(); };
+  const onTrack = (on: boolean) => { setTrack(on); setTrackPayments(slug, on); flash(); };
   const HOURS = [0, 4, 5, 6, 7, 8, 9, 10, 11];
   const hourLabel = (h: number) => (h === 0 ? t(T.midnight) : `${h}am`);
 
@@ -579,7 +580,7 @@ function OpsSettings({ slug, tenant, locked = false }: { slug: string; tenant?: 
 
       <div className="mb-5">
         <label className="text-sm font-semibold text-ink">{t(T.dayStartLabel)}</label>
-        <select value={hour} onChange={(e) => onHour(Number(e.target.value))} disabled={locked} className="input mt-2 !w-auto min-w-[9rem] disabled:cursor-not-allowed disabled:opacity-40">
+        <select value={hour} onChange={(e) => onHour(Number(e.target.value))} className="input mt-2 !w-auto min-w-[9rem]">
           {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
         </select>
         <p className="mt-1.5 text-xs text-ink-faint">{t(T.dayStartHint)}</p>
@@ -592,10 +593,9 @@ function OpsSettings({ slug, tenant, locked = false }: { slug: string; tenant?: 
         </div>
         <button
           onClick={() => onTrack(!track)}
-          disabled={locked}
           role="switch"
           aria-checked={track}
-          className={`relative h-6 w-11 flex-none rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${track ? "bg-brand" : "bg-slate-300"}`}
+          className={`relative h-6 w-11 flex-none rounded-full transition ${track ? "bg-brand" : "bg-slate-300"}`}
         >
           <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${track ? "left-[22px]" : "left-0.5"}`} />
         </button>
@@ -614,7 +614,7 @@ const DAY_LABELS: Record<string, Dict> = {
 
 /** Per-weekday accept-order hours for pickup + delivery. One [open,close] range
  *  per day (the underlying DayHours supports several; the UI keeps it to one). */
-function OrderHoursSettings({ slug, tenant, locked = false }: { slug: string; tenant?: Tenant; locked?: boolean }) {
+function OrderHoursSettings({ slug, tenant }: { slug: string; tenant?: Tenant }) {
   const { t } = useLang();
   const [hours, setHours] = useState<OrderHours>({ pickup: {}, delivery: {} });
   const [savedTag, setSavedTag] = useState(false);
@@ -624,16 +624,14 @@ function OrderHoursSettings({ slug, tenant, locked = false }: { slug: string; te
     const r = ch[day]?.[0];
     return r && r[0] && r[1] ? [r[0], r[1]] : null;
   };
-  const setDay = (channel: "pickup" | "delivery", day: string, range: [string, string] | null) => {
-    if (locked) return;
+  const setDay = (channel: "pickup" | "delivery", day: string, range: [string, string] | null) =>
     setHours((h) => {
       const ch = { ...h[channel] };
       if (range) ch[day] = [range];
       else delete ch[day];
       return { ...h, [channel]: ch };
     });
-  };
-  const save = async () => { if (locked) return; await saveOrderHours(slug, hours); setSavedTag(true); setTimeout(() => setSavedTag(false), 1600); };
+  const save = async () => { await saveOrderHours(slug, hours); setSavedTag(true); setTimeout(() => setSavedTag(false), 1600); };
 
   const Channel = ({ channel, label }: { channel: "pickup" | "delivery"; label: string }) => (
     <div className="mb-5">
@@ -647,17 +645,16 @@ function OrderHoursSettings({ slug, tenant, locked = false }: { slug: string; te
               <span className="w-12 flex-none text-sm text-ink-soft">{t(DAY_LABELS[day])}</span>
               <button
                 onClick={() => setDay(channel, day, on ? null : ["11:00", "21:00"])}
-                disabled={locked}
                 role="switch" aria-checked={on}
-                className={`relative h-6 w-11 flex-none rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${on ? "bg-brand" : "bg-slate-300"}`}
+                className={`relative h-6 w-11 flex-none rounded-full transition ${on ? "bg-brand" : "bg-slate-300"}`}
               >
                 <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-[22px]" : "left-0.5"}`} />
               </button>
               {on ? (
                 <div className="flex items-center gap-1.5 text-sm">
-                  <input type="time" value={r![0]} onChange={(e) => setDay(channel, day, [e.target.value, r![1]])} disabled={locked} className="rounded-lg border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40" />
+                  <input type="time" value={r![0]} onChange={(e) => setDay(channel, day, [e.target.value, r![1]])} className="rounded-lg border border-slate-300 px-2 py-1" />
                   <span className="text-ink-faint">–</span>
-                  <input type="time" value={r![1]} onChange={(e) => setDay(channel, day, [r![0], e.target.value])} disabled={locked} className="rounded-lg border border-slate-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40" />
+                  <input type="time" value={r![1]} onChange={(e) => setDay(channel, day, [r![0], e.target.value])} className="rounded-lg border border-slate-300 px-2 py-1" />
                 </div>
               ) : (
                 <span className="text-sm text-ink-faint">{t(T.ohClosed)}</span>
@@ -678,7 +675,7 @@ function OrderHoursSettings({ slug, tenant, locked = false }: { slug: string; te
       <p className="mb-5 text-sm text-ink-soft">{t(T.ohBlurb)}</p>
       <Channel channel="pickup" label={t(T.ohPickup)} />
       <Channel channel="delivery" label={t(T.ohDelivery)} />
-      <button onClick={save} disabled={locked} className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{t(T.ohSave)}</button>
+      <button onClick={save} className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white">{t(T.ohSave)}</button>
     </section>
   );
 }

@@ -82,19 +82,28 @@ export default function StaffOrderPicker({
   // over a scrollable page otherwise scrolls the page behind it.
   // NOTE: Tab is not trapped across the iframe boundary — the picker covers the
   // whole viewport, so there is nothing visible behind it to tab into.
+  //
+  // MUST run on mount only. Both hosts pass `onClose` as an inline closure (new
+  // identity every render) and both re-render on 15s poll ticks — with onClose
+  // in the deps, every tick re-ran this effect and closeRef.current?.focus()
+  // yanked focus OUT of the iframe. On an iPad that dismisses the on-screen
+  // keyboard while staff are typing in the menu search (富来's report). Esc
+  // reads the latest onClose through a ref instead.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCloseRef.current(); };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
       opener?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   // A menu that never loads must not look like a menu that's still loading.
   useEffect(() => {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ModuleDef } from "@/lib/catalog";
 import { listOrders, setOrderStatus, claimOrderDone, acceptPickup, markPickupReady, claimPickedUp, cancelOrderItem, deleteOrder, reprintOrder, reprintActiveOrders, requestBill, updateOrderItems, type Order, type OrderItem } from "@/lib/orders";
-import { getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
+import { postOrderSales, recordOrderSale, syncMemberFromOrder, adjustOrderSale, deleteOrderSale, getTenant, setTrackPayments as saveTrackPayments, type Tenant } from "@/lib/store";
 import { type OrderMode } from "@/lib/orderModes";
 import TableFloor from "@/components/TableFloor";
 import MarketPricePanel from "@/components/MarketPricePanel";
@@ -213,7 +213,12 @@ function nextStep(o: Order): { to: Order["status"]; key: string } | null {
   return null;
 }
 
-const POLL_MS = 8000;
+// Poll interval for the live order list. Kept slow to cut Supabase egress —
+// each poll re-fetches today's orders (items jsonb included). New orders already
+// alert instantly via sound/voice/push and the Epson prints within ~3s, so the
+// on-screen list refreshing every 20s (vs 8s) costs no real responsiveness but
+// roughly cuts this (dominant) egress source by ~60%.
+const POLL_MS = 20000;
 
 /** Display phone as (XXX) XXX-XXXX; falls back to raw if not 10 digits. */
 function fmtPhone(p: string) {
@@ -602,24 +607,11 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
           const activeItems = items.filter((it: any) => !it.cancelled);
           const activeTotal = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * it.qty, 0);
           try {
-            // Goes through /api/orders/post-ledger (service-role) rather than a
-            // direct records write — see supabase/campus-lock.sql section 2 for
-            // why: this is an automatic side effect of completing an order, not
-            // a manual content edit, so it must not be subject to the campus
-            // records lock.
-            const { data: sess } = await supabase.auth.getSession();
-            await fetch("/api/orders/post-ledger", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
-              body: JSON.stringify({
-                slug,
-                action: "complete",
-                orderId: o.id,
-                total: activeTotal,
-                items: activeItems,
-                phone: o.phone || undefined,
-              }),
-            });
+            await Promise.all([
+              postOrderSales(slug, activeItems),
+              recordOrderSale(slug, { id: o.id, total: activeTotal, items: activeItems, source: "qr" }),
+              o.phone ? syncMemberFromOrder(slug, o.phone, "", activeTotal) : Promise.resolve(),
+            ]);
           } catch (e) {
             console.error("post order sale", e);
           }
@@ -728,14 +720,8 @@ export default function OrdersPortal({ slug, mod }: { slug: string; mod: ModuleD
     // completes, so nothing to fold there.
     if (target.status === "done") {
       try {
-        // See the "complete" branch above — goes through the service-role
-        // ledger route so the campus records lock doesn't block this.
-        const { data: sess } = await supabase.auth.getSession();
-        await fetch("/api/orders/post-ledger", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
-          body: JSON.stringify({ slug, action: "merge", targetId: target.id, srcId: src.id, total, items: merged }),
-        });
+        await adjustOrderSale(slug, { id: target.id, total, items: merged, source: "qr" });
+        await deleteOrderSale(slug, src.id);
       } catch { /* non-blocking: items already merged; ledger self-heals on next edit */ }
     }
     await deleteOrder(src.id);

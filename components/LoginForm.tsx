@@ -30,6 +30,13 @@ const T: Record<string, Dict> = {
     fr: "Compte créé. Si la vérification par courriel est activée, consultez votre boîte avant de vous connecter.",
   },
   genericErr: { en: "Something went wrong", zh: "出错了", fr: "Une erreur s'est produite" },
+  // Mapped Supabase auth errors — the raw messages are English-only, which is
+  // the wrong language for a Chinese-first merchant standing at the door.
+  errBadCreds: { en: "Email or password is incorrect.", zh: "邮箱或密码不对,请再试一次。", fr: "E-mail ou mot de passe incorrect." },
+  errExists: { en: "This email is already registered — sign in instead.", zh: "该邮箱已注册,请直接登录。", fr: "Cet e-mail est déjà inscrit — connectez-vous." },
+  errWeakPw: { en: "Password needs at least 6 characters.", zh: "密码至少需要 6 位。", fr: "Le mot de passe doit contenir au moins 6 caractères." },
+  errRate: { en: "Too many attempts — wait a moment and try again.", zh: "尝试太频繁,请稍等片刻再试。", fr: "Trop de tentatives — patientez un instant." },
+  errUnconfirmed: { en: "Please confirm your email first (check your inbox).", zh: "请先到邮箱里确认注册邮件。", fr: "Confirmez d'abord votre e-mail (vérifiez votre boîte)." },
   demoHint: {
     en: "Demo account filled in — just tap Sign in to explore the back office.",
     zh: "演示账号已填好 —— 直接点「登录」即可体验后台。",
@@ -138,7 +145,15 @@ export default function LoginForm({ campus = false }: { campus?: boolean }) {
         router.replace("/app");
       }
     } catch (e: any) {
-      setMsg(e.message ?? t(T.genericErr));
+      // Map the common Supabase auth failures to trilingual copy; anything
+      // unrecognized keeps the raw message so support can still diagnose it.
+      const m = String(e.message ?? "");
+      if (/invalid login credentials/i.test(m)) setMsg(t(T.errBadCreds));
+      else if (/already registered|already exists/i.test(m)) setMsg(t(T.errExists));
+      else if (/password should be at least|weak password/i.test(m)) setMsg(t(T.errWeakPw));
+      else if (/rate limit|too many/i.test(m)) setMsg(t(T.errRate));
+      else if (/email not confirmed/i.test(m)) setMsg(t(T.errUnconfirmed));
+      else setMsg(m || t(T.genericErr));
     } finally {
       setBusy(false);
     }

@@ -1,5 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildEposXml, buildEposReceiptXml, buildEposSplitXml } from "@/lib/epson";
+import { printEligibilityOr, roundNeedsKitchen } from "@/lib/printEligibility";
+import { isNoCookDish } from "@/lib/dish";
+import { torontoDayStartIso } from "@/lib/salesStats";
 import type { Order } from "@/lib/orders";
 
 export const runtime = "nodejs";
@@ -12,8 +15,10 @@ export const runtime = "nodejs";
 //  ePOS-Print XML ticket, and mark it printed (optimistic — one printer, and
 //  staff can 重打 if a print is lost). No job → an empty ePOS doc.
 //
-//  Print-eligible: dine-in always; togo/delivery only once payment_status='paid'
-//  (the pay-first gate). Cancelled orders never print. Honors tenants.print_enabled.
+//  Print-eligible: order_only tenants print every order type immediately (no
+//  online payment exists — 自取/配送 settle at handover); pay_first tenants print
+//  dine-in always but togo/delivery/pickup only once payment_status='paid'.
+//  Cancelled orders never print. Honors tenants.print_enabled.
 //
 //  Server Direct Print uses TWO POST channels (ConnectionType in the form body):
 //    • GetRequest  — "give me a job". Reply: the job's <PrintRequestInfo> XML,
@@ -26,6 +31,42 @@ export const runtime = "nodejs";
 // ─────────────────────────────────────────────────────────────────────────
 
 const XML_HEADERS = { "Content-Type": "text/xml; charset=utf-8", "Cache-Control": "no-store" };
+
+// Kitchen-routing lookup (dish id → name/category) so the print decision reads the
+// CURRENT menu instead of trusting the noKitchen flag each writer happened to stamp.
+// Cached per warm lambda: the printer polls every few seconds and the menu is ~430
+// rows, so an uncached fetch would be steady Supabase egress for data that changes
+// a few times a week. A stale-by-≤5min menu only affects a dish reclassified in the
+// last minutes; the flag fallback still covers it.
+const NO_COOK_TTL_MS = 5 * 60_000;
+type NoCookRow = { name_zh: string; category?: string };
+const noCookCache = new Map<string, { at: number; byId: Map<string, NoCookRow> }>();
+
+async function kitchenLookup(
+  db: ReturnType<typeof supabaseAdmin>,
+  slug: string,
+): Promise<Map<string, NoCookRow>> {
+  const hit = noCookCache.get(slug);
+  if (hit && Date.now() - hit.at < NO_COOK_TTL_MS) return hit.byId;
+  const byId = new Map<string, NoCookRow>();
+  try {
+    const { data, error } = await db!
+      .from("menu_items")
+      .select("id, name_zh, category")
+      .eq("tenant_slug", slug);
+    if (error) throw new Error(error.message);
+    for (const r of (data ?? []) as { id: string; name_zh: string; category?: string }[]) {
+      byId.set(r.id, { name_zh: r.name_zh, category: r.category });
+    }
+  } catch (e) {
+    // Never block printing on this: an empty map makes roundNeedsKitchen fall back
+    // to the stored noKitchen flag (the behavior before this lookup existed).
+    console.error("[epson] menu lookup", e);
+    return new Map();
+  }
+  noCookCache.set(slug, { at: Date.now(), byId });
+  return byId;
+}
 // SDP "nothing for you" reply: empty body, 200. Used for idle GetRequest and for
 // the SetResponse ack. eposEmpty() (a real <epos-print/>) is kept only for tests.
 const empty = (status = 200) => new Response(null, { status, headers: XML_HEADERS });
@@ -64,7 +105,7 @@ async function handle(req: Request): Promise<Response> {
     // shop name + print switch
     const { data: tenant } = await db
       .from("tenants")
-      .select("name, print_enabled, payment_mode")
+      .select("name, print_enabled, payment_mode, day_start_hour")
       .eq("slug", slug)
       .maybeSingle();
     if (tenant && tenant.print_enabled === false) return empty();
@@ -74,15 +115,10 @@ async function handle(req: Request): Promise<Response> {
 
     // Oldest unprinted print-ELIGIBLE order. Eligibility lives in the query itself
     // (filtering after limit() would let stale unpaid orders block printing forever):
-    //   • dine-in            → always
-    //   • pickup @ order_only → always (order-ahead, pay at pickup / no online charge)
-    //   • togo / delivery / pickup@pay_first → only when payment_status='paid'
-    // payment_mode defaults to 'order_only' (campus trucks); a tenant that wires up
-    // payment flips to 'pay_first' and pickup then requires paid, like togo.
-    const orderOnly = !tenant?.payment_mode || tenant.payment_mode === "order_only";
-    const eligOr = orderOnly
-      ? "order_type.eq.dine_in,order_type.eq.pickup,payment_status.eq.paid"
-      : "order_type.eq.dine_in,payment_status.eq.paid";
+    //   • order_only tenant → EVERY order type, unpaid included (no online payment
+    //     exists; togo/delivery settle at handover — see lib/printEligibility.ts)
+    //   • pay_first tenant  → dine-in always; togo/delivery/pickup once paid
+    const eligOr = printEligibilityOr(tenant?.payment_mode);
     // Scheduled-pickup hold, in the QUERY rather than after it (eng review T4).
     // A ticket printed at order time makes a ticket-driven cook fire a 12:15
     // order at 11:40, so scheduled pickups are withheld until target − prep. Doing
@@ -92,14 +128,25 @@ async function handle(req: Request): Promise<Response> {
     // Requires supabase/pickup-time.sql (requested_pickup_at) — run 2026-07-18.
     const PICKUP_PREP_MS = 15 * 60_000;
     const dueBy = new Date(Date.now() + PICKUP_PREP_MS).toISOString();
-    const { data, error } = await db
+    // Freshness guard: auto-print only considers the CURRENT business day
+    // (tenants.day_start_hour; fulai = 7 → the queue resets at 7am like the
+    // table map). Without it, any eligibility change re-exposes every historical
+    // unprinted order and the printer drains the whole backlog — which is
+    // exactly what happened when order_only togo/delivery became eligible
+    // (2026-08-01). Scheduled orders placed the previous evening stay printable
+    // via their requested_pickup_at. A missed ticket at the boundary is
+    // recoverable with 重打; a backlog flood at the printer is not.
+    const dayStart = torontoDayStartIso(new Date(), (tenant as { day_start_hour?: number } | null)?.day_start_hour ?? 0);
+    let listQ = db
       .from("orders")
       .select("*")
       .eq("tenant_slug", slug)
       .is("printed_at", null)
       .neq("status", "cancelled")
-      .or(eligOr)
-      // ANDed with eligOr above: not a scheduled pickup, or its prep window opened.
+      .or(`created_at.gte.${dayStart},requested_pickup_at.gte.${dayStart}`);
+    if (eligOr) listQ = listQ.or(eligOr);
+    const { data, error } = await listQ
+      // ANDed with the filters above: not a scheduled pickup, or its prep window opened.
       .or(`requested_pickup_at.is.null,requested_pickup_at.lte.${dueBy}`)
       .order("created_at", { ascending: true })
       .limit(25);
@@ -116,11 +163,11 @@ async function handle(req: Request): Promise<Response> {
     // Held tickets are already excluded by the query; this re-check is a cheap
     // invariant guard so a future change to that filter can't fire an order early
     // (printed_at stays null either way, so a withheld ticket is deferred, not lost).
+    const dishById = (data ?? []).length ? await kitchenLookup(db, slug) : new Map<string, NoCookRow>();
     for (const order of (data as Order[] | null) ?? []) {
       const target = (order as { requested_pickup_at?: string | null }).requested_pickup_at;
       if (order.order_type === "pickup" && target && Date.parse(target) - Date.now() > PICKUP_PREP_MS) continue;
-      const active = (order.items ?? []).filter((it) => !(it as { cancelled?: boolean }).cancelled);
-      const needsKitchen = active.some((it) => !(it as { noKitchen?: boolean }).noKitchen);
+      const needsKitchen = roundNeedsKitchen(order.items, dishById, isNoCookDish);
       // CAS-claim so a rare double-poll can't double-print.
       const { data: claimed } = await db
         .from("orders")

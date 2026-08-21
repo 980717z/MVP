@@ -9,6 +9,7 @@ import {
   updateRecord,
   getTenant,
   listRecords,
+  syncMemberFromOrder,
   syncMenuToMargin,
   syncPurchasingToStock,
   myAccess,
@@ -21,7 +22,6 @@ import {
   type RecordRow,
   type Tenant,
 } from "@/lib/store";
-import { supabase } from "@/lib/supabase";
 import { MODULE_BY_ID, type ComputedRule, type Field, type ModuleDef } from "@/lib/catalog";
 import { money, num, sum } from "@/lib/format";
 import { rankDishes, topRevenue } from "@/lib/dishSales";
@@ -1271,28 +1271,12 @@ export default function ModulePage() {
     }
     const orderModules = ["group-booking"];
     if (orderModules.includes(moduleId) && form.phone) {
-      // Goes through /api/orders/post-ledger (service-role) — same reason as
-      // OrdersPortal's completion flow, see supabase/campus-lock.sql section 2:
-      // this auto-syncs the members module as a side effect of the booking,
-      // not a direct content edit, so it must not be subject to the campus
-      // records lock (the group-booking record itself, written above via
-      // addRecord, correctly stays subject to it).
-      try {
-        const { data: sess } = await supabase.auth.getSession();
-        await fetch("/api/orders/post-ledger", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
-          body: JSON.stringify({
-            slug,
-            action: "group-booking",
-            phone: form.phone,
-            customerName: form.customer || "",
-            amount: parseFloat(form.amount || form.total || "0") || 0,
-          }),
-        });
-      } catch (e) {
-        console.error("group-booking member sync", e);
-      }
+      await syncMemberFromOrder(
+        slug,
+        form.phone,
+        form.customer || "",
+        parseFloat(form.amount || form.total || "0") || 0,
+      );
     }
     setForm({});
     setShiftPreset("custom");

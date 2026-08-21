@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { supabase } from "./supabase";
+import { torontoDayStartIso } from "./salesStats";
 import type { OrderType } from "./tax";
 
 export interface OrderItem {
@@ -74,6 +75,11 @@ export interface Order {
   printed_at: string | null; // Epson: kitchen ticket, null = needs printing
   bill_at: string | null; // customer bill requested (queued for the printer)
   bill_printed_at: string | null; // customer bill printed; null while pending
+  // Human order number, assigned by a DB trigger at insert (supabase/order-no.sql):
+  //   dine-in w/ table → "06-01" (table-padded − that table's Nth order today)
+  //   no table         → "A01"   (Nth off-table order today). Resets each business day.
+  order_no: string | null;
+  business_date: string | null; // YYYY-MM-DD in the shop's business-day rule
 }
 
 /** UUID v4 with a fallback for older mobile browsers. */
@@ -106,6 +112,8 @@ export async function createOrder(
     order_type?: OrderType;
     address?: OrderAddress;
     customer_email?: string;
+    /** Scheduled pickup/delivery time (ISO); omit/null = ASAP. */
+    requested_pickup_at?: string | null;
   }
 ): Promise<{ id?: string; error?: string }> {
   const id = newId();
@@ -123,6 +131,7 @@ export async function createOrder(
     order_type: input.order_type ?? "dine_in",
     address: input.address ?? null,
     customer_email: input.customer_email?.trim() || null,
+    requested_pickup_at: input.requested_pickup_at ?? null,
   });
   if (error) {
     console.error("createOrder", error);
@@ -131,39 +140,41 @@ export async function createOrder(
   return { id };
 }
 
-/** Start-of-today as an ISO timestamp in the shop's fixed timezone (Toronto),
- *  so the order window is stable for remote owners and across device clocks. */
-const SHOP_TZ = "America/Toronto";
-function startOfTodayShopTz(): string {
-  const now = new Date();
-  const d = new Intl.DateTimeFormat("en-CA", {
-    timeZone: SHOP_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now); // "YYYY-MM-DD"
-  const offPart = new Intl.DateTimeFormat("en-US", { timeZone: SHOP_TZ, timeZoneName: "longOffset" })
-    .formatToParts(now)
-    .find((p) => p.type === "timeZoneName")?.value; // "GMT-04:00"
-  const off = offPart?.match(/GMT([+-]\d{2}:\d{2})/)?.[1] ?? "-05:00";
-  return `${d}T00:00:00${off}`;
+/** Read back the DB-assigned order number for an order the customer just placed.
+ *  Anon can't SELECT the orders table (insert-only), so this goes through a
+ *  SECURITY DEFINER function that returns ONLY order_no for the given id
+ *  (supabase/order-no.sql). Best-effort: returns null on any error/none. */
+export async function fetchOrderNo(id: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.rpc("order_no_for", { p_id: id });
+    if (error) return null;
+    return (typeof data === "string" && data) || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Orders for the live staff log. Bounded so the 8s poll stays cheap forever:
- * today's orders OR anything still active (never drops an unfinished order
- * after midnight), newest first, capped at 200.
+ * this BUSINESS day's orders OR anything still active (never drops an
+ * unfinished order at the boundary), newest first, capped at 200.
+ *
+ * dayStartHour = the tenant's business-day start (fulai = 7): the list resets
+ * at 7am Toronto like the table map, so yesterday's 自取/配送 don't linger past
+ * opening, and 1am orders don't vanish mid-service at midnight.
+ * "delivering" counts as active too — an out-for-delivery order must not fall
+ * off the screen when the day rolls over.
  *
  * Throws on a real query error so callers can keep the last good list instead
  * of blanking the screen (empty result vs failure must be distinguishable).
  */
-export async function listOrders(slug: string): Promise<Order[]> {
-  const since = startOfTodayShopTz();
+export async function listOrders(slug: string, dayStartHour = 0): Promise<Order[]> {
+  const since = torontoDayStartIso(new Date(), dayStartHour);
   const { data, error } = await supabase
     .from("orders")
     .select("*")
     .eq("tenant_slug", slug)
-    .or(`created_at.gte.${since},status.in.(new,preparing)`)
+    .or(`created_at.gte.${since},status.in.(new,preparing,delivering)`)
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) {
@@ -257,6 +268,20 @@ export async function claimPickedUp(id: string): Promise<{ claimed: boolean; err
     return { claimed: false, error: error.message };
   }
   return { claimed: !!data };
+}
+
+/** Move an order to a different table. Staff-only by construction: anon has no
+ *  update grant on orders, so this can only run from the back-office. Used by
+ *  the floor plan's unknown-table rescue — a QR card printed with a label that
+ *  isn't in tenants.tables lands the order on no table, and this puts it on the
+ *  right one (see unknownTableOrders). */
+export async function setOrderTable(id: string, tableNo: string): Promise<{ error?: string }> {
+  const { error } = await supabase.from("orders").update({ table_no: tableNo }).eq("id", id);
+  if (error) {
+    console.error("setOrderTable", error);
+    return { error: error.message };
+  }
+  return {};
 }
 
 export async function deleteOrder(id: string): Promise<void> {

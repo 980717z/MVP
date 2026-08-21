@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  tableOccupancy, evenPartition, reconcileShares, itemizePartitions,
+  tableOccupancy, unknownTableOrders, evenPartition, reconcileShares, itemizePartitions,
   listTableCheckouts, listSessionOrders,
 } from "./tableSessions";
 import { computeTax } from "./tax";
@@ -158,6 +158,177 @@ describe("tableOccupancy", () => {
     // a served-but-cancelled dish doesn't count
     const cx = tableOccupancy([mk({ id: "c", table_no: "8", items: [item("鱼", 30, 1, { served: true, cancelled: true })] as any })]);
     expect(cx.get("8")!.served).toBe(false);
+  });
+
+  it("allServed = true only when EVERY active dish is served (→ red)", () => {
+    const partial = tableOccupancy([mk({ id: "a", table_no: "5", items: [item("鱼", 30, 1, { served: true }), item("饭", 2)] as any })]);
+    expect(partial.get("5")!.allServed).toBe(false); // 饭 not served yet
+    const all = tableOccupancy([mk({ id: "b", table_no: "6", items: [item("鱼", 30, 1, { served: true }), item("饭", 2, 1, { served: true })] as any })]);
+    expect(all.get("6")!.allServed).toBe(true);
+    // cancelled dishes are ignored: every NON-cancelled dish served → allServed
+    const withCancel = tableOccupancy([mk({ id: "c", table_no: "7", items: [item("鱼", 30, 1, { served: true }), item("饭", 2, 1, { cancelled: true })] as any })]);
+    expect(withCancel.get("7")!.allServed).toBe(true);
+    // nothing served → not allServed (and not served)
+    const none = tableOccupancy([mk({ id: "d", table_no: "9", items: [item("鱼", 30)] as any })]);
+    expect(none.get("9")!.allServed).toBe(false);
+  });
+});
+
+describe("tableOccupancy — oldestAt (the table's total wait)", () => {
+  const T0 = new Date("2026-07-27T18:00:00Z").getTime();
+  const at = (msAgo: number) => new Date(T0 - msAgo).toISOString();
+
+  // The whole point of anchoring on the OLDEST round: a table seated 40 min ago
+  // that just added a drink must still read 40m, not 30s.
+  it("anchors on the FIRST round, not the newest, so a late table can't hide behind a fresh round", () => {
+    const occ = tableOccupancy([
+      mk({ id: "new", table_no: "8A", created_at: at(30_000), items: [item("可乐", 3)] as any }),
+      mk({ id: "old", table_no: "8A", created_at: at(40 * 60_000), items: [item("鱼", 65.99)] as any }),
+    ]);
+    const s = occ.get("8A")!;
+    expect(s.oldestAt).toBe(T0 - 40 * 60_000);
+    expect(s.newestAt).toBe(T0 - 30_000); // the "new order" cue still tracks the newest
+  });
+
+  it("equals newestAt for a single-round table", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "5", created_at: at(5 * 60_000), items: [item("虾", 30)] as any })]);
+    expect(occ.get("5")!.oldestAt).toBe(occ.get("5")!.newestAt);
+  });
+
+  // NaN from an unparseable timestamp would poison BOTH Math.min and Math.max
+  // and blank the timer for the whole table.
+  it("ignores an unparseable created_at instead of poisoning the reduce", () => {
+    const occ = tableOccupancy([
+      mk({ id: "bad", table_no: "6", created_at: "not-a-date", items: [item("x", 5)] as any }),
+      mk({ id: "good", table_no: "6", created_at: at(10 * 60_000), items: [item("y", 5)] as any }),
+    ]);
+    const s = occ.get("6")!;
+    expect(Number.isFinite(s.oldestAt)).toBe(true);
+    expect(s.oldestAt).toBe(T0 - 10 * 60_000);
+  });
+});
+
+// The cards are ALREADY PRINTED, so the system has to accept whatever spelling
+// they carry. The floor plan displays "01" for stored label "1", so a card
+// transcribed off the screen reads ?t=01 — that must land on table 1, not
+// orphan. Resolving our own display padding is deterministic, not a guess.
+describe("tableOccupancy — accepts zero-padded / lower-case labels from printed cards", () => {
+  const TABLES = ["1", "2", "2A", "3", "8A", "10"];
+
+  it("files a scanned 01 under the configured table 1", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "01", items: [item("鱼", 30)] as any })], TABLES);
+    expect(occ.get("1")!.orders.map((o) => o.id)).toEqual(["a"]);
+    expect(occ.has("01")).toBe(false); // no phantom bucket
+  });
+
+  it("files a scanned 2a under the configured 2A", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "2a", items: [item("鱼", 30)] as any })], TABLES);
+    expect(occ.get("2A")!.orders.map((o) => o.id)).toEqual(["a"]);
+  });
+
+  it("merges a padded round and an exact round onto ONE table (same total, one node)", () => {
+    const occ = tableOccupancy([
+      mk({ id: "padded", table_no: "01", items: [item("鱼", 30)] as any }),
+      mk({ id: "exact", table_no: "1", items: [item("虾", 20)] as any }),
+    ], TABLES);
+    expect(occ.size).toBe(1);
+    expect(occ.get("1")!.orders.length).toBe(2);
+    expect(occ.get("1")!.total).toBeCloseTo(50, 2);
+  });
+
+  it("leaves multi-digit labels alone (10 stays 10)", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "10", items: [item("x", 5)] as any })], TABLES);
+    expect(occ.get("10")!.orders.length).toBe(1);
+  });
+
+  // Sending an order to the WRONG table is worse than leaving it unresolved.
+  it("refuses to resolve when the tenant configured BOTH 1 and 01 (ambiguous)", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "001", items: [item("x", 5)] as any })], ["1", "01"]);
+    expect(occ.has("1")).toBe(false);
+    expect(occ.has("01")).toBe(false);
+    expect(occ.has("001")).toBe(true); // falls through, then the rescue list catches it
+  });
+
+  it("without a tables argument behaves exactly as before (raw grouping)", () => {
+    const occ = tableOccupancy([mk({ id: "a", table_no: "01", items: [item("x", 5)] as any })]);
+    expect(occ.has("01")).toBe(true);
+  });
+});
+
+describe("unknownTableOrders — the mis-printed-QR safety net", () => {
+  const TABLES = ["1", "2", "2A", "3", "8A"];
+
+  it("does NOT flag zero-padded / lower-case spellings — those are real tables", () => {
+    const out = unknownTableOrders([
+      mk({ id: "pad", table_no: "01", items: [item("x", 5)] as any }),
+      mk({ id: "lower", table_no: "2a", items: [item("x", 5)] as any }),
+    ], TABLES);
+    expect(out).toEqual([]);
+  });
+
+  // The silent-drop this exists to catch: ?t= comes straight off the printed
+  // card with no validation, so a typo'd label saves + prints but renders on no
+  // table at all.
+  it("flags a live dine-in order whose label isn't a configured table", () => {
+    const out = unknownTableOrders([mk({ id: "bad", table_no: "9", items: [item("鱼", 30)] as any })], TABLES);
+    expect(out.map((o) => o.id)).toEqual(["bad"]);
+  });
+
+  it("flags a label that resolves to nothing even after normalization", () => {
+    const out = unknownTableOrders([
+      mk({ id: "bad", table_no: "2B", items: [item("x", 5)] as any }), // 2A exists, 2B does not
+      mk({ id: "ok", table_no: "2A", items: [item("x", 5)] as any }),
+    ], TABLES);
+    expect(out.map((o) => o.id)).toEqual(["bad"]);
+  });
+
+  it("leaves configured tables alone", () => {
+    const out = unknownTableOrders(TABLES.map((t, i) => mk({ id: `t${i}`, table_no: t, items: [item("x", 5)] as any })), TABLES);
+    expect(out).toEqual([]);
+  });
+
+  // Blank table_no is a phone/walk-in order, not a bad QR label.
+  it("ignores blank table numbers, togo, paid, and cancelled orders", () => {
+    const out = unknownTableOrders([
+      mk({ id: "blank", table_no: "", items: [item("x", 5)] as any }),
+      mk({ id: "togo", table_no: "99", order_type: "togo", items: [item("x", 5)] as any }),
+      mk({ id: "paid", table_no: "99", payment_status: "paid", items: [item("x", 5)] as any }),
+      mk({ id: "canc", table_no: "99", status: "cancelled", items: [item("x", 5)] as any }),
+    ], TABLES);
+    expect(out).toEqual([]);
+  });
+
+  // A brand-new tenant with no tables configured must not have every order flagged.
+  it("flags nothing when no tables are configured yet", () => {
+    expect(unknownTableOrders([mk({ id: "a", table_no: "7", items: [item("x", 5)] as any })], [])).toEqual([]);
+  });
+
+  // THE REGRESSION THIS FEATURE EXISTS FOR.
+  // tableOccupancy happily buckets an unknown label (it keys on whatever
+  // table_no says), but TableFloor only RENDERS nodes for labels in
+  // tenants.tables — so those orders are in the map and on no screen. This
+  // asserts the partition at the RENDERED level: every live dine-in order is
+  // either on a drawn node or in the rescue list, never in neither.
+  it("no live dine-in order is invisible: rendered nodes + unknown list cover them all", () => {
+    const orders = [
+      mk({ id: "ok1", table_no: "1", items: [item("x", 5)] as any }),
+      mk({ id: "ok2", table_no: "8A", items: [item("x", 5)] as any }),
+      mk({ id: "pad", table_no: "01", items: [item("x", 5)] as any }), // printed card spelling → resolves to 1
+      mk({ id: "bad", table_no: "9", items: [item("x", 5)] as any }),  // no table 9 configured → orphan
+    ];
+    const occ = tableOccupancy(orders, TABLES);
+    // what the floor plan actually draws: one node per CONFIGURED label
+    const rendered = TABLES.flatMap((label) => (occ.get(label)?.orders ?? []).map((o) => o.id));
+    const unknown = unknownTableOrders(orders, TABLES).map((o) => o.id);
+
+    expect(unknown).toEqual(["bad"]);
+    expect(rendered.filter((id) => unknown.includes(id))).toEqual([]); // disjoint
+    expect([...rendered, ...unknown].sort()).toEqual(["bad", "ok1", "ok2", "pad"]); // nothing lost
+
+    // The padded card lands on a DRAWN node — that's the whole point of not
+    // reprinting; only the genuinely unknown label falls to the rescue list.
+    expect(rendered).toContain("pad");
+    expect(rendered).not.toContain("bad");
   });
 });
 

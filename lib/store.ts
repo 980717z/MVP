@@ -5,7 +5,6 @@
 //  tenants they own or are a member of, so the client never filters by user.
 // ─────────────────────────────────────────────────────────────────────────
 
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { MODULES } from "./catalog";
 import { computeTax } from "./tax";
@@ -427,11 +426,10 @@ export async function syncMemberFromOrder(
   phone: string,
   customerName: string,
   amount: number,
-  db: SupabaseClient = supabase,
 ): Promise<void> {
   if (!phone) return;
   const [{ data: existing }, tiers] = await Promise.all([
-    db
+    supabase
       .from("records")
       .select("*")
       .eq("tenant_slug", slug)
@@ -446,7 +444,7 @@ export async function syncMemberFromOrder(
     const visits = (parseInt(prev.visits) || 0) + 1;
     const spend = (parseFloat(prev.spend) || 0) + amount;
     const tier = tierForSpend(spend, tiers);
-    const { error } = await db
+    const { error } = await supabase
       .from("records")
       .update({ data: { ...prev, visits: String(visits), spend: String(Math.round(spend * 100) / 100), tier } })
       .eq("id", match.id);
@@ -454,7 +452,7 @@ export async function syncMemberFromOrder(
   } else {
     const spend = amount || 0;
     const tier = tierForSpend(spend, tiers);
-    const { error } = await db.from("records").insert({
+    const { error } = await supabase.from("records").insert({
       tenant_slug: slug,
       module_id: "members",
       data: { phone, name: customerName || "", visits: "1", spend: String(spend), tier, note: "" },
@@ -505,9 +503,8 @@ export async function listRecords(slug: string, moduleId: string): Promise<Recor
 export async function recordOrderSale(
   slug: string,
   order: { id: string; total: number; items: { name_zh: string; qty: number }[]; source?: string },
-  db: SupabaseClient = supabase,
 ): Promise<void> {
-  const { data: existing } = await db
+  const { data: existing } = await supabase
     .from("records")
     .select("id,data")
     .eq("tenant_slug", slug)
@@ -523,7 +520,7 @@ export async function recordOrderSale(
   const ts = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hour12: false }).format(now); // HH:mm
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
 
-  const { error } = await db.from("records").insert({
+  const { error } = await supabase.from("records").insert({
     tenant_slug: slug,
     module_id: "sales",
     data: {
@@ -553,21 +550,20 @@ export async function recordOrderSale(
 export async function adjustOrderSale(
   slug: string,
   order: { id: string; total: number; items: { name_zh: string; qty: number }[]; source?: string },
-  db: SupabaseClient = supabase,
 ): Promise<void> {
-  const { data: existing } = await db
+  const { data: existing } = await supabase
     .from("records")
     .select("id,data")
     .eq("tenant_slug", slug)
     .eq("module_id", "sales");
   const row = (existing ?? []).find((r) => r.data?.orderId === order.id);
   if (!row) {
-    await recordOrderSale(slug, order, db);
+    await recordOrderSale(slug, order);
     return;
   }
   const { subtotal, gst, pst, total } = computeTax(Number(order.total) || 0, false);
   const desc = order.items.map((it) => `${it.name_zh}×${it.qty}`).join(", ");
-  const { error } = await db
+  const { error } = await supabase
     .from("records")
     .update({ data: { ...(row.data ?? {}), desc, subtotal: String(subtotal), gst: String(gst), pst: String(pst), total: String(total) } })
     .eq("id", row.id);
@@ -579,15 +575,15 @@ export async function adjustOrderSale(
  *  adjustOrderSale) so its own row must go, or the day's total double-counts it.
  *  菜品销量 is left untouched — both orders' dishes were already counted once and
  *  the merge doesn't change the dish totals. */
-export async function deleteOrderSale(slug: string, orderId: string, db: SupabaseClient = supabase): Promise<void> {
-  const { data: existing } = await db
+export async function deleteOrderSale(slug: string, orderId: string): Promise<void> {
+  const { data: existing } = await supabase
     .from("records")
     .select("id,data")
     .eq("tenant_slug", slug)
     .eq("module_id", "sales");
   const row = (existing ?? []).find((r) => r.data?.orderId === orderId);
   if (!row) return;
-  const { error } = await db.from("records").delete().eq("id", row.id);
+  const { error } = await supabase.from("records").delete().eq("id", row.id);
   if (error) console.error("deleteOrderSale", error);
 }
 
@@ -600,7 +596,6 @@ export async function deleteOrderSale(slug: string, orderId: string, db: Supabas
 export async function postOrderSales(
   slug: string,
   items: { name_zh: string; qty: number; price: number | null }[],
-  db: SupabaseClient = supabase,
 ): Promise<void> {
   // aggregate qty per dish first (an order may list the same dish twice)
   const want = new Map<string, { qty: number; price?: string }>();
@@ -615,7 +610,7 @@ export async function postOrderSales(
   }
   if (want.size === 0) return;
 
-  const { data: existing } = await db
+  const { data: existing } = await supabase
     .from("records")
     .select("*")
     .eq("tenant_slug", slug)
@@ -628,10 +623,10 @@ export async function postOrderSales(
       const prev = match.data ?? {};
       const sold = (parseFloat(prev.soldMonth) || 0) + qty;
       const data = { ...prev, soldMonth: String(sold), price: prev.price && prev.price !== "" ? prev.price : price ?? "" };
-      const { error } = await db.from("records").update({ data }).eq("id", match.id);
+      const { error } = await supabase.from("records").update({ data }).eq("id", match.id);
       if (error) console.error("postOrderSales/update", error);
     } else {
-      const { error } = await db.from("records").insert({
+      const { error } = await supabase.from("records").insert({
         tenant_slug: slug,
         module_id: "dish-margin",
         data: { dish, price: price ?? "", cost: "", soldMonth: String(qty) },

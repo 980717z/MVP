@@ -15,7 +15,8 @@ export async function uploadEquipmentPhoto(slug: string, file: File): Promise<{ 
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${slug}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    cacheControl: "3600",
+    // 1-year cache (path is unique/immutable per upload) → far less repeat egress.
+    cacheControl: "31536000",
     upsert: false,
   });
   if (error) {

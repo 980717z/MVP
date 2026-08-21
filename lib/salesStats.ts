@@ -104,6 +104,21 @@ export function torontoToday(now: Date, dayStartHour = 0): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 }
 
+/** The instant the CURRENT business day started (latest dayStartHour:00 Toronto
+ *  ≤ now), as an ISO timestamp with offset — the query-window twin of
+ *  torontoToday(). fulai=7 → the window rolls at 7am, not midnight, so
+ *  after-midnight orders stay on "yesterday's" screen and printer.
+ *  Offset is sampled at `now`; on a DST-flip day the boundary can be off by
+ *  1h once a year — same tradeoff the orders window has always made. */
+export function torontoDayStartIso(now: Date, dayStartHour = 0): string {
+  const d = torontoToday(now, dayStartHour);
+  const offPart = new Intl.DateTimeFormat("en-US", { timeZone: "America/Toronto", timeZoneName: "longOffset" })
+    .formatToParts(now)
+    .find((p) => p.type === "timeZoneName")?.value; // "GMT-04:00"
+  const off = offPart?.match(/GMT([+-]\d{2}:\d{2})/)?.[1] ?? "-05:00";
+  return `${d}T${String(dayStartHour).padStart(2, "0")}:00:00${off}`;
+}
+
 /** Shift a YYYY-MM-DD date string by n days (UTC-noon anchored to dodge DST). */
 export function shiftDate(ymd: string, days: number): string {
   const [y, m, d] = ymd.split("-").map(Number);

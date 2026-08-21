@@ -8,7 +8,7 @@
 // reprint the kitchen ticket (an added dish the kitchen hasn't seen).
 import { useEffect, useMemo, useState } from "react";
 import { updateOrderItems, reprintOrder, type Order, type OrderItem } from "@/lib/orders";
-import { supabase } from "@/lib/supabase";
+import { postOrderSales, adjustOrderSale } from "@/lib/store";
 import { listMenuItems, displayPrice, catLabel, isNoCookDish, type MenuItem } from "@/lib/menu";
 import { dishNoMatches } from "@/lib/dishNo";
 import { useLang, type Dict } from "@/app/i18n";
@@ -144,15 +144,8 @@ export default function OrderEditor({
         if (add > 0) { const r = sample.get(k)!; delta.push({ name_zh: r.name_zh, qty: add, price: r.price }); }
       }
       try {
-        // Goes through /api/orders/post-ledger (service-role) — same reason
-        // as OrdersPortal's completion flow, see supabase/campus-lock.sql
-        // section 2: this is an operational ledger update, not a content edit.
-        const { data: sess } = await supabase.auth.getSession();
-        await fetch("/api/orders/post-ledger", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token ?? ""}` },
-          body: JSON.stringify({ slug, action: "edit-add", orderId: order.id, total, items: active, delta }),
-        });
+        if (delta.length) await postOrderSales(slug, delta);
+        await adjustOrderSale(slug, { id: order.id, total, items: active, source: "qr" });
       } catch { /* non-blocking: the order items already saved above */ }
     }
     setBusy(false);

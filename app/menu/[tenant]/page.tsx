@@ -1,13 +1,17 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, type MenuItem, type Variant } from "@/lib/menu";
+import { listMenuItems, orderedCategories, parseCartKey, cartKey, unitPrice, displayPrice, isChoiceDish, catLabel, lineName, isNoCookDish, isCookPotDish, withCookVariants, type MenuItem, type Variant } from "@/lib/menu";
+import { orderSlots, hoursConfigured } from "@/lib/orderHours";
+import type { DayHours } from "@/lib/store";
 import { resolveOfferedLangs, clampLang, isBilingual } from "@/lib/menuLangs";
+import { dishNoMatches } from "@/lib/dishNo";
 import { resolveOrderModes, type OrderMode } from "@/lib/orderModes";
 import { isValidEmail, hasName } from "@/lib/contact";
-import { createOrder, type OrderItem } from "@/lib/orders";
+import { createOrder, fetchOrderNo, type OrderItem } from "@/lib/orders";
 import { createPickupOrder } from "@/lib/pickup";
 import { price as fmtPrice, displayTable } from "@/lib/format";
 import { priceOrder, deliveryShortfall, isValidPostal, inDeliveryZone, postalFsa, DELIVERY_TIP_RATE } from "@/lib/tax";
@@ -68,6 +72,10 @@ const T = {
 
 // Flipped to "1" when the Clover checkout routes go live (Phase 0/1).
 const PAYMENTS_LIVE = process.env.NEXT_PUBLIC_PAYMENTS_LIVE === "1";
+/** 大字模式 zoom factor. Kept as a constant because viewport-sized elements have
+ *  to divide by it — CSS zoom scales an element AFTER dvh resolves, so anything
+ *  measured in dvh renders this much taller than the screen unless compensated. */
+const BIG_ZOOM = 1.18;
 // Client-side zone hint; the server re-validates against tenants.delivery_fsas at checkout.
 const DT_FSAS = ["M4W", "M4X", "M4Y", "M5A", "M5B", "M5C", "M5E", "M5G", "M5H", "M5J", "M5K", "M5L", "M5S", "M5T", "M5V", "M5X"];
 
@@ -103,6 +111,11 @@ export default function PublicMenu() {
   const [phoneErr, setPhoneErr] = useState(false);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Order-submit failure, shown INLINE above the submit button. This was a
+  // native alert() — the one place a DINER ever hit a frozen browser dialog was
+  // the moment their order failed, with no retry affordance. The cart is intact,
+  // so the fix is: read the reason, tap submit again.
+  const [submitErr, setSubmitErr] = useState("");
   const [placed, setPlaced] = useState(false);
   // togo/delivery pay-first: the order awaiting card payment (Clover sheet)
   const [payingOrder, setPayingOrder] = useState<{ id: string; amount: number; lines: PlacedLine[] } | null>(null);
@@ -151,6 +164,16 @@ export default function PublicMenu() {
   // the per-phone rate limit.
   const [noPhone, setNoPhone] = useState(false);
   const [togoType, setTogoType] = useState<"togo" | "delivery">("togo");
+  // 大字模式 (elderly-friendly): CSS zoom on <main> scales the whole menu — text,
+  // spacing, buttons — uniformly (works with the fixed/px Tailwind sizes). Persisted.
+  // Anything sized against the viewport must divide by BIG_ZOOM — see --vp below.
+  const [big, setBig] = useState(false);
+  useEffect(() => { try { if (localStorage.getItem("bento_menu_bigtext") === "1") setBig(true); } catch { /* ignore */ } }, []);
+  const toggleBig = () => setBig((b) => { const n = !b; try { localStorage.setItem("bento_menu_bigtext", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  // Accept-order hours per channel (tenants.order_hours) + the customer's chosen
+  // schedule for a togo/delivery order (null = 现在/ASAP).
+  const [orderHours, setOrderHours] = useState<{ pickup: DayHours; delivery: DayHours }>({ pickup: {}, delivery: {} });
+  const [schedAt, setSchedAt] = useState<string | null>(null);
   // Desktop/iPad vs phone layout. `viewOverride` = the manual toggle (null = auto).
   // The auto layout is driven by CSS `md:` breakpoints (correct on first paint, no
   // hydration flash); this state only powers the manual override attribute + toggle.
@@ -319,6 +342,19 @@ export default function PublicMenu() {
       .then(({ data }) => { const ml = (data as { menu_langs?: unknown } | null)?.menu_langs; if (Array.isArray(ml) && ml.length) setMenuLangs(ml as Lang[]); });
     supabase.from("storefront").select("order_modes").eq("slug", slug).maybeSingle()
       .then(({ data }) => { const om = (data as { order_modes?: unknown } | null)?.order_modes; if (Array.isArray(om) && om.length) setMenuOrderModes(resolveOrderModes(om)); });
+    // Accept-order hours (pickup/delivery scheduling). Defensive: a pre-migration
+    // view without order_hours errors quietly → scheduling stays "anytime".
+    supabase.from("storefront").select("order_hours").eq("slug", slug).maybeSingle()
+      .then(({ data }) => {
+        const oh = (data as { order_hours?: unknown } | null)?.order_hours;
+        if (oh && typeof oh === "object") {
+          const o = oh as { pickup?: unknown; delivery?: unknown };
+          setOrderHours({
+            pickup: (o.pickup && typeof o.pickup === "object" ? o.pickup : {}) as DayHours,
+            delivery: (o.delivery && typeof o.delivery === "object" ? o.delivery : {}) as DayHours,
+          });
+        }
+      });
     let alive = true;
     setLoadErr(false);
     Promise.all([
@@ -339,7 +375,15 @@ export default function PublicMenu() {
     return () => { alive = false; };
   }, [slug, reloadTick]);
 
-  const byId = useMemo(() => Object.fromEntries(dishes.map((d) => [d.id, d])), [dishes]);
+  // Takeout/delivery ONLY: chicken-pot dishes gain a 生/熟 (raw/cooked) choice —
+  // cooked adds a surcharge (see withCookVariants). Dine-in keeps the menu as-is.
+  // Everything downstream (row render, 选规格 sheet, cart, order) reads dishes via
+  // effectiveDishes/byId, so injecting the variants here applies it everywhere.
+  const effectiveDishes = useMemo(
+    () => (togoMode ? dishes.map((d) => (isCookPotDish(d) ? withCookVariants(d) : d)) : dishes),
+    [dishes, togoMode],
+  );
+  const byId = useMemo(() => Object.fromEntries(effectiveDishes.map((d) => [d.id, d])), [effectiveDishes]);
   const inc = (key: string, delta: number) =>
     setCart((c) => {
       const q = Math.max(0, (c[key] ?? 0) + delta);
@@ -378,8 +422,38 @@ export default function PublicMenu() {
 
   // Orders already placed this session (each "再点一单" round). Lets a returning
   // diner see what they've ordered plus the running total across rounds.
+  //
+  // PERSISTED per tenant+table (3h expiry): this was memory-only state, so a
+  // diner who closed the tab — or whose iPad Safari evicted the page while they
+  // ate — rescanned the QR and found their 已点 record and running total gone.
+  // The meal is the session, not the browser tab. 3h covers the longest hot-pot
+  // sitting without leaking one party's orders to the table's NEXT party
+  // tomorrow. Table-keyed so table 3's record never shows at table 5.
   type PlacedLine = { name_zh: string; name_en: string; price: number | null; qty: number };
-  const [placedOrders, setPlacedOrders] = useState<{ lines: PlacedLine[]; total: number }[]>([]);
+  const [placedOrders, setPlacedOrders] = useState<{ lines: PlacedLine[]; total: number; orderNo?: string | null }[]>([]);
+  const placedKey = `bento_placed_${slug}_${lockedTable ?? ""}`;
+  const PLACED_TTL_MS = 3 * 60 * 60 * 1000;
+  useEffect(() => {
+    // Restore only for table QR sessions (lockedTable) — the 整店一码/togo flows
+    // don't have a stable "same seat" identity to restore against.
+    if (!lockedTable) return;
+    try {
+      const raw = localStorage.getItem(placedKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { at: number; orders: typeof placedOrders };
+      if (Date.now() - saved.at < PLACED_TTL_MS && Array.isArray(saved.orders) && saved.orders.length) {
+        setPlacedOrders(saved.orders);
+      } else {
+        localStorage.removeItem(placedKey);
+      }
+    } catch { /* private mode / corrupt JSON — start clean */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedKey, lockedTable]);
+  useEffect(() => {
+    if (!lockedTable || placedOrders.length === 0) return;
+    try { localStorage.setItem(placedKey, JSON.stringify({ at: Date.now(), orders: placedOrders })); } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedOrders, placedKey, lockedTable]);
   const placedTotal = placedOrders.reduce((a, o) => a + o.total, 0);
   const grandTotal = placedTotal + total;
   const placedLines = useMemo(() => {
@@ -396,6 +470,16 @@ export default function PublicMenu() {
   // togo/delivery pricing: HST on food; delivery adds mandatory 10% tip (pre-tax,
   // untaxed) and a $30 minimum. Display only — the server re-prices at checkout.
   const isDelivery = togoMode && togoType === "delivery";
+  // Scheduling slots for the chosen channel (自取→pickup hours, 配送→delivery).
+  // Recomputed when the cart opens so "现在" reflects a fresh clock. Campus
+  // pickupMode keeps its own +15/+30 picker; this is fulai's togo/delivery only.
+  const schedChannel = togoType === "delivery" ? orderHours.delivery : orderHours.pickup;
+  // Scheduling is offered only once the owner has configured this channel's hours;
+  // until then customers see 现在 only (and requested_pickup_at stays null, which
+  // the anon-insert guard requires). This also avoids a broken window before the
+  // order-hours migration runs.
+  const schedConfigured = hoursConfigured(schedChannel);
+  const sched = useMemo(() => orderSlots(schedChannel, new Date()), [schedChannel, open]); // eslint-disable-line react-hooks/exhaustive-deps
   // A tenant with no table labels is a food truck / counter-service vendor:
   // no dine-in table field, and every order needs a phone (there's no table to
   // call out, so the number is how staff reach the customer).
@@ -492,6 +576,7 @@ export default function PublicMenu() {
   }, [hasHotpot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
+    setSubmitErr("");
     // Required phone. +1 (default): strip formatting, drop a typed leading "1",
     // require exactly 10 digits — stored bare (legacy format). Other country
     // codes: 7-12 digits, stored as +<code><digits>.
@@ -626,6 +711,7 @@ export default function PublicMenu() {
       order_type: togoMode ? togoType : "dine_in",
       address: isDelivery ? { street: street.trim(), unit: unit.trim() || undefined, city: "Toronto, ON", postal: postal.trim().toUpperCase() } : undefined,
       customer_email: togoMode ? email : undefined,
+      requested_pickup_at: togoMode ? schedAt : null, // null = 现在/ASAP
     });
     setSubmitting(false);
     if (res.error) {
@@ -636,7 +722,9 @@ export default function PublicMenu() {
       if (staff && typeof window !== "undefined" && window.parent !== window) {
         window.parent.postMessage({ type: "bento-staff-order-failed", message: res.error }, window.location.origin);
       } else {
-        alert("提交失败：" + res.error);
+        // Inline, above the submit button — the cart is untouched, so the diner
+        // can read the reason and just tap submit again.
+        setSubmitErr(tri("提交失败，请重试：", "Couldn't place the order — please try again: ", "Échec de la commande, réessayez : ") + res.error);
       }
       return;
     }
@@ -678,21 +766,25 @@ export default function PublicMenu() {
         window.location.origin, // same-origin embed; don't broadcast to "*"
       );
     }
+    // DB-assigned order number (best-effort read-back; null on any hiccup so the
+    // confirmation never blocks on it).
+    const orderNo = res.id ? await fetchOrderNo(res.id) : null;
     setPlacedOrders((p) => [
       ...p,
-      { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total },
+      { lines: cartLines.map((x) => ({ name_zh: lineName(x.d, x.variant), name_en: lineName(x.d, x.variant, true), price: x.unit, qty: x.qty })), total, orderNo },
     ]);
     setCart({});
     setTableNo(lockedTable ?? "");
     setPhone("");
     setNote("");
+    setSchedAt(null);
   };
 
   const cats = useMemo(() => {
-    const present = Array.from(new Set(dishes.map((d) => d.category).filter(Boolean)));
+    const present = Array.from(new Set(effectiveDishes.map((d) => d.category).filter(Boolean)));
     const ordered = orderedCategories(present, catOrder, ORDER);
-    return ordered.map((c) => ({ category: c, items: dishes.filter((d) => d.category === c) }));
-  }, [dishes, catOrder]);
+    return ordered.map((c) => ({ category: c, items: effectiveDishes.filter((d) => d.category === c) }));
+  }, [effectiveDishes, catOrder]);
 
   // default the active tab to the first category once dishes load
   useEffect(() => {
@@ -714,7 +806,7 @@ export default function PublicMenu() {
       for (let i = 0; i < cats.length; i++) {
         const el = document.getElementById(`menu-cat-${i}`);
         if (!el) continue;
-        if (el.getBoundingClientRect().top - 92 <= 1) current = cats[i].category;
+        if (el.getBoundingClientRect().top - 140 <= 1) current = cats[i].category;
         else break;
       }
       if (current) setActiveCat((prev) => (prev === current ? prev : current));
@@ -740,13 +832,17 @@ export default function PublicMenu() {
   // Search across all dishes (zh + en), case-insensitive, flat results.
   const q = deferredQuery.trim().toLowerCase();
   const results = q
-    ? dishes.filter(
+    ? effectiveDishes.filter(
         (d) =>
           d.name_zh.toLowerCase().includes(q) ||
           (d.name_en || "").toLowerCase().includes(q) ||
           // Pinyin initials: "blglr" → 菠萝咕噜肉. Precomputed on the dish (no
           // pinyin code here). Prefix match so each keystroke narrows down.
-          (!!d.search_initials && d.search_initials.startsWith(q)),
+          (!!d.search_initials && d.search_initials.startsWith(q)) ||
+          // 菜号 from the paper menu ("115", "48A", "F12"). Findable but never
+          // DISPLAYED — a diner holding the printed menu can type the number,
+          // while the QR menu itself stays free of numbering. Blank never matches.
+          dishNoMatches(d.dish_no, q),
       )
     : [];
 
@@ -769,8 +865,16 @@ export default function PublicMenu() {
     return (
       <div key={d.id} className={`flex items-center gap-3 ${sold ? "opacity-45" : ""}`}>
         {d.image_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={d.image_url} alt={lang === "zh" ? d.name_zh : d.name_en || d.name_zh} className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`} />
+          // next/image → Vercel resizes to this 56px thumbnail (WebP) and serves it
+          // from Vercel's CDN, so full-size dish photos stop streaming from Supabase.
+          <Image
+            src={d.image_url}
+            alt={lang === "zh" ? d.name_zh : d.name_en || d.name_zh}
+            width={112}
+            height={112}
+            unoptimized={false}
+            className={`h-14 w-14 flex-none rounded-lg object-cover ${sold ? "grayscale" : ""}`}
+          />
         )}
         <div className="min-w-0 flex-1">
           <div className="text-[17px] font-semibold leading-snug text-ink">
@@ -916,7 +1020,22 @@ export default function PublicMenu() {
     <main
       data-view={viewOverride ?? undefined}
       className={`min-h-screen bg-paper ${count > 0 || placedTotal > 0 ? "pb-32 md:pb-6" : "pb-20 md:pb-6"}`}
-      style={{ fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif' }}
+      style={{
+        fontFamily: '"General Sans", "Noto Sans SC", system-ui, sans-serif',
+        zoom: big ? BIG_ZOOM : undefined,
+        // Usable screen height for the sticky columns (category rail + order
+        // panel), expressed in THIS element's coordinate space.
+        //
+        // CSS `zoom` does not change what 100dvh resolves to — it stays the real
+        // viewport — but it DOES scale the element afterwards. So a column sized
+        // at calc(100dvh - 150px) rendered 18% taller than the screen in 大字 and
+        // its bottom (合计 + 结账) fell below the fold with no way to scroll to it,
+        // because the column is `sticky`. Dividing by the zoom first cancels that.
+        //
+        // dvh, not vh: on mobile Safari the toolbar shrinks the visible area, and
+        // vh keeps reporting the taller pre-collapse height.
+        ["--vp" as string]: big ? `calc(100dvh / ${BIG_ZOOM})` : "100dvh",
+      } as React.CSSProperties}
     >
       {/* design-system fonts — React hoists these to <head>, scoped to the menu route */}
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -928,6 +1047,16 @@ export default function PublicMenu() {
 
       <header className="sticky top-0 z-10 border-b border-[#ECE7DF] bg-paper/95 backdrop-blur">
         <div className="mv-shell mx-auto flex w-full max-w-[440px] items-center gap-3 px-5 py-4 md:max-w-[1440px]">
+          {/* 大字模式 toggle — top-left, for elderly diners. */}
+          <button
+            onClick={toggleBig}
+            aria-pressed={big}
+            title={tri("大字模式", "Large text", "Gros texte")}
+            className={`flex flex-none items-center gap-1 rounded-full border px-2.5 py-1.5 text-sm font-semibold transition ${big ? "border-jade bg-jade text-white" : "border-slate-200 text-ink-soft hover:bg-slate-50"}`}
+          >
+            <span className="text-base leading-none">A⁺</span>
+            <span className="hidden sm:inline">{tri("大字", "Large", "Gros")}</span>
+          </button>
           <div className="min-w-0 flex-1">
             <div className="truncate text-xl font-bold tracking-wide text-ink" style={{ fontFamily: '"Noto Serif SC", serif' }}>
               {embed ? (lang === "zh" ? "今日菜单" : "Menu") : name ? (lang === "zh" ? name.zh : name.en || name.zh) : "…"}
@@ -1079,9 +1208,11 @@ export default function PublicMenu() {
           </div>
         )}
 
-        {/* search bar — filters across all categories */}
+        {/* search bar — filters across all categories. Sticky just under the
+            header so it stays reachable while scrolling the dish list; the rail +
+            order panel below start at top-[130px] to clear it. */}
         {dishes.length > 0 && (
-          <div className="relative mb-5">
+          <div className="sticky top-[68px] z-[6] mb-4 bg-paper/95 py-2.5 backdrop-blur">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint">🔍</span>
             <input
               value={query}
@@ -1126,7 +1257,11 @@ export default function PublicMenu() {
           {cats.length > 1 && (
             <nav
               ref={railRef}
-              className="mv-rail sticky top-[68px] z-[5] max-h-[calc(100vh-88px)] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
+              // --vp is the real screen height in this element's space (zoom-aware,
+              // dvh-based). 142px = the 130px sticky offset + 12px breathing room,
+              // so the rail always ends ON screen and scrolls to its own last row.
+              style={{ maxHeight: "calc(var(--vp) - 142px)" }}
+              className="mv-rail sticky top-[130px] z-[5] w-[88px] flex-none self-start overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:w-44"
             >
               {cats.map((g, i) => {
                 const on = g.category === activeCat;
@@ -1151,7 +1286,7 @@ export default function PublicMenu() {
           {/* dish list — every category as a section; scrolling syncs the rail */}
           <div className="min-w-0 flex-1">
             {cats.map((g, i) => (
-              <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[76px]">
+              <section key={g.category} id={`menu-cat-${i}`} className="mb-7 scroll-mt-[140px]">
                 <h2 className="mb-3 flex items-baseline gap-2 border-b-2 border-ink/80 pb-1 text-base font-bold text-ink">
                   {catLabel(g.category, lang2)}<span className="text-xs font-normal text-ink-faint">{g.items.length}</span>
                 </h2>
@@ -1162,7 +1297,10 @@ export default function PublicMenu() {
 
           {/* desktop/iPad: persistent order panel — live order while browsing.
               Always in DOM; CSS `md:` (+ [data-view] override) controls visibility. */}
-          <aside className="mv-desktop sticky top-[68px] hidden max-h-[calc(100vh-88px)] w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex">
+          <aside
+            style={{ maxHeight: "calc(var(--vp) - 142px)" }}
+            className="mv-desktop sticky top-[130px] hidden w-80 flex-none flex-col self-start overflow-hidden rounded-2xl border border-slate-200 bg-white md:flex"
+          >
             {renderOrderPanel()}
           </aside>
         </div>
@@ -1274,7 +1412,7 @@ export default function PublicMenu() {
         const setN = (n: number) => setEditUnits((us) => Array.from({ length: Math.max(1, Math.min(20, n)) }, (_, i) => us[i] ?? { note: "", adjust: "" }));
         const n = editUnits.length;
         return (
-          <div className="fixed inset-0 z-40 flex items-end bg-black/40 md:items-center" onClick={() => setStaffEditKey(null)}>
+          <div className="fixed inset-0 z-50 flex items-end bg-black/40 md:items-center" onClick={() => setStaffEditKey(null)}>
             <div className="mx-auto flex max-h-[84vh] w-full max-w-[440px] flex-col rounded-t-2xl md:rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
               {/* sticky header: dish name + 份数 stepper */}
               <div className="flex flex-none items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -1374,6 +1512,23 @@ export default function PublicMenu() {
                       </div>
                     </div>
                     <span className={`font-bold tabular-nums ${sheetDish.is_market ? "text-gold" : "text-jade"}`}>{sheetDish.is_market ? t("market") : fmtPrice(v.price)}</span>
+                    {/* staff-only: 备注 / 改价 for THIS size (same editor as single-price dishes, keyed by the
+                        size's cartKey). Shown always (like single-price dishes) — the editor adds the size at
+                        qty 1 with the customization if none is in the cart yet. */}
+                    {staff && (
+                      <button
+                        onClick={() => {
+                          const n = Math.max(1, cart[key] ?? 0);
+                          const u = itemMeta[key]?.units ?? [];
+                          setEditUnits(Array.from({ length: n }, (_, i) => ({ note: u[i]?.note ?? "", adjust: u[i]?.adjust != null ? String(u[i]!.adjust) : "" })));
+                          setStaffEditKey(key);
+                        }}
+                        title={tri("备注 / 改价", "Note / price", "Note / prix")}
+                        className={`grid h-11 w-11 flex-none place-items-center rounded-full border text-sm ${(itemMeta[key]?.units ?? []).some((m) => (m?.adjust ?? 0) !== 0 || (m?.note ?? "").trim() !== "") ? "border-gold text-gold" : "border-slate-300 text-ink-soft"}`}
+                      >
+                        ✎
+                      </button>
+                    )}
                     {q === 0 ? (
                       <button onClick={() => inc(key, 1)} className="grid h-11 w-11 flex-none place-items-center rounded-full bg-jade text-lg text-white">＋</button>
                     ) : (
@@ -1482,6 +1637,35 @@ export default function PublicMenu() {
                         {renderAddress()}
                         {addrErr && <p className="text-xs text-red-600">{addrErr}</p>}
                       </>
+                    )}
+                    {/* fulai togo/delivery scheduling: 现在(ASAP, staff callback) or a
+                        future slot bounded by the channel's accept-order hours. */}
+                    {!pickupMode && (
+                      <div>
+                        <div className="mb-1.5 text-sm font-medium text-ink">🕐 {tri("什么时候要？", "When?", "Quand ?")}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSchedAt(null)}
+                            className={`min-h-11 rounded-full px-3.5 text-sm font-medium transition ${schedAt === null ? "bg-jade text-white" : "border border-slate-200 bg-white text-ink-soft"}`}
+                          >
+                            {tri("现在", "Now", "Maintenant")}
+                          </button>
+                          {schedConfigured && sched.slots.length > 0 && (
+                            <select
+                              value={schedAt ?? ""}
+                              onChange={(e) => setSchedAt(e.target.value || null)}
+                              className={`min-h-11 rounded-full border px-3 text-sm ${schedAt ? "border-jade bg-jade-wash font-semibold text-jade" : "border-slate-200 bg-white text-ink-soft"}`}
+                            >
+                              <option value="">{tri("预约时间…", "Schedule…", "Planifier…")}</option>
+                              {sched.slots.map((s) => {
+                                const day = s.dayOffset === 0 ? tri("今天", "Today", "Auj.") : s.dayOffset === 1 ? tri("明天", "Tmr", "Dem.") : new Date(s.iso).toLocaleDateString("en-CA", { timeZone: "America/Toronto", month: "numeric", day: "numeric" });
+                                return <option key={s.iso} value={s.iso}>{day} {s.hhmm}</option>;
+                              })}
+                            </select>
+                          )}
+                        </div>
+                      </div>
                     )}
                     {/* Scheduled pickup: order from class now, pick up after it ends.
                         ASAP keeps the original flow (staff set the ETA on accept). */}
@@ -1676,6 +1860,9 @@ export default function PublicMenu() {
                   {togoMode && !isDelivery && addrErr && (
                     <p className="mb-2 text-center text-xs text-red-600">{addrErr}</p>
                   )}
+                  {submitErr && (
+                    <p role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-700">{submitErr}</p>
+                  )}
                   <button
                     onClick={submit}
                     disabled={submitting || (togoMode && isDelivery && shortfall > 0) || (pickupMode && !!truckHours && !truckHours.open && !truckHours.unconfigured)}
@@ -1722,6 +1909,12 @@ export default function PublicMenu() {
           <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="text-4xl">✅</div>
             <p className="mt-3 font-medium text-ink">{togoMode && !PAYMENTS_LIVE ? t("sentCallback").replace("{shop}", shopName) : t("placed")}</p>
+            {placedOrders[placedOrders.length - 1]?.orderNo && (
+              <div className="mt-4">
+                <div className="text-xs text-ink-faint">{tri("订单号", "Your order #", "N° de commande")}</div>
+                <div className="text-4xl font-bold tracking-wider text-jade tabular-nums">#{placedOrders[placedOrders.length - 1]!.orderNo}</div>
+              </div>
+            )}
             <button onClick={() => { setPlaced(false); setOpen(false); }} className="inline-flex items-center justify-center rounded-lg bg-jade font-medium text-white transition hover:opacity-90 mt-5 px-6 py-2.5">{t("another")}</button>
           </div>
         </div>

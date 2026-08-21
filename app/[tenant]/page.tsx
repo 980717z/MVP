@@ -102,7 +102,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     let alive = true;
-    listOrders(slug)
+    listOrders(slug, tenant?.dayStartHour ?? 0)
       .then((o) => alive && setOrders(o))
       .catch(() => {
         /* orders table may be empty / not provisioned — degrade quietly */
@@ -110,13 +110,41 @@ export default function Dashboard() {
     return () => {
       alive = false;
     };
-  }, [slug]);
+  }, [slug, tenant?.dayStartHour]);
 
   // catalog labels are still {zh,en} only — render via current lang (fr falls back to en)
   const tl = (b: { zh: string; en: string }) => (lang === "zh" ? b.zh : b.en);
   const cjk = lang === "zh";
 
-  if (!tenant) return null;
+  // Loading skeleton, not a blank return — on a slow connection `null` painted a
+  // white screen with no signal whether the app is loading or broken. Shapes
+  // mirror the real overview (KPI row + module cards) so the eventual content
+  // lands where the placeholders were. (The not-found case is handled by the
+  // layout, which shows 找不到这个商家 once the fetch resolves empty.)
+  if (!tenant) {
+    return (
+      <main className="px-6 py-8 lg:px-10" aria-label="loading" aria-busy>
+        <div className="h-7 w-48 animate-pulse rounded bg-slate-100" />
+        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="card p-5">
+              <div className="h-4 w-20 animate-pulse rounded bg-slate-100" />
+              <div className="mt-3 h-8 w-28 animate-pulse rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="card p-5">
+              <div className="h-5 w-32 animate-pulse rounded bg-slate-100" />
+              <div className="mt-2 h-4 w-full animate-pulse rounded bg-slate-100" />
+              <div className="mt-1 h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      </main>
+    );
+  }
 
   // brand-new store: no features picked yet → guide owner to set up
   if (tenant.enabled.length === 0) {
