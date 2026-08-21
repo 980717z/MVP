@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createTenant, loadTenants } from "@/lib/store";
+import { createTenant, loadTenants, type Tenant } from "@/lib/store";
 import { useAuth, signOut } from "@/lib/useAuth";
 import { isValidSlug } from "@/lib/qrContract";
 import { useLang, type Dict } from "@/app/i18n";
@@ -43,6 +43,12 @@ const T = {
   errReserved: { en: "” is a reserved word (it would clash with a page route) — pick another", zh: "」是系统保留字(会和页面路由冲突),请换一个", fr: " » est un mot réservé (conflit de route) — choisissez-en un autre" },
   errFormat: { en: "The address needs 3–30 lowercase letters, numbers or hyphens", zh: "专属网址需要 3-30 位小写字母、数字或短横线", fr: "L'adresse doit contenir 3 à 30 lettres minuscules, chiffres ou tirets" },
   errCreate: { en: "Creation failed, please retry", zh: "创建失败,请重试", fr: "Échec de la création, réessayez" },
+  // Multi-tenant chooser — shown instead of auto-redirecting when an account
+  // (e.g. a BentoOS team admin) has more than one shop, so we don't guess
+  // wrong and land someone on the wrong back office (see Task 4 campus notes).
+  chooseTitle: { en: "Choose a shop", zh: "选择一家店铺", fr: "Choisissez une boutique" },
+  chooseIntro: { en: "This account has access to more than one shop.", zh: "这个账号名下有不止一家店铺。", fr: "Ce compte a accès à plusieurs boutiques." },
+  campusTag: { en: "Campus", zh: "校园", fr: "Campus" },
 } satisfies Record<string, Dict>;
 
 export default function AppGate() {
@@ -50,6 +56,10 @@ export default function AppGate() {
   const { t } = useLang();
   const { session, loading, email } = useAuth();
   const [checking, setChecking] = useState(true);
+  // Set only when the account has MORE THAN ONE shop — we show a picker
+  // instead of guessing which one to auto-redirect to (a single-shop account,
+  // still the common case, keeps the old instant-redirect behavior below).
+  const [multiTenants, setMultiTenants] = useState<Tenant[] | null>(null);
 
   // store-naming form state
   const [name, setName] = useState("");
@@ -66,8 +76,11 @@ export default function AppGate() {
       return;
     }
     loadTenants().then((tenants) => {
-      if (tenants.length > 0) {
+      if (tenants.length === 1) {
         router.replace(`/${tenants[0].slug}`);
+      } else if (tenants.length > 1) {
+        setMultiTenants(tenants);
+        setChecking(false);
       } else {
         setChecking(false);
       }
@@ -109,6 +122,43 @@ export default function AppGate() {
 
   if (loading || !session || checking) {
     return <main className="grid min-h-screen place-items-center text-ink-faint">{t(T.loading)}</main>;
+  }
+
+  // ── multi-shop picker (accounts with >1 tenant — e.g. a team admin who
+  //    owns/manages several shops) — pick explicitly rather than guessing ──
+  if (multiTenants) {
+    return (
+      <main className="grid min-h-screen place-items-center px-6">
+        <div className="w-full max-w-sm">
+          <div className="mb-6 flex items-center justify-center gap-2">
+            <BentoMark className="h-7 w-7" />
+            <span className="text-lg font-bold tracking-tight">BentoOS</span>
+          </div>
+          <div className="card p-6">
+            <h1 className="text-xl font-bold text-ink">{t(T.chooseTitle)}</h1>
+            <p className="mt-1 mb-4 text-sm text-ink-soft">{t(T.chooseIntro)}</p>
+            <div className="space-y-2">
+              {multiTenants.map((tn) => (
+                <button
+                  key={tn.slug}
+                  onClick={() => router.push(`/${tn.slug}`)}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left hover:border-brand hover:bg-brand-wash"
+                >
+                  <span>
+                    <span className="font-semibold text-ink">{tn.name?.zh || tn.name?.en || tn.slug}</span>
+                    <span className="ml-2 text-xs text-ink-faint">bentoos.io/{tn.slug}</span>
+                  </span>
+                  {tn.campus && <span className="pill bg-brand-wash text-brand">{t(T.campusTag)}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 text-center text-xs text-ink-faint">
+            {email} · <button onClick={() => signOut().then(() => router.replace("/login"))} className="hover:text-ink">{t(T.signOut)}</button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   // ── forced store-naming step (no other buttons) ──────────────────────────
